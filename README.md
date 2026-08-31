@@ -5,6 +5,9 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
+Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
+or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
 ## Features
 
 - **Multiple wallets** — each wallet is created separately via
@@ -181,7 +184,38 @@ creates a new external contribution equal to the lot amount.
 Monthly occurrences are identified by plan and calendar month. Changing the
 execution day therefore does not duplicate older months. Removing an automatic
 execution records that month as skipped; use **Configure → Restore a skipped
-execution** if it should be generated again.
+execution** if it should be generated again. Removing a plan retains an inert
+identity record: if the same schedule and allocation are later re-created, its
+old execution identity and skipped months are reused instead of backfilling
+those months a second time.
+
+### Ledger safeguards
+
+When a historical purchase is linked to a contribution, the contribution date
+must be on or before the purchase date. The legacy opening-balance contribution
+created during upgrades represents already-held units: it can only contain
+lots marked *already included in the opening balance* and those lots do not
+reduce settlement cash. This prevents an opening balance from being used as
+funding for a new purchase.
+
+Lots marked as already included in an opening balance cannot exceed the
+configured opening units for a symbol. If an automatic execution would exceed
+that amount, it remains pending and is marked as requiring repair instead of
+being booked. When available cash is reused by automatic plans, the integration
+limits it to the lowest ledger balance between the execution date and today, so
+a later deposit cannot mask an earlier cash shortfall.
+
+On upgrade to 1.3.2, a legacy percentage plan too small to allocate one cent to
+each position is retained but disabled. A saved opening-balance cutoff in the
+future is clamped to the migration date. Review any disabled plan before
+enabling it again.
+
+Version 1.3.2 also validates all existing purchase lots while migrating. If a
+briefly installed 1.3.1 entry contains a legacy lot that is no longer marked as
+part of the opening balance, a lot dated before its funding contribution, or
+included lots exceeding the configured opening units, the migration stops
+instead of guessing how to rewrite financial history. Correct that
+inconsistency in 1.3.1 first, then retry the update.
 
 ### Dividends and settlement cash
 

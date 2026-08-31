@@ -1,44 +1,51 @@
-# My Wallet 1.3.1 audit
+# My Wallet 1.3.2 audit note
 
 ## Result
 
-The 1.3.0 customization was reviewed across the ledger, scheduling, market-data,
-performance, Home Assistant lifecycle, localization, and release packaging. The
-1.3.1 changes address every confirmed high-impact defect found in that review.
+This is a maintainer code-review and regression-test note, not an independent
+security certification. The 1.3.2 release hardens the cash ledger, migration
+boundaries, input handling, and Yahoo response handling. It does not make
+broker data or Yahoo data authoritative.
 
-## Correctness controls added
+## Ledger safeguards in 1.3.2
 
-- Aggregate value is unavailable unless every configured security has a quote
-  and FX rate; individual healthy positions remain available.
-- Monthly executions use `(plan_id, calendar month)` identity and are
-  idempotent across execution-day edits.
-- Deleted automatic executions create a restorable skipped-month marker.
-- Automatic config persistence no longer reloads the integration mid-refresh.
-- An optimistic concurrency check prevents Yahoo waits from overwriting a
-  simultaneous user edit.
-- Settlement cash is capped both at the historical execution date and at the
-  current uncommitted balance, then reserved across executions in close-date
-  order.
-- Future contributions and lots are retained but excluded from as-of totals,
-  holdings, cashflows, and XIRR until their date.
-- Historical lots can link to an existing funding contribution instead of
-  duplicating invested capital.
-- Included historical lots cannot exceed configured opening units.
-- Dividend income is attributed only to eligible tracked units and leaves the
-  untracked opening-position share unattributed.
-- Yahoo intraday daily bars are excluded until the exchange-local close.
-- Yahoo minor-unit currencies such as GBp are converted to major ISO units.
-- Non-finite monetary, unit, allocation, price, FX, and XIRR values are rejected.
+- A legacy opening-balance contribution accepts only opening-balance lots; such
+  lots are cash-neutral, so an already-held position cannot fund a later buy.
+- A linked funding contribution must be dated on or before its purchase lot.
+  The invariant is enforced both when a lot is imported and when an existing
+  lot or its parent contribution is corrected.
+- Reinvestable cash is bounded by the lowest ledger balance at every event from
+  an execution date through today, with same-refresh reservations deducted.
+  A later deposit therefore cannot finance an earlier cash deficit.
+- Automatic execution is held pending for repair when proposed opening-balance
+  lots would exceed the configured opening units for a symbol.
+- Migration to config-entry version 5 preserves an otherwise valid legacy plan
+  that is too small to allocate one cent per percentage position, but disables
+  it. Future opening-balance cutoffs are clamped to the migration date.
+- Removed plans retain an inert identity record. Re-creating the same schedule
+  and allocation reuses its original ID and skipped months, so past executions
+  cannot silently become due again.
+
+## Other defensive changes
+
+- Wallet input defaults reject non-finite and out-of-range numeric values.
+- Multi-step option forms verify that their base currency, selected IDs, and
+  configured symbols still exist before saving, avoiding stale-form writes.
+- Extreme short-lived gains return an unavailable annualized lot metric rather
+  than overflowing and taking down the performance entity.
+- Yahoo payload decoding, timestamps, and background fetch boundaries handle
+  malformed provider data as unavailable data rather than uncaught failures.
+- The validation workflow checks tests, Ruff lint and formatting, Bandit, JSON
+  and YAML parsing, compilation, and imports against Home Assistant 2024.11.3,
+  alongside HACS and Hassfest validation.
 
 ## Verification
 
-- 18 deterministic regression tests
-- Ruff lint and formatting checks
-- Bandit static security scan
-- JSON and YAML parsing
-- Python bytecode compilation
-- Import smoke test against Home Assistant 2024.11.3
-- CI definitions for tests, Ruff, HACS validation, and Hassfest
+- Regression coverage includes the legacy-opening, funding-date, cash-interval,
+  opening-unit, and migration cases listed above.
+- The local release check and the repository workflow are intended to run the
+  static checks listed above. Results are release-environment dependent; this
+  document does not claim that a remote CI run has completed.
 
 ## Explicit approximation
 
@@ -50,7 +57,7 @@ data that the integration does not possess.
 
 ## Publication metadata
 
-The manifest still points to the original upstream repository because the fork
-URL and GitHub username are not present in the source archive. Before publishing
-the fork through HACS, update `codeowners`, `documentation`, and `issue_tracker`
-in `custom_components/my_wallet/manifest.json` to the fork owner and URL.
+The manifest identifies `@PenDrag92` as code owner and points documentation and
+issue reporting to the `PenDrag92/ha-my-wallet-custom` fork. GitHub Issues
+enablement and repository topics are repository settings; they cannot be
+declared or verified from this integration package.
