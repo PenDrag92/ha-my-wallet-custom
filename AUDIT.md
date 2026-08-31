@@ -1,3 +1,53 @@
+# My Wallet 1.3.3 verification note
+
+This is a local code-review and regression-test note, not an independent
+security certification. It does not certify broker or market-data accuracy.
+
+## Scope
+
+- Recalculation is prepared before a single config-entry write. Missing prices
+  or a worsened cash history roll the booking changes back; the result dialog
+  explains that the new plan settings may be saved while old bookings remain.
+- Explicit manual corrections are protected. Old records without reliable
+  correction metadata need the user's per-record approval for recalculation.
+- Imported statement records do not become eligible for automatic recalculation.
+  Removing any linked execution also records its skipped plan month.
+- Purchase-only groups carry zero external funding. Deposited capital and XIRR
+  external flows therefore cannot count a purchase as another deposit.
+- Financial WebSocket endpoints check administrator status. Import previews
+  are short-lived, bound to the initiating user and consumed once. Imports
+  always create a separate wallet instead of replacing existing financial data.
+- The frontend renders imported names/notes as text, loads no third-party
+  JavaScript and neutralizes spreadsheet formula prefixes in exported text.
+- History uses only past confirmed closes and FX; unknown opening holdings or
+  missing prices do not produce invented historical portfolio values.
+
+## Local verification
+
+The release workflow covers unit tests, Ruff lint/format, Bandit, JSON/YAML,
+compilation, date defaults with real Voluptuous, JavaScript syntax and imports
+against the minimum Home Assistant version. The unit suite uses dependency
+stubs; it is not a running Home Assistant instance. Browser checks exercise the
+actual panel module in a loopback test harness, including responsive layout,
+range/type filters, file preview and confirmation. Home Assistant public API
+signatures were checked against core sources. A remote CI run and an upgrade
+inside the user's live Home Assistant have not been performed here.
+
+For one private statement, all purchase/FX lookups and daily reconstruction
+were additionally exercised against real Yahoo responses. Its transactions and
+results are deliberately excluded from this public package.
+
+## Limits
+
+There is no broker connection. Estimated units are not contract-note units;
+fees, actual execution prices and FX may differ. Future plan entries follow
+configured rules and may need broker corrections. Sales, stock splits and other
+corporate actions are not reconstructed automatically. Dividend entitlement
+still uses booking/value dates rather than unavailable ex-dividend dates.
+History is reconstructed on demand and does not backfill recorder statistics.
+
+---
+
 # My Wallet 1.3.2 audit note
 
 ## Result

@@ -27,6 +27,10 @@
       "symbol_exists": "Dieses Symbol ist bereits im Depot vorhanden.",
       "target_sum_exceeded": "Die Summe der Zielanteile würde 100 % überschreiten.",
       "invalid_number": "Bitte einen endlichen Wert innerhalb des zulässigen Bereichs eingeben."
+    },
+    "abort": {
+      "import_expired": "Die Importvorschau ist abgelaufen. Bitte unter My Wallet erneut prüfen.",
+      "already_imported": "Dieser Verlauf wurde bereits importiert."
     }
   },
   "options": {
@@ -62,11 +66,13 @@
       },
       "add_contribution": {
         "title": "Einzahlung hinzufügen",
-        "description": "Erfasse Geld, das in das Depot investiert wurde. Der Betrag wird in der Basiswährung des Depots angegeben.",
+        "description": "Erfasse eine Einzahlung in der Basiswährung. Du kannst sie direkt investieren; diese Auswahl hat Vorrang vor „weitere Einzahlung hinzufügen“. Einzahlungen in der Zukunft sind nicht erlaubt.",
         "data": {
-          "date": "Ausführungsdatum",
+          "date": "Einzahlungsdatum",
           "amount": "Betrag",
-          "add_another": "Anschließend eine weitere Einzahlung hinzufügen"
+          "add_another": "Anschließend eine weitere Einzahlung hinzufügen",
+          "note": "Notiz (optional)",
+          "invest_now": "Diese Einzahlung jetzt auf Wertpapiere aufteilen"
         }
       },
       "edit_contribution": {
@@ -77,10 +83,11 @@
       },
       "edit_contribution_fields": {
         "title": "Einzahlung bearbeiten",
-        "description": "Einzahlung oder Sparplanausführung: {contribution}. Vorhandene Kauftranchen bleiben unverändert.",
+        "description": "Einzahlung: {contribution}. Zugehörige Käufe bleiben unverändert:\n{lots}\n\nEine manuelle Korrektur ist vor automatischer Neuberechnung geschützt.",
         "data": {
-          "date": "Ausführungsdatum",
-          "amount": "Betrag"
+          "date": "Einzahlungsdatum",
+          "amount": "Betrag",
+          "note": "Notiz (optional)"
         }
       },
       "remove_contribution": {
@@ -97,14 +104,15 @@
       },
       "add_lot": {
         "title": "Historische Kauftranche erfassen",
-        "description": "Yahoo liefert den ersten bestätigten Schlusskurs am oder nach dem angegebenen Datum. Das Häkchen gesetzt lassen, wenn der Kauf bereits im Anfangsbestand enthalten ist. Der Import erzeugt eine gleich hohe Einzahlung, sofern keine bereits erfasste Einzahlung ausgewählt wird.",
+        "description": "Erfasse einen Kauf aus bereits eingezahltem Guthaben. Dabei entsteht keine weitere Einzahlung. Yahoo schätzt Anteile aus dem ersten bestätigten Schlusskurs am oder nach dem Datum. Alternativ Kurs oder tatsächliche Anteile eingeben. Anfangsbestand nur markieren, wenn diese Anteile bereits eingetragen sind.",
         "data": {
           "symbol": "Wertpapier",
           "date": "Geplantes oder tatsächliches Kaufdatum",
           "amount": "Investierter Betrag (Basiswährung)",
           "unit_price": "Effektiver Stückpreis in der Basiswährung (optionaler Yahoo-Ersatz)",
           "included_in_opening": "Gekaufte Anteile sind bereits im eingetragenen Anfangsbestand enthalten",
-          "funding_contribution": "Bereits erfasste zugehörige Einzahlung (optional)"
+          "funding_contribution": "Bereits erfasste zugehörige Einzahlung (optional)",
+          "units": "Tatsächlich gekaufte Anteile (optional)"
         }
       },
       "edit_lot_fields": {
@@ -162,7 +170,7 @@
           "allocation_mode": "Art der Aufteilung",
           "amount": "Gesamter Monatsbetrag (nur bei prozentualer Aufteilung erforderlich)",
           "use_cash_balance": "Vorhandenes Cash und Ausschüttungen anteilig mitinvestieren",
-          "opening_cutoff_date": "Käufe bis zu diesem Stichtag sind bereits im Anfangsbestand enthalten (optional)"
+          "opening_included": "Bisherige Sparplankäufe sind bereits im Anfangsbestand enthalten"
         }
       },
       "edit_plan": {
@@ -173,7 +181,7 @@
       },
       "edit_plan_fields": {
         "title": "Sparplan bearbeiten",
-        "description": "Für eine schnelle Änderung kann die bisherige Aufteilung beibehalten werden. Zum Ändern der Aufteilung das Häkchen entfernen und alle Positionen neu eingeben.",
+        "description": "Beim Beibehalten fester Teilbeträge werden diese proportional an die geänderte Gesamtrate angepasst. Wähle, ob Änderungen nur künftig gelten oder geeignete automatische Altbuchungen neu berechnet werden. Manuelle Korrekturen bleiben geschützt.",
         "data": {
           "name": "Name des Sparplans",
           "enabled": "Aktiv",
@@ -182,17 +190,17 @@
           "allocation_mode": "Art der Aufteilung",
           "amount": "Gesamter Monatsbetrag (nur bei prozentualer Aufteilung erforderlich)",
           "use_cash_balance": "Vorhandenes Cash und Ausschüttungen anteilig mitinvestieren",
-          "opening_cutoff_date": "Käufe bis zu diesem Stichtag sind bereits im Anfangsbestand enthalten (optional)",
-          "keep_allocations": "Bisherige Aufteilung beibehalten"
+          "keep_allocations": "Bisherige Aufteilung beibehalten",
+          "opening_included": "Bisherige Sparplankäufe sind bereits im Anfangsbestand enthalten",
+          "update_scope": "Änderung anwenden auf"
         }
       },
       "plan_allocation": {
-        "title": "Aufteilung des Sparplans",
-        "description": "Bisherige Summe der Aufteilung: {current_total}. Bei prozentualer Aufteilung Prozentwerte, sonst feste Beträge in der Basiswährung eingeben.",
+        "title": "Sparplan aufteilen",
+        "description": "{symbol}: Wertpapier {index} von {count}. Eingabe in {unit}. Bisherige Summe: {current_total}. Prozentwerte müssen zusammen 100 ergeben; feste Beträge müssen einer angegebenen Gesamtrate entsprechen.",
         "data": {
-          "symbol": "Wertpapier",
-          "value": "Anteil (%) oder fester Betrag",
-          "add_another": "Ein weiteres Wertpapier in diesen Sparplan aufnehmen"
+          "value": "Aufteilung",
+          "back_to_symbol": "Optional: andere Aufteilung korrigieren"
         }
       },
       "remove_plan": {
@@ -236,6 +244,75 @@
           "amount": "Neuer Anfangsbestand (erfasste Sparplankäufe werden automatisch addiert)",
           "target_share": "Zielanteil (%; zum Entfernen leeren)"
         }
+      },
+      "plan_opening": {
+        "title": "Stichtag für den Anfangsbestand",
+        "description": "Wähle den letzten Kauftag, der bereits in den eingetragenen Anfangsanteilen steckt. Spätere Käufe erhöhen die Stückzahl. Der Stichtag darf nicht in der Zukunft liegen.",
+        "data": {
+          "opening_cutoff_date": "Käufe bis einschließlich zu diesem Stichtag sind enthalten"
+        }
+      },
+      "plan_symbols": {
+        "title": "Wertpapiere für den Sparplan wählen",
+        "description": "Wähle alle Wertpapiere dieses Sparplans. Anschließend gibst du die Aufteilung pro Wertpapier ein.",
+        "data": {
+          "symbols": "Wertpapiere auswählen"
+        }
+      },
+      "plan_confirm": {
+        "title": "Sparplan speichern und Ausführungen verarbeiten",
+        "description": "{name}: monatlich {amount}, erste Ausführung {first_date}.\n\n{allocations}\n\nUmfang: {scope}. Vorhandene Buchungen: {existing}; erkannte manuelle Korrekturen: {protected}; ältere Buchungen ohne Änderungskennzeichen: {legacy}. Manuelle Korrekturen bleiben erhalten. Altbuchungen werden nur nach ausdrücklicher Auswahl unten neu berechnet. Bestätigen speichert den Sparplan und verarbeitet fällige Ausführungen sofort.",
+        "data": {
+          "confirm": "Diese Aktion bestätigen",
+          "legacy_executions": "Diese Altbuchungen nach Prüfung zur Neuberechnung freigeben"
+        }
+      },
+      "plan_result": {
+        "title": "Ergebnis der Sparplan-Verarbeitung",
+        "description": "Neu erstellt: {created}\nNeu berechnet: {recalculated}\nBestehende Buchungen beibehalten: {protected}\nAusstehend: {pending}\nKorrektur erforderlich: {failed}\n\n{details}\n\n{rollback}"
+      },
+      "contribution_investment": {
+        "title": "Diese Einzahlung investieren",
+        "description": "Wähle Wertpapiere und ein gemeinsames Kaufdatum als Vorgabe. Danach kannst du je Wertpapier ein anderes Datum verwenden. Bei festen Beträgen darf Restgeld auf dem Verrechnungskonto bleiben. Prozentwerte müssen zusammen 100 ergeben.",
+        "data": {
+          "symbols": "Wertpapiere auswählen",
+          "allocation_mode": "Art der Aufteilung",
+          "execution_date": "Gemeinsames Kaufdatum als Vorgabe",
+          "use_cash_balance": "Verfügbares Guthaben auf dem Verrechnungskonto mitverwenden",
+          "included_in_opening": "Anteile sind bereits im eingetragenen Anfangsbestand enthalten"
+        }
+      },
+      "contribution_allocation": {
+        "title": "Kauf",
+        "description": "{symbol}: Wertpapier {index} von {count}: Aufteilung in {unit} eingeben. Kurs und Anteile beide leer lassen, damit Yahoo die Anteile schätzt. Alternativ entweder den effektiven Stückpreis oder die tatsächlichen Anteile eingeben. Käufe in der Zukunft sind nicht erlaubt.",
+        "data": {
+          "value": "Aufteilung",
+          "date": "Kaufdatum",
+          "unit_price": "Effektiver Stückpreis in der Basiswährung (optional)",
+          "units": "Tatsächlich gekaufte Anteile (optional)",
+          "back_to_symbol": "Optional: andere Aufteilung korrigieren"
+        }
+      },
+      "contribution_confirm": {
+        "title": "Einzahlung und Käufe speichern",
+        "description": "Einzahlung: {deposit}\n\nKäufe:\n{lots}\n\nVerrechnungskonto nach dem Speichern: {cash}. Nur die Einzahlung erhöht das eingezahlte Kapital. Bestätigen speichert alle Buchungen gemeinsam.",
+        "data": {
+          "confirm": "Diese Aktion bestätigen"
+        }
+      },
+      "lot_confirm": {
+        "title": "Kauf bestätigen",
+        "description": "{lot}\n\nVerrechnungskonto nach dem Speichern: {cash}. Es wird keine zusätzliche Einzahlung angelegt.\n\n{warning}",
+        "data": {
+          "confirm": "Diese Aktion bestätigen"
+        }
+      },
+      "confirm_remove_contribution": {
+        "title": "Löschen bestätigen",
+        "description": "{contribution} löschen? Dabei werden auch {count} zugehörige Käufe entfernt:\n{lots}\n\nEin verknüpfter Sparplanmonat wird als übersprungen markiert und nicht automatisch erneut angelegt.",
+        "data": {
+          "confirm": "Diese Aktion bestätigen"
+        }
       }
     },
     "error": {
@@ -256,7 +333,13 @@
       "contribution_date_after_lot": "Das Einzahlungsdatum darf nicht nach dem Datum einer zugeordneten Kauftranche liegen.",
       "legacy_opening_required": "Eine Kauftranche des alten Anfangsbestands muss als bereits im Anfangsbestand enthalten markiert bleiben.",
       "funding_contribution_invalid": "Die gewählte Einzahlung ist nicht verfügbar oder kann diesen Kaufzeitpunkt nicht finanzieren.",
-      "opening_cutoff_future": "Der Stichtag für den Anfangsbestand darf nicht in der Zukunft liegen."
+      "opening_cutoff_future": "Der Stichtag für den Anfangsbestand darf nicht in der Zukunft liegen.",
+      "future_date": "Manuelle Buchungen dürfen nicht in der Zukunft liegen.",
+      "price_or_units": "Entweder Stückpreis oder Anteile eingeben, nicht beides.",
+      "confirmation_required": "Bitte die angezeigte Aktion ausdrücklich bestätigen.",
+      "allocation_total_mismatch": "Prozentwerte müssen zusammen 100 ergeben; feste Beträge müssen der angegebenen Gesamtrate entsprechen.",
+      "insufficient_cash": "Die Aufteilung ist nicht zu jedem Kaufdatum durch Einzahlung und gegebenenfalls verfügbares Cash gedeckt.",
+      "booking_failed": "Berechnung fehlgeschlagen; bestehende Buchungen bleiben unverändert."
     },
     "abort": {
       "no_valors": "Das Depot enthält noch keine Wertpapiere.",
@@ -267,7 +350,14 @@
       "no_skipped_executions": "Das Depot enthält keine übersprungenen Sparplanausführungen.",
       "invalid_plan": "Der Sparplan kann mit dieser Aufteilung nicht gespeichert werden.",
       "stale_selection": "Der ausgewählte Eintrag existiert nicht mehr. ‚Konfigurieren‘ erneut öffnen und den Vorgang wiederholen.",
-      "entry_changed": "Das Depot wurde geändert, während dieses Formular geöffnet war. ‚Konfigurieren‘ erneut öffnen und die Werte neu eingeben."
+      "entry_changed": "Das Depot wurde geändert, während dieses Formular geöffnet war. ‚Konfigurieren‘ erneut öffnen und die Werte neu eingeben.",
+      "booking_failed": "Berechnung fehlgeschlagen; bestehende Buchungen bleiben unverändert.",
+      "import_expired": "Die Importvorschau ist abgelaufen. Bitte unter My Wallet erneut prüfen.",
+      "already_imported": "Dieser Verlauf wurde bereits importiert."
+    },
+    "progress": {
+      "book_plans": "Bestätigte Kurse prüfen und Sparplanausführungen vorbereiten …",
+      "prepare_purchases": "Käufe, Kurse und verfügbare Deckung vorbereiten …"
     }
   },
   "selector": {
@@ -275,6 +365,12 @@
       "options": {
         "percentage": "Prozentual",
         "fixed": "Feste Beträge"
+      }
+    },
+    "update_scope": {
+      "options": {
+        "future": "Nur künftige Ausführungen",
+        "recalculate": "Geeignete automatische Altbuchungen neu berechnen"
       }
     }
   },
@@ -287,7 +383,7 @@
         "name": "Depotwert"
       },
       "wallet_invested": {
-        "name": "Investiert"
+        "name": "Eingezahltes Kapital"
       },
       "wallet_profit": {
         "name": "Gewinn"

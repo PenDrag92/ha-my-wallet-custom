@@ -25,6 +25,7 @@ CONF_SAVINGS_PLANS: Final = "savings_plans"
 # schedule a second time.
 CONF_RETIRED_SAVINGS_PLANS: Final = "retired_savings_plans"
 CONF_DIVIDENDS: Final = "dividends"
+CONF_LAST_PLAN_RESULT: Final = "last_plan_result"
 CONF_INVESTED_AMOUNT: Final = "invested_amount"  # optional, in base currency
 
 # Valor keys
@@ -40,6 +41,9 @@ CONTRIBUTION_SOURCE: Final = "source"
 CONTRIBUTION_PLAN_ID: Final = "plan_id"
 CONTRIBUTION_SCHEDULED_DATE: Final = "scheduled_date"
 CONTRIBUTION_LOTS: Final = "lots"
+CONTRIBUTION_NOTE: Final = "note"
+CONTRIBUTION_PLAN_NAME: Final = "plan_name"
+CONTRIBUTION_MANUALLY_EDITED: Final = "manually_edited"
 
 # Lot keys (one purchase tranche per symbol and execution)
 LOT_ID: Final = "id"
@@ -73,6 +77,9 @@ PLAN_ALLOCATIONS: Final = "allocations"
 PLAN_USE_CASH_BALANCE: Final = "use_cash_balance"
 PLAN_OPENING_CUTOFF_DATE: Final = "opening_cutoff_date"
 PLAN_SKIPPED_PERIODS: Final = "skipped_periods"
+PLAN_EFFECTIVE_FROM: Final = "effective_from"
+PLAN_HISTORY: Final = "history"
+PLAN_VALID_UNTIL: Final = "valid_until"
 ALLOCATION_SYMBOL: Final = "symbol"
 ALLOCATION_VALUE: Final = "value"
 
@@ -82,6 +89,7 @@ ALLOCATION_MODE_FIXED: Final = "fixed"
 CONTRIBUTION_SOURCE_MANUAL: Final = "manual"
 CONTRIBUTION_SOURCE_PLAN: Final = "savings_plan"
 CONTRIBUTION_SOURCE_LEGACY: Final = "legacy"
+CONTRIBUTION_SOURCE_PURCHASE: Final = "purchase"
 
 # Defaults
 DEFAULT_BASE_CURRENCY: Final = "EUR"

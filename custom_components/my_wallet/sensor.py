@@ -59,6 +59,7 @@ from .const import (
     ATTR_TRACKED_VALUE,
     ATTR_UNIT_PRICE,
     ATTR_VALUE,
+    CONF_LAST_PLAN_RESULT,
     CONF_SAVINGS_PLANS,
     CONF_VALORS,
     CONF_WALLET_NAME,
@@ -121,7 +122,11 @@ def _invested_amount(entry: ConfigEntry) -> float | None:
 
 
 def _contribution_attributes(entry: ConfigEntry) -> dict[str, Any]:
-    contributions = contributions_from_data(entry.data)
+    contributions = [
+        row
+        for row in contributions_from_data(entry.data)
+        if row[CONTRIBUTION_AMOUNT] > 0
+    ]
     dates = [
         item[CONTRIBUTION_DATE]
         for item in contributions
@@ -810,7 +815,7 @@ class WalletDividendSensor(WalletBaseSensor):
 
 
 class WalletNextExecutionSensor(CoordinatorEntity[WalletCoordinator], SensorEntity):
-    """Next or currently pending savings-plan execution date."""
+    """Next execution date; unresolved past executions are reported separately."""
 
     _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.DATE
@@ -833,9 +838,6 @@ class WalletNextExecutionSensor(CoordinatorEntity[WalletCoordinator], SensorEnti
 
     @property
     def native_value(self) -> date | None:
-        pending = self.coordinator.data.pending_executions
-        if pending:
-            return min(date.fromisoformat(item["scheduled_date"]) for item in pending)
         today = dt_util.now().date()
         dates = [
             next_due_date(
@@ -895,6 +897,8 @@ class WalletNextExecutionSensor(CoordinatorEntity[WalletCoordinator], SensorEnti
                 for plan in plans
             ],
             ATTR_PENDING_EXECUTIONS: self.coordinator.data.pending_executions,
+            "pending_count": len(self.coordinator.data.pending_executions),
+            "last_result": self._entry.data.get(CONF_LAST_PLAN_RESULT, {}),
         }
 
     async def async_refresh_wallet(self) -> None:

@@ -20,14 +20,17 @@ from .const import (
     PLAN_ALLOCATION_MODE,
     PLAN_ALLOCATIONS,
     PLAN_AMOUNT,
+    PLAN_EFFECTIVE_FROM,
     PLAN_ENABLED,
     PLAN_END_DATE,
     PLAN_FIRST_DATE,
+    PLAN_HISTORY,
     PLAN_ID,
     PLAN_NAME,
     PLAN_OPENING_CUTOFF_DATE,
     PLAN_SKIPPED_PERIODS,
     PLAN_USE_CASH_BALANCE,
+    PLAN_VALID_UNTIL,
 )
 from .contributions import normalize_date
 
@@ -47,6 +50,8 @@ def make_plan(
     use_cash_balance: bool = True,
     opening_cutoff_date: Any | None = None,
     skipped_periods: Sequence[Any] | None = None,
+    effective_from: Any | None = None,
+    history: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Create and validate one monthly savings plan."""
     normalized_enabled = bool(enabled)
@@ -100,7 +105,7 @@ def make_plan(
         {schedule_period(item) for item in (skipped_periods or [])}
     )
 
-    return {
+    result = {
         PLAN_ID: plan_id or uuid4().hex,
         PLAN_NAME: normalized_name,
         PLAN_ENABLED: normalized_enabled,
@@ -113,6 +118,19 @@ def make_plan(
         PLAN_OPENING_CUTOFF_DATE: normalized_cutoff,
         PLAN_SKIPPED_PERIODS: normalized_skips,
     }
+    if effective_from is not None:
+        result[PLAN_EFFECTIVE_FROM] = normalize_date(effective_from)
+    if history:
+        result[PLAN_HISTORY] = [
+            {
+                **normalize_plan(
+                    {key: value for key, value in row.items() if key != PLAN_HISTORY}
+                ),
+                PLAN_VALID_UNTIL: normalize_date(row[PLAN_VALID_UNTIL]),
+            }
+            for row in history
+        ]
+    return result
 
 
 def normalize_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
@@ -129,7 +147,83 @@ def normalize_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         use_cash_balance=bool(plan.get(PLAN_USE_CASH_BALANCE, True)),
         opening_cutoff_date=plan.get(PLAN_OPENING_CUTOFF_DATE),
         skipped_periods=plan.get(PLAN_SKIPPED_PERIODS, []),
+        effective_from=plan.get(PLAN_EFFECTIVE_FROM),
+        history=plan.get(PLAN_HISTORY),
     )
+
+
+def change_plan_definition(
+    previous: Mapping[str, Any],
+    replacement: Mapping[str, Any],
+    *,
+    today: date,
+    recalculate: bool,
+) -> dict[str, Any]:
+    """Keep previous rates for past dates when only future executions change."""
+    old = normalize_plan(previous)
+    new = normalize_plan(replacement)
+    new[PLAN_SKIPPED_PERIODS] = old[PLAN_SKIPPED_PERIODS]
+    new.pop(PLAN_EFFECTIVE_FROM, None)
+    new.pop(PLAN_HISTORY, None)
+    if recalculate:
+        return new
+    history = list(old.get(PLAN_HISTORY, []))
+    effective = old.get(PLAN_EFFECTIVE_FROM, old[PLAN_FIRST_DATE])
+    if date.fromisoformat(effective) <= today:
+        history.append(
+            {
+                **{key: value for key, value in old.items() if key != PLAN_HISTORY},
+                PLAN_VALID_UNTIL: today.isoformat(),
+            }
+        )
+    new[PLAN_HISTORY] = history
+    new[PLAN_EFFECTIVE_FROM] = (today + timedelta(days=1)).isoformat()
+    return normalize_plan(new)
+
+
+def execution_rules(plan: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Return dated definitions without recursively including their history."""
+    normalized = normalize_plan(plan)
+    return [
+        {**rule, PLAN_SKIPPED_PERIODS: normalized[PLAN_SKIPPED_PERIODS]}
+        for rule in [
+            *normalized.get(PLAN_HISTORY, []),
+            {key: value for key, value in normalized.items() if key != PLAN_HISTORY},
+        ]
+    ]
+
+
+def rule_for_date(plan: Mapping[str, Any], scheduled: date) -> dict[str, Any]:
+    """Resolve the rate and allocation that applied on a schedule date."""
+    for rule in reversed(execution_rules(plan)):
+        start = rule.get(PLAN_EFFECTIVE_FROM, rule[PLAN_FIRST_DATE])
+        end = rule.get(PLAN_VALID_UNTIL)
+        if start <= scheduled.isoformat() and (not end or scheduled.isoformat() <= end):
+            return rule
+    raise ValueError("No savings-plan definition applies to this date")
+
+
+def scale_fixed_allocations(
+    allocations: Sequence[Mapping[str, Any]], amount: float
+) -> list[dict[str, Any]]:
+    """Scale fixed rows to an explicitly edited total, preserving every cent."""
+    target = int((Decimal(str(amount)) * 100).quantize(Decimal("1")))
+    weights = [Decimal(str(item[ALLOCATION_VALUE])) for item in allocations]
+    total = sum(weights)
+    if not weights or total <= 0 or target < len(weights):
+        raise ValueError("Amount is too small for these allocations")
+    exact = [Decimal(target) * value / total for value in weights]
+    cents = [int(value) for value in exact]
+    for index in sorted(
+        range(len(cents)), key=lambda index: exact[index] - cents[index], reverse=True
+    )[: target - sum(cents)]:
+        cents[index] += 1
+    if any(value <= 0 for value in cents):
+        raise ValueError("An allocation would be less than one cent")
+    return [
+        {ALLOCATION_SYMBOL: item[ALLOCATION_SYMBOL], ALLOCATION_VALUE: value / 100}
+        for item, value in zip(allocations, cents, strict=True)
+    ]
 
 
 def same_plan_definition(
@@ -140,7 +234,13 @@ def same_plan_definition(
     Enabled state is deliberately not identity: removing a paused plan and
     re-creating it as active must still retain its historical execution ID.
     """
-    ignored = {PLAN_ENABLED, PLAN_ID, PLAN_SKIPPED_PERIODS}
+    ignored = {
+        PLAN_ENABLED,
+        PLAN_ID,
+        PLAN_SKIPPED_PERIODS,
+        PLAN_HISTORY,
+        PLAN_EFFECTIVE_FROM,
+    }
     first = normalize_plan(first_plan)
     second = normalize_plan(second_plan)
     return {key: value for key, value in first.items() if key not in ignored} == {
@@ -164,6 +264,7 @@ def reactivate_matching_plan(
             continue
         restored = normalize_plan(
             {
+                **previous,
                 **normalized,
                 PLAN_ID: previous[PLAN_ID],
                 PLAN_SKIPPED_PERIODS: previous[PLAN_SKIPPED_PERIODS],
@@ -278,18 +379,27 @@ def is_scheduled_period(plan: Mapping[str, Any], period: date | str) -> bool:
     is enabled.  A skipped execution marker may still be managed while a plan
     is temporarily disabled.
     """
-    normalized = normalize_plan(plan)
-    first = date.fromisoformat(normalized[PLAN_FIRST_DATE])
     normalized_period = schedule_period(period)
     year, month = (int(part) for part in normalized_period.split("-", 1))
-    candidate = _monthly_date(year, month, first.day)
-    if candidate < first:
-        return False
-    end_value = normalized[PLAN_END_DATE]
-    return end_value is None or candidate <= date.fromisoformat(end_value)
+    for rule in execution_rules(plan):
+        first = date.fromisoformat(rule[PLAN_FIRST_DATE])
+        candidate = _monthly_date(year, month, first.day)
+        start = rule.get(PLAN_EFFECTIVE_FROM, rule[PLAN_FIRST_DATE])
+        ends = [
+            value
+            for value in (rule.get(PLAN_END_DATE), rule.get(PLAN_VALID_UNTIL))
+            if value
+        ]
+        if (
+            candidate >= first
+            and candidate.isoformat() >= start
+            and (not ends or candidate.isoformat() <= min(ends))
+        ):
+            return True
+    return False
 
 
-def scheduled_dates(plan: Mapping[str, Any], through: date) -> list[date]:
+def _rule_dates(plan: Mapping[str, Any], through: date) -> list[date]:
     """Return every monthly schedule date up to and including ``through``."""
     normalized = normalize_plan(plan)
     if not normalized[PLAN_ENABLED]:
@@ -318,6 +428,22 @@ def scheduled_dates(plan: Mapping[str, Any], through: date) -> list[date]:
     return dates
 
 
+def scheduled_dates(plan: Mapping[str, Any], through: date) -> list[date]:
+    """Return monthly dates with the historically applicable definition."""
+    if not plan.get(PLAN_ENABLED, True):
+        return []
+    dates: set[date] = set()
+    for rule in execution_rules(plan):
+        start = rule.get(PLAN_EFFECTIVE_FROM, rule[PLAN_FIRST_DATE])
+        end = rule.get(PLAN_VALID_UNTIL)
+        dates.update(
+            day
+            for day in _rule_dates(rule, through)
+            if start <= day.isoformat() and (not end or day.isoformat() <= end)
+        )
+    return sorted(dates)
+
+
 def booked_schedule_periods(
     contributions: Sequence[Mapping[str, Any]], plan_id: str
 ) -> set[str]:
@@ -339,14 +465,17 @@ def due_dates(
     normalized = normalize_plan(plan)
     booked = booked_schedule_periods(contributions, normalized[PLAN_ID])
     skipped = set(normalized[PLAN_SKIPPED_PERIODS])
-    return [
-        item
-        for item in scheduled_dates(normalized, through)
-        if schedule_period(item) not in booked | skipped
-    ]
+    result = []
+    accounted = booked | skipped
+    for item in scheduled_dates(normalized, through):
+        period = schedule_period(item)
+        if period not in accounted:
+            result.append(item)
+            accounted.add(period)
+    return result
 
 
-def next_scheduled_date(plan: Mapping[str, Any], on_or_after: date) -> date | None:
+def _next_rule_date(plan: Mapping[str, Any], on_or_after: date) -> date | None:
     """Return the next calendar execution date for a plan."""
     normalized = normalize_plan(plan)
     if not normalized[PLAN_ENABLED]:
@@ -373,6 +502,20 @@ def next_scheduled_date(plan: Mapping[str, Any], on_or_after: date) -> date | No
     if end is not None and candidate > end:
         return None
     return candidate
+
+
+def next_scheduled_date(plan: Mapping[str, Any], on_or_after: date) -> date | None:
+    """Return the next date, including pending dates under earlier rates."""
+    if not plan.get(PLAN_ENABLED, True):
+        return None
+    candidates = []
+    for rule in execution_rules(plan):
+        start = date.fromisoformat(rule.get(PLAN_EFFECTIVE_FROM, rule[PLAN_FIRST_DATE]))
+        candidate = _next_rule_date(rule, max(on_or_after, start))
+        end = rule.get(PLAN_VALID_UNTIL)
+        if candidate is not None and (not end or candidate.isoformat() <= end):
+            candidates.append(candidate)
+    return min(candidates) if candidates else None
 
 
 def next_due_date(

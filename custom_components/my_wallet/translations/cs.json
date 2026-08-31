@@ -27,6 +27,10 @@
       "symbol_exists": "Tento symbol se již v peněžence nachází.",
       "target_sum_exceeded": "Součet cílových podílů by překročil 100 %.",
       "invalid_number": "Zadejte konečnou hodnotu v povoleném rozsahu."
+    },
+    "abort": {
+      "import_expired": "Náhled importu vypršel. Připravte nový v My Wallet.",
+      "already_imported": "Tento výpis již byl importován."
     }
   },
   "options": {
@@ -62,11 +66,13 @@
       },
       "add_contribution": {
         "title": "Přidat vklad",
-        "description": "Zaznamenejte peníze vložené do peněženky. Částka je v základní měně peněženky.",
+        "description": "Zapište vklad v základní měně. Můžete jej ihned investovat; tato volba má přednost před dalším vkladem. Budoucí vklady nejsou povoleny.",
         "data": {
-          "date": "Datum provedení",
+          "date": "Datum vkladu",
           "amount": "Částka",
-          "add_another": "Poté přidat další vklad"
+          "add_another": "Poté přidat další vklad",
+          "note": "Poznámka (volitelné)",
+          "invest_now": "Nyní investovat tento vklad"
         }
       },
       "edit_contribution": {
@@ -77,10 +83,11 @@
       },
       "edit_contribution_fields": {
         "title": "Upravit vklad",
-        "description": "Vklad nebo provedení plánu: {contribution}. Nákupní tranše zůstanou beze změny.",
+        "description": "Vklad: {contribution}. Související nákupy zůstanou beze změny:\n{lots}\n\nRuční oprava je chráněna před automatickým přepočtem.",
         "data": {
-          "date": "Datum provedení",
-          "amount": "Částka"
+          "date": "Datum vkladu",
+          "amount": "Částka",
+          "note": "Poznámka (volitelné)"
         }
       },
       "remove_contribution": {
@@ -97,14 +104,15 @@
       },
       "add_lot": {
         "title": "Importovat historickou nákupní tranši",
-        "description": "Yahoo použije první potvrzenou závěrečnou cenu v zadaný den nebo po něm. Import vytvoří stejně vysoký vklad, pokud nevyberete již zaznamenaný vklad.",
+        "description": "Zapište nákup z dostupné hotovosti. Nevznikne další vklad. Yahoo odhadne podíly z prvního potvrzeného kurzu od zadaného data. Lze zadat cenu nebo podíly. Počáteční stav označte pouze pro již zadané podíly.",
         "data": {
           "symbol": "Instrument",
           "date": "Datum nákupu",
           "amount": "Investovaná částka",
           "unit_price": "Efektivní cena jednotky (volitelné)",
           "included_in_opening": "Jednotky jsou již zahrnuty v počátečním zůstatku",
-          "funding_contribution": "Existující financující vklad (volitelné)"
+          "funding_contribution": "Existující financující vklad (volitelné)",
+          "units": "Skutečně nakoupené podíly (volitelné)"
         }
       },
       "edit_lot_fields": {
@@ -162,7 +170,7 @@
           "allocation_mode": "Způsob rozdělení",
           "amount": "Celková měsíční částka (jen pro procentuální rozdělení)",
           "use_cash_balance": "Zahrnout hotovost a dividendy do rozdělení",
-          "opening_cutoff_date": "Nákupy do tohoto data jsou již v počátečních jednotkách (volitelné)"
+          "opening_included": "Dřívější nákupy plánu jsou již v počátečním stavu"
         }
       },
       "edit_plan": {
@@ -173,7 +181,7 @@
       },
       "edit_plan_fields": {
         "title": "Upravit spořicí plán",
-        "description": "Ponechte současné rozdělení nebo zrušte zaškrtnutí a zadejte všechny položky znovu.",
+        "description": "Ponechané pevné částky se poměrně upraví na novou celkovou částku. Vyberte budoucí změny nebo přepočet automatických záznamů. Ruční opravy zůstanou chráněné.",
         "data": {
           "name": "Název plánu",
           "enabled": "Aktivní",
@@ -182,17 +190,17 @@
           "allocation_mode": "Způsob rozdělení",
           "amount": "Celková měsíční částka (jen pro procentuální rozdělení)",
           "use_cash_balance": "Zahrnout hotovost a dividendy do rozdělení",
-          "opening_cutoff_date": "Nákupy do tohoto data jsou již v počátečních jednotkách (volitelné)",
-          "keep_allocations": "Ponechat současné rozdělení"
+          "keep_allocations": "Ponechat současné rozdělení",
+          "opening_included": "Dřívější nákupy plánu jsou již v počátečním stavu",
+          "update_scope": "Použít změnu na"
         }
       },
       "plan_allocation": {
-        "title": "Rozdělení spořicího plánu",
-        "description": "Aktuální součet rozdělení: {current_total}.",
+        "title": "Rozdělení plánu",
+        "description": "{symbol}: Cenný papír {index} z {count}. Zadejte {unit}. Dosavadní součet: {current_total}. Procenta musí dát 100, pevné částky zadanou celkovou částku.",
         "data": {
-          "symbol": "Instrument",
-          "value": "Podíl (%) nebo pevná částka",
-          "add_another": "Přidat další instrument"
+          "value": "Rozdělení",
+          "back_to_symbol": "Volitelně: vrátit se k jinému podílu"
         }
       },
       "remove_plan": {
@@ -236,6 +244,75 @@
           "amount": "Nové množství (počet jednotek)",
           "target_share": "Cílový podíl (%; vymažte pro odstranění cíle)"
         }
+      },
+      "plan_opening": {
+        "title": "Datum počátečního stavu",
+        "description": "Vyberte poslední nákup zahrnutý v počátečních podílech. Pozdější nákupy podíly přidají. Datum nesmí být budoucí.",
+        "data": {
+          "opening_cutoff_date": "Nákupy do tohoto data jsou zahrnuty"
+        }
+      },
+      "plan_symbols": {
+        "title": "Vybrat cenné papíry plánu",
+        "description": "Vyberte všechny cenné papíry plánu. Poté zadejte rozdělení pro každý z nich.",
+        "data": {
+          "symbols": "Vybrat cenné papíry"
+        }
+      },
+      "plan_confirm": {
+        "title": "Uložit a zpracovat plán",
+        "description": "{name}: měsíčně {amount}, první provedení {first_date}.\n\n{allocations}\n\nRozsah: {scope}. Existující záznamy: {existing}; ruční opravy: {protected}; starší neoznačené záznamy: {legacy}. Ruční opravy zůstanou. Starší záznamy se přepočítají pouze po výslovném výběru. Potvrzení uloží plán a zpracuje splatná provedení.",
+        "data": {
+          "confirm": "Potvrdit tuto operaci",
+          "legacy_executions": "Starší provedení schválená k přepočtu"
+        }
+      },
+      "plan_result": {
+        "title": "Výsledek zpracování plánu",
+        "description": "Vytvořeno: {created}\nPřepočítáno: {recalculated}\nPonechané záznamy: {protected}\nČekající: {pending}\nVyžaduje opravu: {failed}\n\n{details}\n\n{rollback}"
+      },
+      "contribution_investment": {
+        "title": "Investovat tento vklad",
+        "description": "Vyberte cenné papíry a výchozí datum. Každý nákup může mít jiné datum. Pevné částky mohou ponechat hotovost; procenta musí dát 100.",
+        "data": {
+          "symbols": "Vybrat cenné papíry",
+          "allocation_mode": "Způsob rozdělení",
+          "execution_date": "Výchozí datum nákupu",
+          "use_cash_balance": "Použít také dostupnou hotovost",
+          "included_in_opening": "Podíly jsou již zahrnuty v počátečním stavu"
+        }
+      },
+      "contribution_allocation": {
+        "title": "Nákup",
+        "description": "{symbol}: Cenný papír {index} z {count}: rozdělení v {unit}. Pro odhad Yahoo nechte cenu i podíly prázdné, jinak vyplňte cenu nebo skutečné podíly. Budoucí nákupy nejsou povoleny.",
+        "data": {
+          "value": "Rozdělení",
+          "date": "Datum nákupu",
+          "unit_price": "Efektivní cena v základní měně (volitelné)",
+          "units": "Skutečně nakoupené podíly (volitelné)",
+          "back_to_symbol": "Volitelně: vrátit se k jinému podílu"
+        }
+      },
+      "contribution_confirm": {
+        "title": "Uložit vklad a nákupy",
+        "description": "Vklad: {deposit}\n\nNákupy:\n{lots}\n\nHotovost po uložení: {cash}. Pouze vklad zvyšuje vložený kapitál. Potvrďte společné uložení.",
+        "data": {
+          "confirm": "Potvrdit tuto operaci"
+        }
+      },
+      "lot_confirm": {
+        "title": "Potvrdit nákup",
+        "description": "{lot}\n\nHotovost po uložení: {cash}. Další vklad se nevytvoří.\n\n{warning}",
+        "data": {
+          "confirm": "Potvrdit tuto operaci"
+        }
+      },
+      "confirm_remove_contribution": {
+        "title": "Potvrdit odstranění",
+        "description": "Odstranit {contribution}? Odstraní se i {count} souvisejících nákupů:\n{lots}\n\nPříslušný měsíc plánu se označí jako přeskočený a automaticky se neobnoví.",
+        "data": {
+          "confirm": "Potvrdit tuto operaci"
+        }
       }
     },
     "error": {
@@ -256,7 +333,13 @@
       "contribution_date_after_lot": "Datum vkladu nesmí být pozdější než datum přiřazené nákupní tranše.",
       "legacy_opening_required": "Nákupní tranše původního počátečního zůstatku musí zůstat označena jako již zahrnutá v počátečním zůstatku.",
       "funding_contribution_invalid": "Vybraný vklad není dostupný nebo nemůže financovat nákup s tímto datem.",
-      "opening_cutoff_future": "Datum uzávěrky počátečního stavu nesmí být v budoucnosti."
+      "opening_cutoff_future": "Datum uzávěrky počátečního stavu nesmí být v budoucnosti.",
+      "future_date": "Ruční záznamy nesmí mít budoucí datum.",
+      "price_or_units": "Zadejte cenu nebo podíly, nikoli obojí.",
+      "confirmation_required": "Potvrďte zobrazenou operaci.",
+      "allocation_total_mismatch": "Procenta musí dát 100; pevné částky musí odpovídat celku.",
+      "insufficient_cash": "Rozdělení není ke každému nákupu kryté vkladem a dostupnou hotovostí.",
+      "booking_failed": "Výpočet selhal; stávající záznamy zůstaly beze změny."
     },
     "abort": {
       "no_valors": "Peněženka zatím neobsahuje žádné instrumenty.",
@@ -267,7 +350,14 @@
       "no_skipped_executions": "Peněženka nemá žádná přeskočená provedení spořicího plánu.",
       "invalid_plan": "Plán nelze s tímto rozdělením uložit.",
       "stale_selection": "Vybraná položka již neexistuje. Znovu otevřete konfiguraci a akci zopakujte.",
-      "entry_changed": "Peněženka se během otevření formuláře změnila. Znovu otevřete konfiguraci a zadejte hodnoty znovu."
+      "entry_changed": "Peněženka se během otevření formuláře změnila. Znovu otevřete konfiguraci a zadejte hodnoty znovu.",
+      "booking_failed": "Výpočet selhal; stávající záznamy zůstaly beze změny.",
+      "import_expired": "Náhled importu vypršel. Připravte nový v My Wallet.",
+      "already_imported": "Tento výpis již byl importován."
+    },
+    "progress": {
+      "book_plans": "Kontrola kurzů a příprava provedení…",
+      "prepare_purchases": "Příprava nákupů, kurzů a krytí…"
     }
   },
   "selector": {
@@ -275,6 +365,12 @@
       "options": {
         "percentage": "Procenta",
         "fixed": "Pevné částky"
+      }
+    },
+    "update_scope": {
+      "options": {
+        "future": "Pouze budoucí provedení",
+        "recalculate": "Přepočítat i vhodná automatická provedení"
       }
     }
   },
@@ -287,7 +383,7 @@
         "name": "Celkem"
       },
       "wallet_invested": {
-        "name": "Investováno"
+        "name": "Vložený kapitál"
       },
       "wallet_profit": {
         "name": "Zisk"

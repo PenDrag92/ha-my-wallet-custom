@@ -27,6 +27,10 @@
       "symbol_exists": "This symbol is already in the wallet.",
       "target_sum_exceeded": "The sum of target shares would exceed 100%.",
       "invalid_number": "Enter a finite value within the allowed range."
+    },
+    "abort": {
+      "import_expired": "The import preview expired. Prepare another preview in My Wallet.",
+      "already_imported": "This statement was already imported."
     }
   },
   "options": {
@@ -62,11 +66,13 @@
       },
       "add_contribution": {
         "title": "Add a contribution",
-        "description": "Record money added to the wallet. The amount is in the wallet's base currency.",
+        "description": "Record a deposit in the base currency. You may invest it immediately; this choice takes priority over adding another deposit. Future deposits are not accepted.",
         "data": {
-          "date": "Execution date",
+          "date": "Deposit date",
           "amount": "Amount",
-          "add_another": "Add another contribution after this one"
+          "add_another": "Add another contribution after this one",
+          "note": "Note (optional)",
+          "invest_now": "Invest this deposit now"
         }
       },
       "edit_contribution": {
@@ -77,10 +83,11 @@
       },
       "edit_contribution_fields": {
         "title": "Edit a contribution",
-        "description": "Contribution or plan execution: {contribution}. Existing purchase lots remain unchanged.",
+        "description": "Deposit: {contribution}. Associated purchases stay unchanged:\n{lots}\n\nA manual correction is protected from automatic recalculation.",
         "data": {
-          "date": "Execution date",
-          "amount": "Amount"
+          "date": "Deposit date",
+          "amount": "Amount",
+          "note": "Note (optional)"
         }
       },
       "remove_contribution": {
@@ -97,14 +104,15 @@
       },
       "add_lot": {
         "title": "Import a historical purchase lot",
-        "description": "Yahoo supplies the first confirmed close on or after the entered date. Leave ‘already included’ enabled for purchases contained in the opening balance. Importing creates an equal external contribution unless you select one that you already recorded.",
+        "description": "Record a purchase funded by existing cash. This never creates another deposit. Yahoo estimates units from the first confirmed close on or after the chosen date. Alternatively enter price or actual units. Select opening balance only if those units are already entered.",
         "data": {
           "symbol": "Valor",
           "date": "Scheduled or actual purchase date",
           "amount": "Amount invested (base currency)",
           "unit_price": "Effective unit price in base currency (optional Yahoo fallback)",
           "included_in_opening": "Purchased units are already included in the configured opening balance",
-          "funding_contribution": "Existing funding contribution (optional)"
+          "funding_contribution": "Existing funding contribution (optional)",
+          "units": "Actual purchased units (optional)"
         }
       },
       "edit_lot_fields": {
@@ -162,7 +170,7 @@
           "allocation_mode": "Allocation mode",
           "amount": "Total monthly amount (required only for percentage allocation)",
           "use_cash_balance": "Include available cash and dividends in the allocation",
-          "opening_cutoff_date": "Purchases through this date are already included in opening units (optional)"
+          "opening_included": "Earlier plan purchases are already included in the opening balance"
         }
       },
       "edit_plan": {
@@ -173,7 +181,7 @@
       },
       "edit_plan_fields": {
         "title": "Edit a savings plan",
-        "description": "Keep the current allocation for a quick settings change, or clear the checkbox to enter all allocations again.",
+        "description": "Keeping fixed allocations scales their amounts to the edited total. Choose whether changes affect only future executions or also recalculate eligible automatic bookings. Manual corrections remain protected.",
         "data": {
           "name": "Plan name",
           "enabled": "Enabled",
@@ -182,17 +190,17 @@
           "allocation_mode": "Allocation mode",
           "amount": "Total monthly amount (required only for percentage allocation)",
           "use_cash_balance": "Include available cash and dividends in the allocation",
-          "opening_cutoff_date": "Purchases through this date are already included in opening units (optional)",
-          "keep_allocations": "Keep current allocation"
+          "keep_allocations": "Keep current allocation",
+          "opening_included": "Earlier plan purchases are already included in the opening balance",
+          "update_scope": "Apply the change to"
         }
       },
       "plan_allocation": {
-        "title": "Savings-plan allocation",
-        "description": "Current allocation total: {current_total}. Enter percentages for percentage mode or amounts in the wallet base currency for fixed mode.",
+        "title": "Plan allocation",
+        "description": "{symbol}: Asset {index} of {count}. Enter {unit}. Current total: {current_total}. Percentages must sum to 100; fixed amounts must match the entered total, if any.",
         "data": {
-          "symbol": "Valor",
-          "value": "Share (%) or fixed amount",
-          "add_another": "Add another valor to this plan"
+          "value": "Allocation",
+          "back_to_symbol": "Optional: return to another allocation"
         }
       },
       "remove_plan": {
@@ -236,6 +244,75 @@
           "amount": "New opening balance (tracked plan purchases are added automatically)",
           "target_share": "Target share (%; clear to remove the target)"
         }
+      },
+      "plan_opening": {
+        "title": "Opening-balance cutoff",
+        "description": "Choose the last purchase date already covered by the opening units. Later purchases add units. A future cutoff is not allowed.",
+        "data": {
+          "opening_cutoff_date": "Purchases through this date are included"
+        }
+      },
+      "plan_symbols": {
+        "title": "Select plan assets",
+        "description": "Choose all assets for this plan. The next step asks for each allocation.",
+        "data": {
+          "symbols": "Select assets"
+        }
+      },
+      "plan_confirm": {
+        "title": "Save and process savings plan",
+        "description": "{name}: {amount} monthly, first execution {first_date}.\n\n{allocations}\n\nScope: {scope}. Existing bookings: {existing}; recognized manual corrections: {protected}; older unclassified bookings: {legacy}. Manual corrections remain unchanged. Older bookings are recalculated only when explicitly selected below. Confirm to save the plan and process due executions now.",
+        "data": {
+          "confirm": "Confirm this action",
+          "legacy_executions": "Older executions explicitly approved for recalculation"
+        }
+      },
+      "plan_result": {
+        "title": "Savings-plan result",
+        "description": "Created: {created}\nRecalculated: {recalculated}\nExisting bookings retained: {protected}\nPending: {pending}\nRequiring correction: {failed}\n\n{details}\n\n{rollback}"
+      },
+      "contribution_investment": {
+        "title": "Allocate this deposit",
+        "description": "Choose assets and a default purchase date. Each purchase may use a different date in the next step. Fixed amounts can leave cash uninvested. Percentages must sum to 100.",
+        "data": {
+          "symbols": "Select assets",
+          "allocation_mode": "Allocation type",
+          "execution_date": "Default purchase date",
+          "use_cash_balance": "Also use available settlement cash",
+          "included_in_opening": "Units already included in the opening balance"
+        }
+      },
+      "contribution_allocation": {
+        "title": "Purchase",
+        "description": "{symbol}: Asset {index} of {count}: enter the allocation in {unit}. Leave both price and units empty to estimate from Yahoo. Otherwise enter either the effective price or actual units. Future purchases are not allowed.",
+        "data": {
+          "value": "Allocation",
+          "date": "Purchase date",
+          "unit_price": "Effective unit price in the base currency (optional)",
+          "units": "Actual purchased units (optional)",
+          "back_to_symbol": "Optional: return to another allocation"
+        }
+      },
+      "contribution_confirm": {
+        "title": "Save deposit and purchases",
+        "description": "Deposit: {deposit}\n\nPurchases:\n{lots}\n\nCash after saving: {cash}. Only the deposit increases contributed capital. Confirm to save everything together.",
+        "data": {
+          "confirm": "Confirm this action"
+        }
+      },
+      "lot_confirm": {
+        "title": "Confirm purchase",
+        "description": "{lot}\n\nCash after saving: {cash}. No additional deposit is created.\n\n{warning}",
+        "data": {
+          "confirm": "Confirm this action"
+        }
+      },
+      "confirm_remove_contribution": {
+        "title": "Confirm deletion",
+        "description": "Delete {contribution}? This also removes {count} associated purchases:\n{lots}\n\nA linked plan month will be marked skipped, so it is not recreated automatically.",
+        "data": {
+          "confirm": "Confirm this action"
+        }
       }
     },
     "error": {
@@ -256,7 +333,13 @@
       "contribution_date_after_lot": "The contribution date cannot be later than a purchase lot retained in this contribution.",
       "legacy_opening_required": "A legacy opening-balance lot must remain marked as already included in the opening balance.",
       "funding_contribution_invalid": "The selected funding contribution is unavailable or cannot fund this purchase date.",
-      "opening_cutoff_future": "The opening-balance cutoff cannot be in the future."
+      "opening_cutoff_future": "The opening-balance cutoff cannot be in the future.",
+      "future_date": "Manual bookings cannot be dated in the future.",
+      "price_or_units": "Enter price or units, not both.",
+      "confirmation_required": "Please confirm the displayed action.",
+      "allocation_total_mismatch": "Percentages must total 100; fixed amounts must match the entered total.",
+      "insufficient_cash": "The allocation is not covered by the deposit and selected available cash at every purchase date.",
+      "booking_failed": "Calculation failed; existing bookings remain unchanged."
     },
     "abort": {
       "no_valors": "The wallet has no valors yet.",
@@ -267,7 +350,14 @@
       "no_skipped_executions": "The wallet has no skipped savings-plan executions.",
       "invalid_plan": "The plan cannot be saved with these allocations.",
       "stale_selection": "The selected item no longer exists. Reopen Configure and try again.",
-      "entry_changed": "The wallet changed while this form was open. Reopen Configure and enter the values again."
+      "entry_changed": "The wallet changed while this form was open. Reopen Configure and enter the values again.",
+      "booking_failed": "Calculation failed; existing bookings remain unchanged.",
+      "import_expired": "The import preview expired. Prepare another preview in My Wallet.",
+      "already_imported": "This statement was already imported."
+    },
+    "progress": {
+      "book_plans": "Checking confirmed prices and preparing plan executions…",
+      "prepare_purchases": "Preparing purchases, prices and cash coverage…"
     }
   },
   "selector": {
@@ -275,6 +365,12 @@
       "options": {
         "percentage": "Percentage",
         "fixed": "Fixed amounts"
+      }
+    },
+    "update_scope": {
+      "options": {
+        "future": "Future executions only",
+        "recalculate": "Also recalculate eligible automatic executions"
       }
     }
   },
@@ -287,7 +383,7 @@
         "name": "Total"
       },
       "wallet_invested": {
-        "name": "Invested"
+        "name": "Deposited capital"
       },
       "wallet_profit": {
         "name": "Profit"

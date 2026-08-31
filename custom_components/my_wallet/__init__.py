@@ -49,6 +49,14 @@ _LOGGER = logging.getLogger(__name__)
 type MyWalletConfigEntry = ConfigEntry[WalletCoordinator]
 
 
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+    """Register the local, authenticated history panel once per HA instance."""
+    from .panel import async_setup_panel
+
+    await async_setup_panel(hass)
+    return True
+
+
 def _normalize_migrated_plan(
     plan: dict[str, Any], today: str
 ) -> tuple[dict[str, Any], bool, bool]:
@@ -120,14 +128,14 @@ def _validate_migrated_references(data: dict[str, Any]) -> None:
 
 async def async_migrate_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -> bool:
     """Migrate legacy ledger data and harden savings-plan boundaries."""
-    if entry.version > 5:
+    if entry.version > 6:
         _LOGGER.error(
             "Cannot migrate My Wallet config entry from unsupported version %s",
             entry.version,
         )
         return False
 
-    if entry.version == 5:
+    if entry.version == 6:
         return True
 
     original_version = entry.version
@@ -183,9 +191,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -
         )
         return False
 
-    hass.config_entries.async_update_entry(entry, data=data, version=5)
+    hass.config_entries.async_update_entry(entry, data=data, version=6)
     _LOGGER.info(
-        "Migrated My Wallet config entry from version %s to version 5 "
+        "Migrated My Wallet config entry from version %s to version 6 "
         "(%s legacy mini-plan(s) disabled, %s future opening cutoff(s) clamped)",
         original_version,
         disabled_count,

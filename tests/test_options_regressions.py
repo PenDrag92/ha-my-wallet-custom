@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import types
 import unittest
@@ -31,6 +32,12 @@ sys.modules["voluptuous"] = vol
 
 
 class _FlowBase:
+    def async_show_progress(self, **kwargs):
+        return {"type": "progress", **kwargs}
+
+    def async_show_progress_done(self, **kwargs):
+        return {"type": "progress_done", **kwargs}
+
     def async_show_form(self, **kwargs: Any) -> dict[str, Any]:
         return {"type": "form", **kwargs}
 
@@ -190,13 +197,17 @@ def _flow(data: dict[str, Any] | None = None) -> tuple[Any, _Entry, _EntryManage
     )
     manager = _EntryManager()
     flow = config_flow.MyWalletOptionsFlow(entry)
-    flow.hass = types.SimpleNamespace(config_entries=manager)
+    flow.hass = types.SimpleNamespace(
+        config_entries=manager,
+        async_create_task=asyncio.create_task,
+        config=types.SimpleNamespace(language="en"),
+    )
     return flow, entry, manager
 
 
 class OptionsFlowRegressionTests(unittest.IsolatedAsyncioTestCase):
     def test_flow_version_and_number_guard(self) -> None:
-        self.assertEqual(config_flow.MyWalletConfigFlow.VERSION, 5)
+        self.assertEqual(config_flow.MyWalletConfigFlow.VERSION, 6)
         self.assertIsNone(config_flow._finite_number(float("nan")))
         self.assertIsNone(config_flow._finite_number(float("inf")))
 
@@ -404,6 +415,8 @@ class OptionsFlowRegressionTests(unittest.IsolatedAsyncioTestCase):
         await flow.async_step_remove_contribution(
             {CONTRIBUTION_ID: contribution[CONTRIBUTION_ID]}
         )
+        self.assertEqual(len(entry.data[CONF_CONTRIBUTIONS]), 1)
+        await flow.async_step_confirm_remove_contribution({"confirm": True})
 
         self.assertEqual(entry.data[CONF_SAVINGS_PLANS], [])
         retired = entry.data[CONF_RETIRED_SAVINGS_PLANS]
@@ -420,6 +433,20 @@ class OptionsFlowRegressionTests(unittest.IsolatedAsyncioTestCase):
                 plan_id="new-random-id",
             )
         )
+        self.assertEqual(entry.data[CONF_SAVINGS_PLANS], [])
+        from unittest.mock import AsyncMock, patch
+
+        from custom_components.my_wallet import plan_options
+
+        async def prepare(data, **kwargs):
+            return data, {"created": 0, "recalculated": 0, "pending": [], "failed": 0}
+
+        with patch.object(
+            plan_options, "async_prepare_executions", AsyncMock(side_effect=prepare)
+        ):
+            await flow.async_step_plan_confirm({"confirm": True})
+            await flow._plan_task
+            await flow.async_step_plan_progress()
         restored = entry.data[CONF_SAVINGS_PLANS][0]
         self.assertEqual(restored[PLAN_ID], "stable-plan-id")
         self.assertEqual(restored[PLAN_SKIPPED_PERIODS], ["2026-01"])

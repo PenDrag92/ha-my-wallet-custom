@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.3
+
+- Add an automatically registered, authenticated administrator sidebar panel
+  with daily portfolio history, deposited capital, cash, transaction filters,
+  CSV export and separate savings-plan summaries. No manual dashboard setup.
+- Add a previewed statement JSON import that creates a separate wallet, keeps
+  actual funding/purchase dates and blocks duplicate import batches. Missing
+  quotes require manual units before any import is saved.
+- Fix fixed-currency plan totals and guide asset selection, allocation and
+  explicit confirmation. Add progress and concrete pending/correction reasons.
+- Support future-only plan edits and atomic recalculation of eligible automatic
+  executions. Preserve manual corrections, reviewed legacy safeguards and IDs.
+- Add combined deposit/investment entry with per-asset dates, prices or units;
+  standalone purchases now use existing cash without another deposit.
+- Use real defaults for required dates; reject future manual deposits/purchases;
+  add notes, descriptive booking labels and a separate deletion confirmation.
+- Keep pending past executions separate from the next scheduled date and
+  prevent ended plans from using unrelated prices months later.
+- Preserve opening-balance safeguards and cash history; migrate to schema 6.
+- Extend regression coverage, localization, API-boundary checks and real schema
+  validation. Keep private statements out of the public release archive.
+
 ## 1.3.2
 
 - Harden the ledger: legacy opening-balance lots are cash-neutral, linked

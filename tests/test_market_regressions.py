@@ -66,7 +66,7 @@ def _install_coordinator_stubs() -> None:
 
 _install_coordinator_stubs()
 
-from custom_components.my_wallet import coordinator as coordinator_module  # noqa: E402
+from custom_components.my_wallet import executions as executions_module  # noqa: E402
 from custom_components.my_wallet import yahoo as yahoo_module  # noqa: E402
 from custom_components.my_wallet.const import (  # noqa: E402
     ALLOCATION_MODE_FIXED,
@@ -239,17 +239,17 @@ class CoordinatorRegressionTests(unittest.TestCase):
             seen_dates.append(execution_through)
             return 0
 
-        original_histories = coordinator_module.fetch_histories
-        original_cash = coordinator_module.reinvestable_cash
-        coordinator_module.fetch_histories = fake_histories
-        coordinator_module.reinvestable_cash = fake_cash
+        original_histories = executions_module.fetch_histories
+        original_cash = executions_module.reinvestable_cash
+        executions_module.fetch_histories = fake_histories
+        executions_module.reinvestable_cash = fake_cash
         try:
             pending = asyncio.run(
                 coordinator._async_book_due_plans(object(), {}, date(2026, 1, 31))
             )
         finally:
-            coordinator_module.fetch_histories = original_histories
-            coordinator_module.reinvestable_cash = original_cash
+            executions_module.fetch_histories = original_histories
+            executions_module.reinvestable_cash = original_cash
 
         self.assertEqual(pending, [])
         self.assertEqual(seen_dates, [date(2026, 1, 20)])
@@ -319,14 +319,14 @@ class CoordinatorRegressionTests(unittest.TestCase):
                 for symbol in symbols
             }
 
-        original_histories = coordinator_module.fetch_histories
-        coordinator_module.fetch_histories = fake_histories
+        original_histories = executions_module.fetch_histories
+        executions_module.fetch_histories = fake_histories
         try:
             pending = asyncio.run(
                 coordinator._async_book_due_plans(object(), {}, date(2026, 1, 31))
             )
         finally:
-            coordinator_module.fetch_histories = original_histories
+            executions_module.fetch_histories = original_histories
 
         self.assertEqual(len(entry.data[CONF_CONTRIBUTIONS]), 1)
         self.assertEqual(pending[0]["reason"], "included_units_exceeded")

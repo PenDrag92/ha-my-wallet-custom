@@ -21,7 +21,7 @@ or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-
   a foreign currency are converted using live Yahoo FX rates
   (e.g. `USDPLN=X`).
 - **Dated contributions & profit** — keep a ledger of deposits with amount and
-  execution date. Their sum drives the *Invested*, *Profit*, and *Profit %*
+  execution date. Their sum drives the *Deposited capital*, *Profit*, and *Profit %*
   sensors alongside the total.
 - **Recurring monthly savings plans** — choose the first execution date and
   split each monthly rate either by percentages or fixed amounts. Due purchases
@@ -46,6 +46,59 @@ or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-
 
 No external Python dependencies — prices are fetched directly from Yahoo
 Finance's chart API using `aiohttp`.
+
+## New in 1.3.3
+
+- An automatically registered **My Wallet** sidebar panel shows a daily value
+  curve, deposited capital, optional cash, a filterable ledger and savings plans.
+  It requires no Lovelace YAML or external chart plugin and is administrator-only.
+- The plan wizard selects assets before allocation, shows a final review and
+  reports created, recalculated, retained and pending executions with reasons.
+  Editing a fixed total actually scales its individual currency amounts.
+- Plan edits can apply only in the future or recalculate eligible automatic
+  history. Known manual corrections are never overwritten. Older unclassified
+  bookings need explicit approval before recalculation.
+- A deposit can be allocated immediately, using per-asset purchase dates,
+  historical quotes or manual prices/units. Purchases do not add another deposit.
+- Statement JSON imports are previewed and create a **separate new wallet**.
+  Existing wallets are untouched; a stable import batch ID prevents duplicates.
+  Two simple plans with different date ranges share the same history view.
+
+### Automatic history
+
+After upgrading, restart Home Assistant fully, then open **My Wallet** in the
+sidebar. It appears for administrators. Select a wallet; the view reconstructs
+historical daily values from dated purchases and confirmed Yahoo closes,
+including historical FX. The panel refreshes automatically while visible and
+caches historical requests for five minutes. It does not manufacture or insert
+old Home Assistant recorder statistics.
+
+Deposits, purchases and dividends have separate cash dates. Dividends increase
+cash and returns but never deposited capital. Unknown opening holdings leave
+historical portfolio values empty until their dated lots have been recorded.
+Missing or more than seven-day-old prices leave gaps instead of fabricated
+values. The chart covers up to ten years; the ledger contains all saved entries.
+
+Estimated units make portfolio values approximate. The current-value card uses
+the latest coordinator result; the curve uses confirmed daily closes. The panel
+is in English/German; configuration dialogs retain all four supported languages.
+
+For statement import instructions and the public JSON schema, see
+[History import](docs/HISTORY_IMPORT.md). No bank credentials are used. Savings
+plans simulate purchases under their configured rules and do not connect to a
+broker, place orders or download bank statements.
+
+### Upgrade safety
+
+Back up Home Assistant before replacing integration files. Config-entry schema
+6 preserves the ledger and labels existing correction status conservatively.
+Do not downgrade to 1.3.2 against schema-6 data; restore the backup as well.
+Existing entity unique IDs are unchanged. The invested-capital sensor display
+name is now **Deposited capital** (German: **Eingezahltes Kapital**).
+
+For a manual upgrade, copy the **entire** `custom_components/my_wallet` folder,
+including `frontend`, translations and the new Python modules. Updating only
+README/changelog/version files does not update the integration.
 
 ## Installation
 
@@ -126,7 +179,7 @@ to the wallet base currency when an exchange rate is available.
 | `sensor.<wallet>_profit` | `total − invested` | `invested`, `total`, contribution attributes |
 | `sensor.<wallet>_profit_pct` | profit as % of the invested amount | `invested`, `total`, contribution attributes |
 | `sensor.<wallet>_money_weighted_return` | annual money-weighted wallet return (XIRR) | `invested`, `total`, `method` |
-| `sensor.<wallet>_next_execution` | next scheduled or still-pending execution date | plans, allocations and pending executions |
+| `sensor.<wallet>_next_execution` | next scheduled date on or after today | plans, allocations, `pending_count`, pending reasons and last processing result |
 
 The wallet total is the market value of all securities plus the settlement
 cash balance. If any configured quote or FX rate is unavailable, the aggregate
@@ -150,10 +203,11 @@ Open **Configure → Add a monthly savings plan** and enter:
    or fixed base-currency amounts per valor,
 3. one or more Yahoo symbols already configured in the wallet.
 
-If the configured opening units already contain past plan purchases, keep the
-suggested **opening-balance cutoff date**. Lots through that date are retained
-for performance analysis but their units are not added a second time. Clear the
-date when rebuilding the complete unit balance from zero.
+If the configured opening units already contain past plan purchases, enable
+**Earlier plan purchases are already included in the opening balance** and
+choose the required cutoff date in the next step. Lots through that date are
+retained for performance analysis without adding their units again. Leave this
+option off when rebuilding the complete unit balance from zero.
 
 **Include available cash and dividends** can be enabled or disabled per plan.
 When enabled, the external monthly contribution remains unchanged for
@@ -167,7 +221,9 @@ An execution remains pending until every allocated symbol has a confirmed
 Yahoo close. Weekends and market holidays therefore move the purchase to the
 first later trading day with a price. Home Assistant catches up missed dates
 from Yahoo history where available. Listings with no Yahoo history are booked
-from the first confirmed close observed while Home Assistant is running.
+from a confirmed close observed while Home Assistant is running, provided it
+falls before the following monthly occurrence. A missing old price is never
+replaced with a price several months later.
 
 Generated prices and fractional units are estimates. Open **Configure → Correct
 a purchase lot** to replace them with the broker's actual amount or units; the
@@ -178,8 +234,10 @@ and a separate lot per valor for every due month through today. For an existing
 portfolio, use **Configure → Import a historical purchase lot** and leave
 *already included in the opening balance* enabled; this adds its cost and
 performance history without counting its units twice. If the corresponding
-deposit already exists, select it in the import form. Otherwise the import
-creates a new external contribution equal to the lot amount.
+deposit already exists, select it in the purchase form. A standalone purchase
+uses existing cash and **never creates another deposit**. If the funding is
+missing, record it separately; the confirmation warns about a negative cash
+history. A deposit can also be invested directly in the combined workflow.
 
 Monthly occurrences are identified by plan and calendar month. Changing the
 execution day therefore does not duplicate older months. Removing an automatic

@@ -27,6 +27,10 @@
       "symbol_exists": "Ten symbol znajduje się już w portfelu.",
       "target_sum_exceeded": "Suma udziałów docelowych przekroczy 100%.",
       "invalid_number": "Wprowadź skończoną wartość w dozwolonym zakresie."
+    },
+    "abort": {
+      "import_expired": "Podgląd importu wygasł. Przygotuj nowy w My Wallet.",
+      "already_imported": "Ten wyciąg został już zaimportowany."
     }
   },
   "options": {
@@ -62,11 +66,13 @@
       },
       "add_contribution": {
         "title": "Dodaj wpłatę",
-        "description": "Zapisz środki wpłacone do portfela. Kwota jest podawana w walucie bazowej portfela.",
+        "description": "Zapisz wpłatę w walucie bazowej. Możesz ją od razu zainwestować; ta opcja ma pierwszeństwo przed kolejną wpłatą. Przyszłe wpłaty nie są dozwolone.",
         "data": {
-          "date": "Data realizacji",
+          "date": "Data wpłaty",
           "amount": "Kwota",
-          "add_another": "Następnie dodaj kolejną wpłatę"
+          "add_another": "Następnie dodaj kolejną wpłatę",
+          "note": "Notatka (opcjonalnie)",
+          "invest_now": "Zainwestuj tę wpłatę teraz"
         }
       },
       "edit_contribution": {
@@ -77,10 +83,11 @@
       },
       "edit_contribution_fields": {
         "title": "Edytuj wpłatę",
-        "description": "Wpłata lub wykonanie planu: {contribution}. Istniejące transze zakupu pozostaną bez zmian.",
+        "description": "Wpłata: {contribution}. Powiązane zakupy pozostają bez zmian:\n{lots}\n\nRęczna poprawka jest chroniona przed automatycznym przeliczeniem.",
         "data": {
-          "date": "Data realizacji",
-          "amount": "Kwota"
+          "date": "Data wpłaty",
+          "amount": "Kwota",
+          "note": "Notatka (opcjonalnie)"
         }
       },
       "remove_contribution": {
@@ -97,14 +104,15 @@
       },
       "add_lot": {
         "title": "Importuj historyczną transzę zakupu",
-        "description": "Yahoo użyje pierwszego potwierdzonego kursu zamknięcia w podanym dniu lub później. Import tworzy wpłatę w tej samej kwocie, chyba że wybierzesz wcześniej zapisaną wpłatę.",
+        "description": "Zapisz zakup z dostępnej gotówki. Nie powstaje nowa wpłata. Yahoo szacuje jednostki z pierwszego potwierdzonego kursu od wskazanej daty. Możesz podać cenę lub jednostki. Oznacz saldo początkowe tylko dla już wpisanych jednostek.",
         "data": {
           "symbol": "Walor",
           "date": "Data zakupu",
           "amount": "Zainwestowana kwota",
           "unit_price": "Efektywna cena jednostki (opcjonalnie)",
           "included_in_opening": "Jednostki są już uwzględnione w saldzie początkowym",
-          "funding_contribution": "Istniejąca wpłata finansująca (opcjonalnie)"
+          "funding_contribution": "Istniejąca wpłata finansująca (opcjonalnie)",
+          "units": "Rzeczywiście zakupione jednostki (opcjonalnie)"
         }
       },
       "edit_lot_fields": {
@@ -162,7 +170,7 @@
           "allocation_mode": "Sposób podziału",
           "amount": "Cała kwota miesięczna (tylko dla podziału procentowego)",
           "use_cash_balance": "Uwzględnij gotówkę i dywidendy w podziale",
-          "opening_cutoff_date": "Zakupy do tej daty są już ujęte w jednostkach początkowych (opcjonalnie)"
+          "opening_included": "Wcześniejsze zakupy z planu są już w saldzie początkowym"
         }
       },
       "edit_plan": {
@@ -173,7 +181,7 @@
       },
       "edit_plan_fields": {
         "title": "Edytuj plan oszczędnościowy",
-        "description": "Zachowaj obecny podział lub odznacz pole i wprowadź wszystkie pozycje ponownie.",
+        "description": "Zachowane kwoty stałe skalują się do nowej sumy. Wybierz zmiany tylko na przyszłość lub przeliczenie automatycznych wpisów. Ręczne poprawki pozostają chronione.",
         "data": {
           "name": "Nazwa planu",
           "enabled": "Aktywny",
@@ -182,17 +190,17 @@
           "allocation_mode": "Sposób podziału",
           "amount": "Cała kwota miesięczna (tylko dla podziału procentowego)",
           "use_cash_balance": "Uwzględnij gotówkę i dywidendy w podziale",
-          "opening_cutoff_date": "Zakupy do tej daty są już ujęte w jednostkach początkowych (opcjonalnie)",
-          "keep_allocations": "Zachowaj obecny podział"
+          "keep_allocations": "Zachowaj obecny podział",
+          "opening_included": "Wcześniejsze zakupy z planu są już w saldzie początkowym",
+          "update_scope": "Zastosuj zmianę do"
         }
       },
       "plan_allocation": {
-        "title": "Podział planu oszczędnościowego",
-        "description": "Aktualna suma podziału: {current_total}.",
+        "title": "Podział planu",
+        "description": "{symbol}: Instrument {index} z {count}. Wpisz {unit}. Bieżąca suma: {current_total}. Procenty muszą dawać 100, a kwoty stałe wskazaną sumę.",
         "data": {
-          "symbol": "Walor",
-          "value": "Udział (%) lub stała kwota",
-          "add_another": "Dodaj kolejny walor"
+          "value": "Udział",
+          "back_to_symbol": "Opcjonalnie: wróć do innego udziału"
         }
       },
       "remove_plan": {
@@ -236,6 +244,75 @@
           "amount": "Nowa ilość (liczba jednostek)",
           "target_share": "Udział docelowy (%; wyczyść, aby usunąć cel)"
         }
+      },
+      "plan_opening": {
+        "title": "Data salda początkowego",
+        "description": "Wybierz ostatni dzień zakupu uwzględniony w początkowych jednostkach. Późniejsze zakupy dodają jednostki. Data nie może być przyszła.",
+        "data": {
+          "opening_cutoff_date": "Zakupy do tej daty są uwzględnione"
+        }
+      },
+      "plan_symbols": {
+        "title": "Wybierz instrumenty planu",
+        "description": "Wybierz wszystkie instrumenty planu. Następnie określ udział każdego z nich.",
+        "data": {
+          "symbols": "Wybierz instrumenty"
+        }
+      },
+      "plan_confirm": {
+        "title": "Zapisz i przetwórz plan",
+        "description": "{name}: {amount} miesięcznie, pierwsze wykonanie {first_date}.\n\n{allocations}\n\nZakres: {scope}. Istniejące wpisy: {existing}; ręczne poprawki: {protected}; starsze wpisy bez oznaczeń: {legacy}. Ręczne poprawki pozostają. Starsze wpisy będą przeliczone tylko po wyraźnym wyborze. Potwierdzenie zapisuje plan i przetwarza należne wykonania.",
+        "data": {
+          "confirm": "Potwierdź tę operację",
+          "legacy_executions": "Starsze wykonania zatwierdzone do przeliczenia"
+        }
+      },
+      "plan_result": {
+        "title": "Wynik przetwarzania planu",
+        "description": "Utworzone: {created}\nPrzeliczone: {recalculated}\nZachowane wpisy: {protected}\nOczekujące: {pending}\nWymagające korekty: {failed}\n\n{details}\n\n{rollback}"
+      },
+      "contribution_investment": {
+        "title": "Podziel wpłatę",
+        "description": "Wybierz instrumenty i domyślną datę. Każdy zakup może mieć inną datę. Kwoty stałe mogą pozostawić gotówkę; procenty muszą dawać 100.",
+        "data": {
+          "symbols": "Wybierz instrumenty",
+          "allocation_mode": "Rodzaj podziału",
+          "execution_date": "Domyślna data zakupu",
+          "use_cash_balance": "Użyj również dostępnej gotówki",
+          "included_in_opening": "Jednostki już uwzględnione w saldzie początkowym"
+        }
+      },
+      "contribution_allocation": {
+        "title": "Zakup",
+        "description": "{symbol}: Instrument {index} z {count}: podział w {unit}. Zostaw cenę i jednostki puste dla oszacowania Yahoo albo podaj cenę lub rzeczywiste jednostki. Przyszłe zakupy nie są dozwolone.",
+        "data": {
+          "value": "Udział",
+          "date": "Data zakupu",
+          "unit_price": "Efektywna cena w walucie bazowej (opcjonalnie)",
+          "units": "Rzeczywiście zakupione jednostki (opcjonalnie)",
+          "back_to_symbol": "Opcjonalnie: wróć do innego udziału"
+        }
+      },
+      "contribution_confirm": {
+        "title": "Zapisz wpłatę i zakupy",
+        "description": "Wpłata: {deposit}\n\nZakupy:\n{lots}\n\nGotówka po zapisie: {cash}. Tylko wpłata zwiększa wpłacony kapitał. Potwierdź wspólny zapis.",
+        "data": {
+          "confirm": "Potwierdź tę operację"
+        }
+      },
+      "lot_confirm": {
+        "title": "Potwierdź zakup",
+        "description": "{lot}\n\nGotówka po zapisie: {cash}. Nie powstanie dodatkowa wpłata.\n\n{warning}",
+        "data": {
+          "confirm": "Potwierdź tę operację"
+        }
+      },
+      "confirm_remove_contribution": {
+        "title": "Potwierdź usunięcie",
+        "description": "Usunąć {contribution}? Zostanie również usuniętych {count} powiązanych zakupów:\n{lots}\n\nPowiązany miesiąc planu będzie oznaczony jako pominięty i nie odtworzy się automatycznie.",
+        "data": {
+          "confirm": "Potwierdź tę operację"
+        }
       }
     },
     "error": {
@@ -256,7 +333,13 @@
       "contribution_date_after_lot": "Data wpłaty nie może być późniejsza niż data przypisanej transzy zakupu.",
       "legacy_opening_required": "Transza starego salda początkowego musi pozostać oznaczona jako już uwzględniona w saldzie początkowym.",
       "funding_contribution_invalid": "Wybrana wpłata jest niedostępna lub nie może sfinansować zakupu z tą datą.",
-      "opening_cutoff_future": "Data graniczna salda początkowego nie może przypadać w przyszłości."
+      "opening_cutoff_future": "Data graniczna salda początkowego nie może przypadać w przyszłości.",
+      "future_date": "Ręczne wpisy nie mogą mieć przyszłej daty.",
+      "price_or_units": "Wpisz cenę albo jednostki, nie oba pola.",
+      "confirmation_required": "Potwierdź wskazaną operację.",
+      "allocation_total_mismatch": "Procenty muszą dawać 100; stałe kwoty muszą odpowiadać sumie.",
+      "insufficient_cash": "Podział nie ma pokrycia we wpłacie i dostępnej gotówce w każdym dniu zakupu.",
+      "booking_failed": "Obliczenie nie powiodło się; dotychczasowe wpisy pozostają."
     },
     "abort": {
       "no_valors": "Portfel nie ma jeszcze żadnych walorów.",
@@ -267,7 +350,14 @@
       "no_skipped_executions": "Portfel nie ma pominiętych realizacji planu oszczędnościowego.",
       "invalid_plan": "Nie można zapisać planu z takim podziałem.",
       "stale_selection": "Wybrany wpis już nie istnieje. Otwórz ponownie konfigurację i spróbuj jeszcze raz.",
-      "entry_changed": "Portfel zmienił się, gdy formularz był otwarty. Otwórz ponownie konfigurację i wprowadź wartości jeszcze raz."
+      "entry_changed": "Portfel zmienił się, gdy formularz był otwarty. Otwórz ponownie konfigurację i wprowadź wartości jeszcze raz.",
+      "booking_failed": "Obliczenie nie powiodło się; dotychczasowe wpisy pozostają.",
+      "import_expired": "Podgląd importu wygasł. Przygotuj nowy w My Wallet.",
+      "already_imported": "Ten wyciąg został już zaimportowany."
+    },
+    "progress": {
+      "book_plans": "Sprawdzanie kursów i przygotowywanie wykonań…",
+      "prepare_purchases": "Przygotowywanie zakupów, kursów i pokrycia…"
     }
   },
   "selector": {
@@ -275,6 +365,12 @@
       "options": {
         "percentage": "Procentowo",
         "fixed": "Stałe kwoty"
+      }
+    },
+    "update_scope": {
+      "options": {
+        "future": "Tylko przyszłe wykonania",
+        "recalculate": "Przelicz też automatyczne wykonania"
       }
     }
   },
@@ -287,7 +383,7 @@
         "name": "Suma"
       },
       "wallet_invested": {
-        "name": "Zainwestowane"
+        "name": "Wpłacony kapitał"
       },
       "wallet_profit": {
         "name": "Zysk"

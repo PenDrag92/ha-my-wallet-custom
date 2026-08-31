@@ -15,11 +15,15 @@ from .const import (
     CONTRIBUTION_DATE,
     CONTRIBUTION_ID,
     CONTRIBUTION_LOTS,
+    CONTRIBUTION_MANUALLY_EDITED,
+    CONTRIBUTION_NOTE,
     CONTRIBUTION_PLAN_ID,
+    CONTRIBUTION_PLAN_NAME,
     CONTRIBUTION_SCHEDULED_DATE,
     CONTRIBUTION_SOURCE,
     CONTRIBUTION_SOURCE_LEGACY,
     CONTRIBUTION_SOURCE_MANUAL,
+    CONTRIBUTION_SOURCE_PURCHASE,
     LOT_AMOUNT,
     LOT_DATE,
     LOT_ESTIMATED,
@@ -61,6 +65,7 @@ def make_lot(
     included_in_opening: bool = False,
     estimated: bool = True,
     lot_id: str | None = None,
+    price_date: Any | None = None,
 ) -> dict[str, Any]:
     """Create and validate one purchase lot."""
     normalized_amount = float(amount)
@@ -88,7 +93,7 @@ def make_lot(
     normalized_currency = quote_currency.strip().upper()
     if not normalized_symbol or not normalized_currency:
         raise ValueError("Lot symbol and quote currency are required")
-    return {
+    item = {
         LOT_ID: lot_id or uuid4().hex,
         LOT_SYMBOL: normalized_symbol,
         LOT_DATE: normalize_date(execution_date),
@@ -100,6 +105,9 @@ def make_lot(
         LOT_INCLUDED_IN_OPENING: bool(included_in_opening),
         LOT_ESTIMATED: bool(estimated),
     }
+    if price_date is not None:
+        item["price_date"] = normalize_date(price_date)
+    return item
 
 
 def normalize_lot(entry: Mapping[str, Any]) -> dict[str, Any]:
@@ -115,6 +123,7 @@ def normalize_lot(entry: Mapping[str, Any]) -> dict[str, Any]:
         included_in_opening=bool(entry.get(LOT_INCLUDED_IN_OPENING, False)),
         estimated=bool(entry.get(LOT_ESTIMATED, True)),
         lot_id=str(entry.get(LOT_ID) or uuid4().hex),
+        price_date=entry.get("price_date"),
     )
 
 
@@ -127,6 +136,9 @@ def make_contribution(
     lots: Sequence[Mapping[str, Any]] | None = None,
     plan_id: str | None = None,
     scheduled_date: Any | None = None,
+    note: str | None = None,
+    plan_name: str | None = None,
+    manually_edited: bool | None = None,
 ) -> dict[str, Any]:
     """Create one execution group, optionally containing purchase lots."""
     normalized_lots = [normalize_lot(item) for item in (lots or [])]
@@ -145,7 +157,10 @@ def make_contribution(
         if amount is None and normalized_lots
         else float(amount or 0)
     )
-    if not isfinite(normalized_amount) or normalized_amount <= 0:
+    purchase_only = source == CONTRIBUTION_SOURCE_PURCHASE
+    if not isfinite(normalized_amount) or (
+        normalized_amount != 0 if purchase_only else normalized_amount <= 0
+    ):
         raise ValueError("Contribution amount must be greater than zero")
 
     item: dict[str, Any] = {
@@ -159,6 +174,14 @@ def make_contribution(
         item[CONTRIBUTION_PLAN_ID] = plan_id
     if scheduled_date is not None:
         item[CONTRIBUTION_SCHEDULED_DATE] = normalize_date(scheduled_date)
+    if note and note.strip():
+        item[CONTRIBUTION_NOTE] = note.strip()
+    if plan_name:
+        item[CONTRIBUTION_PLAN_NAME] = plan_name
+    # Absence is intentional: old versions did not track manual corrections.
+    # Such records need explicit review before they may be recalculated.
+    if manually_edited is not None:
+        item[CONTRIBUTION_MANUALLY_EDITED] = bool(manually_edited)
     return item
 
 
@@ -172,6 +195,9 @@ def normalize_contribution(entry: Mapping[str, Any]) -> dict[str, Any]:
         lots=entry.get(CONTRIBUTION_LOTS, []),
         plan_id=entry.get(CONTRIBUTION_PLAN_ID),
         scheduled_date=entry.get(CONTRIBUTION_SCHEDULED_DATE),
+        note=entry.get(CONTRIBUTION_NOTE),
+        plan_name=entry.get(CONTRIBUTION_PLAN_NAME),
+        manually_edited=entry.get(CONTRIBUTION_MANUALLY_EDITED),
     )
 
 
@@ -229,6 +255,9 @@ def attach_lot(
                 lots=[*item[CONTRIBUTION_LOTS], normalized_lot],
                 plan_id=item.get(CONTRIBUTION_PLAN_ID),
                 scheduled_date=item.get(CONTRIBUTION_SCHEDULED_DATE),
+                note=item.get(CONTRIBUTION_NOTE),
+                plan_name=item.get(CONTRIBUTION_PLAN_NAME),
+                manually_edited=True,
             )
         )
     return normalize_contributions(updated)
@@ -358,6 +387,8 @@ def cashflows(
     """
     result: list[tuple[date, float]] = []
     for contribution in contributions_through(data, through):
+        if contribution[CONTRIBUTION_AMOUNT] == 0:
+            continue
         contribution_date = contribution[CONTRIBUTION_DATE]
         if contribution_date is None:
             return None
