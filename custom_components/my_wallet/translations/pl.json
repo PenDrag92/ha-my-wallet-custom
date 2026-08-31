@@ -3,12 +3,11 @@
     "step": {
       "user": {
         "title": "Utwórz portfel",
-        "description": "Skonfiguruj portfel z walorami rynkowymi wycenianymi przez Yahoo Finance.",
+        "description": "Skonfiguruj portfel z walorami rynkowymi wycenianymi przez Yahoo Finance. Wpłaty z datą można dodać po utworzeniu portfela.",
         "data": {
           "wallet_name": "Nazwa portfela",
           "base_currency": "Waluta bazowa (wartość portfela prezentowana w tej walucie)",
-          "scan_interval": "Częstotliwość aktualizacji (minuty)",
-          "invested_amount": "Kwota zainwestowana (opcjonalnie, w walucie bazowej; umożliwia śledzenie zysku)"
+          "scan_interval": "Częstotliwość aktualizacji (minuty)"
         }
       },
       "valor": {
@@ -34,7 +33,18 @@
       "init": {
         "title": "Zarządzaj portfelem",
         "menu_options": {
-          "settings": "Ustawienia portfela (nazwa, waluta, częstotliwość, kwota zainwestowana)",
+          "settings": "Ustawienia portfela (nazwa, waluta, częstotliwość)",
+          "add_contribution": "Dodaj wpłatę z datą",
+          "add_lot": "Importuj historyczną transzę zakupu",
+          "edit_contribution": "Edytuj wpłatę",
+          "remove_contribution": "Usuń wpłatę",
+          "edit_lot": "Skoryguj transzę zakupu",
+          "add_dividend": "Dodaj dywidendę",
+          "edit_dividend": "Edytuj dywidendę",
+          "remove_dividend": "Usuń dywidendę",
+          "add_plan": "Dodaj miesięczny plan oszczędnościowy",
+          "edit_plan": "Edytuj plan oszczędnościowy",
+          "remove_plan": "Usuń plan oszczędnościowy",
           "add_valor": "Dodaj walor",
           "remove_valor": "Usuń walor",
           "edit_valor": "Edytuj walor (ilość, udział docelowy)"
@@ -45,8 +55,148 @@
         "data": {
           "wallet_name": "Nazwa portfela",
           "base_currency": "Waluta bazowa",
-          "scan_interval": "Częstotliwość aktualizacji (minuty)",
-          "invested_amount": "Kwota zainwestowana (opcjonalnie, w walucie bazowej; wyczyść, aby wyłączyć śledzenie zysku)"
+          "scan_interval": "Częstotliwość aktualizacji (minuty)"
+        }
+      },
+      "add_contribution": {
+        "title": "Dodaj wpłatę",
+        "description": "Zapisz środki wpłacone do portfela. Kwota jest podawana w walucie bazowej portfela.",
+        "data": {
+          "date": "Data realizacji",
+          "amount": "Kwota",
+          "add_another": "Następnie dodaj kolejną wpłatę"
+        }
+      },
+      "edit_contribution": {
+        "title": "Edytuj wpłatę",
+        "data": {
+          "id": "Wpłata"
+        }
+      },
+      "edit_contribution_fields": {
+        "title": "Edytuj wpłatę",
+        "description": "Wpłata lub wykonanie planu: {contribution}. Istniejące transze zakupu pozostaną bez zmian.",
+        "data": {
+          "date": "Data realizacji",
+          "amount": "Kwota"
+        }
+      },
+      "remove_contribution": {
+        "title": "Usuń wpłatę",
+        "data": {
+          "id": "Wpłata do usunięcia"
+        }
+      },
+      "edit_lot": {
+        "title": "Skoryguj transzę zakupu",
+        "data": {
+          "id": "Transza zakupu"
+        }
+      },
+      "add_lot": {
+        "title": "Importuj historyczną transzę zakupu",
+        "description": "Yahoo użyje pierwszego kursu zamknięcia w podanym dniu lub później. Jeśli kursu brak, podaj efektywną cenę ręcznie.",
+        "data": {
+          "symbol": "Walor",
+          "date": "Data zakupu",
+          "amount": "Zainwestowana kwota",
+          "unit_price": "Efektywna cena jednostki (opcjonalnie)",
+          "included_in_opening": "Jednostki są już uwzględnione w saldzie początkowym"
+        }
+      },
+      "edit_lot_fields": {
+        "title": "Skoryguj transzę zakupu",
+        "description": "Transza zakupu: {lot}. Zmiana kwoty lub jednostek przelicza efektywną cenę zakupu.",
+        "data": {
+          "date": "Rzeczywista data realizacji",
+          "amount": "Zainwestowana kwota (waluta bazowa)",
+          "units": "Kupione jednostki",
+          "included_in_opening": "Te jednostki są już uwzględnione w saldzie początkowym"
+        }
+      },
+      "add_dividend": {
+        "title": "Dodaj dywidendę",
+        "description": "Wprowadź kwotę netto faktycznie zaksięgowaną przez brokera. Zwiększa saldo gotówkowe i może zostać proporcjonalnie uwzględniona w następnym wykonaniu planu.",
+        "data": {
+          "booking_date": "Data księgowania",
+          "value_date": "Data waluty (opcjonalnie)",
+          "amount": "Zaksięgowana kwota netto",
+          "symbol": "Wypłacający instrument (opcjonalnie)",
+          "note": "Notatka (opcjonalnie)"
+        }
+      },
+      "edit_dividend": {
+        "title": "Edytuj dywidendę",
+        "data": {
+          "id": "Dywidenda"
+        }
+      },
+      "edit_dividend_fields": {
+        "title": "Edytuj dywidendę",
+        "description": "Dywidenda: {dividend}",
+        "data": {
+          "booking_date": "Data księgowania",
+          "value_date": "Data waluty (opcjonalnie)",
+          "amount": "Zaksięgowana kwota netto",
+          "symbol": "Wypłacający instrument (opcjonalnie)",
+          "note": "Notatka (opcjonalnie)"
+        }
+      },
+      "remove_dividend": {
+        "title": "Usuń dywidendę",
+        "data": {
+          "id": "Dywidenda do usunięcia"
+        }
+      },
+      "add_plan": {
+        "title": "Dodaj miesięczny plan oszczędnościowy",
+        "description": "Dla podziału procentowego podaj całą kwotę miesięczną. Przy stałych kwotach suma wynika z poszczególnych pozycji.",
+        "data": {
+          "name": "Nazwa planu",
+          "enabled": "Aktywny",
+          "first_date": "Pierwsza planowana realizacja",
+          "end_date": "Ostatnia planowana realizacja (opcjonalnie)",
+          "allocation_mode": "Sposób podziału",
+          "amount": "Cała kwota miesięczna (tylko dla podziału procentowego)",
+          "use_cash_balance": "Uwzględnij gotówkę i dywidendy w podziale",
+          "opening_cutoff_date": "Zakupy do tej daty są już ujęte w jednostkach początkowych (opcjonalnie)"
+        }
+      },
+      "edit_plan": {
+        "title": "Edytuj plan oszczędnościowy",
+        "data": {
+          "id": "Plan oszczędnościowy"
+        }
+      },
+      "edit_plan_fields": {
+        "title": "Edytuj plan oszczędnościowy",
+        "description": "Zachowaj obecny podział lub odznacz pole i wprowadź wszystkie pozycje ponownie.",
+        "data": {
+          "name": "Nazwa planu",
+          "enabled": "Aktywny",
+          "first_date": "Pierwsza planowana realizacja",
+          "end_date": "Ostatnia planowana realizacja (opcjonalnie)",
+          "allocation_mode": "Sposób podziału",
+          "amount": "Cała kwota miesięczna (tylko dla podziału procentowego)",
+          "use_cash_balance": "Uwzględnij gotówkę i dywidendy w podziale",
+          "opening_cutoff_date": "Zakupy do tej daty są już ujęte w jednostkach początkowych (opcjonalnie)",
+          "keep_allocations": "Zachowaj obecny podział"
+        }
+      },
+      "plan_allocation": {
+        "title": "Podział planu oszczędnościowego",
+        "description": "Aktualna suma podziału: {current_total}.",
+        "data": {
+          "symbol": "Walor",
+          "value": "Udział (%) lub stała kwota",
+          "add_another": "Dodaj kolejny walor"
+        }
+      },
+      "remove_plan": {
+        "title": "Usuń plan oszczędnościowy",
+        "description": "Historyczne realizacje pozostaną w portfelu.",
+        "data": {
+          "id": "Plan oszczędnościowy do usunięcia"
         }
       },
       "add_valor": {
@@ -82,10 +232,22 @@
       "invalid_name": "Podaj nazwę portfela.",
       "invalid_symbol": "Podaj poprawny symbol Yahoo Finance.",
       "symbol_exists": "Ten symbol znajduje się już w portfelu.",
-      "target_sum_exceeded": "Suma udziałów docelowych przekroczy 100%."
+      "target_sum_exceeded": "Suma udziałów docelowych przekroczy 100%.",
+      "allocation_exists": "Ten walor jest już przydzielony w planie.",
+      "allocation_sum_exceeded": "Podział procentowy przekroczyłby 100%.",
+      "invalid_plan": "Plan jest niekompletny. Podział procentowy musi wynosić dokładnie 100%.",
+      "currency_change_blocked": "Nie można zmienić waluty bazowej, dopóki istnieją wpłaty, dywidendy lub plany oszczędnościowe.",
+      "historical_price_unavailable": "Yahoo nie ma kursu zamknięcia dla tego okresu. Podaj cenę ręcznie.",
+      "historical_fx_unavailable": "Yahoo nie ma historycznego kursu wymiany. Podaj cenę w walucie bazowej ręcznie.",
+      "valor_in_use": "Ten walor jest używany przez transzę zakupu, dywidendę lub plan. Najpierw usuń albo edytuj te wpisy."
     },
     "abort": {
-      "no_valors": "Portfel nie ma jeszcze żadnych walorów."
+      "no_valors": "Portfel nie ma jeszcze żadnych walorów.",
+      "no_contributions": "Portfel nie ma jeszcze żadnych wpłat.",
+      "no_lots": "Portfel nie ma jeszcze żadnych śledzonych transz zakupu.",
+      "no_dividends": "Portfel nie ma jeszcze żadnych dywidend.",
+      "no_plans": "Portfel nie ma jeszcze żadnych planów oszczędnościowych.",
+      "invalid_plan": "Nie można zapisać planu z takim podziałem."
     }
   },
   "entity": {
@@ -107,6 +269,27 @@
       },
       "valor_deviation": {
         "name": "{symbol} odchylenie od celu"
+      },
+      "valor_profit": {
+        "name": "{symbol} śledzony zysk"
+      },
+      "valor_performance": {
+        "name": "{symbol} śledzona wydajność"
+      },
+      "valor_annualized_performance": {
+        "name": "{symbol} roczna wydajność"
+      },
+      "wallet_money_weighted_return": {
+        "name": "Stopa zwrotu ważona przepływami"
+      },
+      "wallet_cash_balance": {
+        "name": "Saldo gotówkowe"
+      },
+      "wallet_dividends": {
+        "name": "Dywidendy netto"
+      },
+      "wallet_next_execution": {
+        "name": "Następna realizacja planu"
       }
     }
   },

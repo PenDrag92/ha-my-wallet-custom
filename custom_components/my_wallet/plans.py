@@ -1,0 +1,252 @@
+"""Pure helpers for recurring monthly savings plans."""
+
+from __future__ import annotations
+
+import calendar
+from collections.abc import Mapping, Sequence
+from datetime import date
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
+from typing import Any
+from uuid import uuid4
+
+from .const import (
+    ALLOCATION_MODE_FIXED,
+    ALLOCATION_MODE_PERCENTAGE,
+    ALLOCATION_SYMBOL,
+    ALLOCATION_VALUE,
+    CONTRIBUTION_PLAN_ID,
+    CONTRIBUTION_SCHEDULED_DATE,
+    PLAN_ALLOCATION_MODE,
+    PLAN_ALLOCATIONS,
+    PLAN_AMOUNT,
+    PLAN_ENABLED,
+    PLAN_END_DATE,
+    PLAN_FIRST_DATE,
+    PLAN_ID,
+    PLAN_NAME,
+    PLAN_OPENING_CUTOFF_DATE,
+    PLAN_USE_CASH_BALANCE,
+)
+from .contributions import normalize_date
+
+_PERCENT_TOLERANCE = 0.005
+
+
+def make_plan(
+    *,
+    name: str,
+    first_date: Any,
+    allocation_mode: str,
+    allocations: Sequence[Mapping[str, Any]],
+    amount: Any | None = None,
+    enabled: bool = True,
+    end_date: Any | None = None,
+    plan_id: str | None = None,
+    use_cash_balance: bool = True,
+    opening_cutoff_date: Any | None = None,
+) -> dict[str, Any]:
+    """Create and validate one monthly savings plan."""
+    normalized_name = name.strip()
+    if not normalized_name:
+        raise ValueError("Savings-plan name is required")
+    if allocation_mode not in (ALLOCATION_MODE_PERCENTAGE, ALLOCATION_MODE_FIXED):
+        raise ValueError("Unknown allocation mode")
+
+    normalized_allocations: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for allocation in allocations:
+        symbol = str(allocation[ALLOCATION_SYMBOL]).strip().upper()
+        value = float(allocation[ALLOCATION_VALUE])
+        if not symbol or value <= 0:
+            raise ValueError("Allocation symbol and value are required")
+        if symbol in seen:
+            raise ValueError(f"Duplicate allocation for {symbol}")
+        seen.add(symbol)
+        normalized_allocations.append(
+            {ALLOCATION_SYMBOL: symbol, ALLOCATION_VALUE: value}
+        )
+    if not normalized_allocations:
+        raise ValueError("At least one allocation is required")
+
+    normalized_first = normalize_date(first_date)
+    normalized_end = normalize_date(end_date, allow_none=True)
+    normalized_cutoff = normalize_date(opening_cutoff_date, allow_none=True)
+    if normalized_end is not None and normalized_end < normalized_first:
+        raise ValueError("End date must not be before first execution")
+
+    if allocation_mode == ALLOCATION_MODE_PERCENTAGE:
+        normalized_amount = float(amount or 0)
+        if normalized_amount <= 0:
+            raise ValueError("Plan amount must be greater than zero")
+        total_percent = sum(item[ALLOCATION_VALUE] for item in normalized_allocations)
+        if abs(total_percent - 100) > _PERCENT_TOLERANCE:
+            raise ValueError("Percentage allocations must total 100")
+    else:
+        normalized_amount = sum(
+            item[ALLOCATION_VALUE] for item in normalized_allocations
+        )
+
+    return {
+        PLAN_ID: plan_id or uuid4().hex,
+        PLAN_NAME: normalized_name,
+        PLAN_ENABLED: bool(enabled),
+        PLAN_FIRST_DATE: normalized_first,
+        PLAN_END_DATE: normalized_end,
+        PLAN_ALLOCATION_MODE: allocation_mode,
+        PLAN_AMOUNT: normalized_amount,
+        PLAN_ALLOCATIONS: normalized_allocations,
+        PLAN_USE_CASH_BALANCE: bool(use_cash_balance),
+        PLAN_OPENING_CUTOFF_DATE: normalized_cutoff,
+    }
+
+
+def normalize_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize a serialized savings plan."""
+    return make_plan(
+        name=str(plan[PLAN_NAME]),
+        first_date=plan[PLAN_FIRST_DATE],
+        end_date=plan.get(PLAN_END_DATE),
+        allocation_mode=str(plan[PLAN_ALLOCATION_MODE]),
+        amount=plan.get(PLAN_AMOUNT),
+        allocations=plan.get(PLAN_ALLOCATIONS, []),
+        enabled=bool(plan.get(PLAN_ENABLED, True)),
+        plan_id=str(plan.get(PLAN_ID) or uuid4().hex),
+        use_cash_balance=bool(plan.get(PLAN_USE_CASH_BALANCE, True)),
+        opening_cutoff_date=plan.get(PLAN_OPENING_CUTOFF_DATE),
+    )
+
+
+def allocation_amounts(
+    plan: Mapping[str, Any], *, available_amount: float | None = None
+) -> dict[str, float]:
+    """Return the base-currency amount assigned to every symbol.
+
+    The configured plan amount is fully allocated first. Extra settlement cash
+    is then spread pro rata and truncated to cents, leaving the broker-style
+    rounding remainder on the cash account.
+    """
+    normalized = normalize_plan(plan)
+    plan_total = Decimal(str(normalized[PLAN_AMOUNT]))
+    available = (
+        plan_total if available_amount is None else Decimal(str(available_amount))
+    )
+    if available <= 0:
+        raise ValueError("Available amount must be greater than zero")
+
+    result: dict[str, Decimal] = {}
+    allocations = normalized[PLAN_ALLOCATIONS]
+    if normalized[PLAN_ALLOCATION_MODE] == ALLOCATION_MODE_FIXED:
+        result.update(
+            {
+                item[ALLOCATION_SYMBOL]: Decimal(str(item[ALLOCATION_VALUE]))
+                for item in allocations
+            }
+        )
+    else:
+        remaining = plan_total
+        for index, item in enumerate(allocations):
+            value = (
+                remaining
+                if index == len(allocations) - 1
+                else (
+                    plan_total * Decimal(str(item[ALLOCATION_VALUE])) / Decimal(100)
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            )
+            result[item[ALLOCATION_SYMBOL]] = value
+            remaining -= value
+
+    extra = max(Decimal(0), available - plan_total)
+    if extra:
+        weight_total = sum(Decimal(str(item[ALLOCATION_VALUE])) for item in allocations)
+        for item in allocations:
+            bonus = (
+                extra * Decimal(str(item[ALLOCATION_VALUE])) / weight_total
+            ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+            result[item[ALLOCATION_SYMBOL]] += bonus
+    return {symbol: float(value) for symbol, value in result.items()}
+
+
+def _monthly_date(year: int, month: int, day: int) -> date:
+    """Use the last day for plans scheduled on day 29, 30, or 31."""
+    return date(year, month, min(day, calendar.monthrange(year, month)[1]))
+
+
+def scheduled_dates(plan: Mapping[str, Any], through: date) -> list[date]:
+    """Return every monthly schedule date up to and including ``through``."""
+    normalized = normalize_plan(plan)
+    if not normalized[PLAN_ENABLED]:
+        return []
+    first = date.fromisoformat(normalized[PLAN_FIRST_DATE])
+    end = (
+        date.fromisoformat(normalized[PLAN_END_DATE])
+        if normalized[PLAN_END_DATE]
+        else through
+    )
+    end = min(end, through)
+    if first > end:
+        return []
+
+    dates = [first]
+    year, month = first.year, first.month
+    while True:
+        month += 1
+        if month == 13:
+            year += 1
+            month = 1
+        candidate = _monthly_date(year, month, first.day)
+        if candidate > end:
+            break
+        dates.append(candidate)
+    return dates
+
+
+def booked_schedule_dates(
+    contributions: Sequence[Mapping[str, Any]], plan_id: str
+) -> set[date]:
+    """Return schedule dates already booked for a plan."""
+    return {
+        date.fromisoformat(str(item[CONTRIBUTION_SCHEDULED_DATE]))
+        for item in contributions
+        if item.get(CONTRIBUTION_PLAN_ID) == plan_id
+        and item.get(CONTRIBUTION_SCHEDULED_DATE)
+    }
+
+
+def due_dates(
+    plan: Mapping[str, Any],
+    contributions: Sequence[Mapping[str, Any]],
+    through: date,
+) -> list[date]:
+    """Return unbooked schedule dates through the supplied date."""
+    normalized = normalize_plan(plan)
+    booked = booked_schedule_dates(contributions, normalized[PLAN_ID])
+    return [item for item in scheduled_dates(normalized, through) if item not in booked]
+
+
+def next_scheduled_date(plan: Mapping[str, Any], on_or_after: date) -> date | None:
+    """Return the next calendar execution date for a plan."""
+    normalized = normalize_plan(plan)
+    if not normalized[PLAN_ENABLED]:
+        return None
+    first = date.fromisoformat(normalized[PLAN_FIRST_DATE])
+    end = (
+        date.fromisoformat(normalized[PLAN_END_DATE])
+        if normalized[PLAN_END_DATE]
+        else None
+    )
+    if on_or_after <= first:
+        candidate = first
+    else:
+        months = (on_or_after.year - first.year) * 12 + on_or_after.month - first.month
+        year = first.year + (first.month - 1 + months) // 12
+        month = (first.month - 1 + months) % 12 + 1
+        candidate = _monthly_date(year, month, first.day)
+        if candidate < on_or_after:
+            month += 1
+            if month == 13:
+                year += 1
+                month = 1
+            candidate = _monthly_date(year, month, first.day)
+    if end is not None and candidate > end:
+        return None
+    return candidate

@@ -1,0 +1,302 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Depot anlegen",
+        "description": "Lege ein Depot mit Kursen von Yahoo Finance an. Datierte Einzahlungen können anschließend über ‚Konfigurieren‘ erfasst werden.",
+        "data": {
+          "wallet_name": "Depotname",
+          "base_currency": "Basiswährung (in dieser Währung wird der Depotwert angezeigt)",
+          "scan_interval": "Aktualisierungsintervall (Minuten)"
+        }
+      },
+      "valor": {
+        "title": "Wertpapier hinzufügen",
+        "description": "Füge dem Depot ein Wertpapier hinzu. Verwende das genaue Yahoo-Finance-Symbol von dessen Kursseite. Prüfe bei Fonds auch Anteilsklasse, Handelswährung und verfügbare historische Kurse.",
+        "data": {
+          "symbol": "Yahoo-Finance-Symbol",
+          "amount": "Bereits vorhandener Anfangsbestand in Anteilen (Sparplankäufe werden automatisch addiert)",
+          "target_share": "Zielanteil (%; optional)",
+          "add_another": "Anschließend ein weiteres Wertpapier hinzufügen"
+        }
+      }
+    },
+    "error": {
+      "invalid_name": "Bitte einen Depotnamen eingeben.",
+      "invalid_symbol": "Bitte ein gültiges Yahoo-Finance-Symbol eingeben.",
+      "symbol_exists": "Dieses Symbol ist bereits im Depot vorhanden.",
+      "target_sum_exceeded": "Die Summe der Zielanteile würde 100 % überschreiten."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Depot verwalten",
+        "menu_options": {
+          "settings": "Depoteinstellungen bearbeiten",
+          "add_contribution": "Datierte Einzahlung hinzufügen",
+          "add_lot": "Historische Kauftranche erfassen",
+          "edit_contribution": "Einzahlung bearbeiten",
+          "remove_contribution": "Ausführung oder Einzahlung löschen",
+          "edit_lot": "Kauftranche korrigieren",
+          "add_dividend": "Ausschüttung erfassen",
+          "edit_dividend": "Ausschüttung bearbeiten",
+          "remove_dividend": "Ausschüttung löschen",
+          "add_plan": "Monatlichen Sparplan hinzufügen",
+          "edit_plan": "Sparplan bearbeiten",
+          "remove_plan": "Sparplan entfernen",
+          "add_valor": "Wertpapier hinzufügen",
+          "remove_valor": "Wertpapier entfernen",
+          "edit_valor": "Wertpapier bearbeiten"
+        }
+      },
+      "settings": {
+        "title": "Depoteinstellungen",
+        "data": {
+          "wallet_name": "Depotname",
+          "base_currency": "Basiswährung",
+          "scan_interval": "Aktualisierungsintervall (Minuten)"
+        }
+      },
+      "add_contribution": {
+        "title": "Einzahlung hinzufügen",
+        "description": "Erfasse Geld, das in das Depot investiert wurde. Der Betrag wird in der Basiswährung des Depots angegeben.",
+        "data": {
+          "date": "Ausführungsdatum",
+          "amount": "Betrag",
+          "add_another": "Anschließend eine weitere Einzahlung hinzufügen"
+        }
+      },
+      "edit_contribution": {
+        "title": "Einzahlung bearbeiten",
+        "data": {
+          "id": "Einzahlung"
+        }
+      },
+      "edit_contribution_fields": {
+        "title": "Einzahlung bearbeiten",
+        "description": "Einzahlung oder Sparplanausführung: {contribution}. Vorhandene Kauftranchen bleiben unverändert.",
+        "data": {
+          "date": "Ausführungsdatum",
+          "amount": "Betrag"
+        }
+      },
+      "remove_contribution": {
+        "title": "Einzahlung löschen",
+        "data": {
+          "id": "Zu löschende Einzahlung"
+        }
+      },
+      "edit_lot": {
+        "title": "Kauftranche korrigieren",
+        "data": {
+          "id": "Kauftranche"
+        }
+      },
+      "add_lot": {
+        "title": "Historische Kauftranche erfassen",
+        "description": "Yahoo liefert den ersten Schlusskurs am oder nach dem angegebenen Datum. Gibt es keinen historischen Kurs, kann der effektive Stückpreis in der Basiswährung manuell eingetragen werden. Das Häkchen gesetzt lassen, wenn der Kauf bereits im Anfangsbestand enthalten ist.",
+        "data": {
+          "symbol": "Wertpapier",
+          "date": "Geplantes oder tatsächliches Kaufdatum",
+          "amount": "Investierter Betrag (Basiswährung)",
+          "unit_price": "Effektiver Stückpreis in der Basiswährung (optionaler Yahoo-Ersatz)",
+          "included_in_opening": "Gekaufte Anteile sind bereits im eingetragenen Anfangsbestand enthalten"
+        }
+      },
+      "edit_lot_fields": {
+        "title": "Kauftranche korrigieren",
+        "description": "Kauftranche: {lot}. Beim Ändern von Betrag oder Anteilen wird der effektive Kaufkurs neu berechnet.",
+        "data": {
+          "date": "Tatsächliches Ausführungsdatum",
+          "amount": "Investierter Betrag (Basiswährung)",
+          "units": "Gekaufte Anteile",
+          "included_in_opening": "Diese Anteile sind bereits im eingetragenen Anfangsbestand enthalten"
+        }
+      },
+      "add_dividend": {
+        "title": "Ausschüttung erfassen",
+        "description": "Den tatsächlich gutgeschriebenen Nettobetrag eintragen. Er erhöht das Verrechnungskonto und kann beim nächsten Sparplan anteilig mitinvestiert werden.",
+        "data": {
+          "booking_date": "Buchungsdatum",
+          "value_date": "Wertstellungsdatum (optional; maßgeblich für den Cashbestand)",
+          "amount": "Gutgeschriebener Nettobetrag",
+          "symbol": "Ausschüttendes Wertpapier (optional)",
+          "note": "Notiz (optional)"
+        }
+      },
+      "edit_dividend": {
+        "title": "Ausschüttung bearbeiten",
+        "data": {
+          "id": "Ausschüttung"
+        }
+      },
+      "edit_dividend_fields": {
+        "title": "Ausschüttung bearbeiten",
+        "description": "Ausschüttung: {dividend}",
+        "data": {
+          "booking_date": "Buchungsdatum",
+          "value_date": "Wertstellungsdatum (optional; maßgeblich für den Cashbestand)",
+          "amount": "Gutgeschriebener Nettobetrag",
+          "symbol": "Ausschüttendes Wertpapier (optional)",
+          "note": "Notiz (optional)"
+        }
+      },
+      "remove_dividend": {
+        "title": "Ausschüttung löschen",
+        "data": {
+          "id": "Zu löschende Ausschüttung"
+        }
+      },
+      "add_plan": {
+        "title": "Monatlichen Sparplan hinzufügen",
+        "description": "Bei prozentualer Aufteilung wird der gesamte Monatsbetrag angegeben. Bei festen Teilbeträgen ergibt sich die Gesamtrate aus den einzelnen Beträgen.",
+        "data": {
+          "name": "Name des Sparplans",
+          "enabled": "Aktiv",
+          "first_date": "Erste geplante Ausführung",
+          "end_date": "Letzte geplante Ausführung (optional)",
+          "allocation_mode": "Art der Aufteilung",
+          "amount": "Gesamter Monatsbetrag (nur bei prozentualer Aufteilung erforderlich)",
+          "use_cash_balance": "Vorhandenes Cash und Ausschüttungen anteilig mitinvestieren",
+          "opening_cutoff_date": "Käufe bis zu diesem Stichtag sind bereits im Anfangsbestand enthalten (optional)"
+        }
+      },
+      "edit_plan": {
+        "title": "Sparplan bearbeiten",
+        "data": {
+          "id": "Sparplan"
+        }
+      },
+      "edit_plan_fields": {
+        "title": "Sparplan bearbeiten",
+        "description": "Für eine schnelle Änderung kann die bisherige Aufteilung beibehalten werden. Zum Ändern der Aufteilung das Häkchen entfernen und alle Positionen neu eingeben.",
+        "data": {
+          "name": "Name des Sparplans",
+          "enabled": "Aktiv",
+          "first_date": "Erste geplante Ausführung",
+          "end_date": "Letzte geplante Ausführung (optional)",
+          "allocation_mode": "Art der Aufteilung",
+          "amount": "Gesamter Monatsbetrag (nur bei prozentualer Aufteilung erforderlich)",
+          "use_cash_balance": "Vorhandenes Cash und Ausschüttungen anteilig mitinvestieren",
+          "opening_cutoff_date": "Käufe bis zu diesem Stichtag sind bereits im Anfangsbestand enthalten (optional)",
+          "keep_allocations": "Bisherige Aufteilung beibehalten"
+        }
+      },
+      "plan_allocation": {
+        "title": "Aufteilung des Sparplans",
+        "description": "Bisherige Summe der Aufteilung: {current_total}. Bei prozentualer Aufteilung Prozentwerte, sonst feste Beträge in der Basiswährung eingeben.",
+        "data": {
+          "symbol": "Wertpapier",
+          "value": "Anteil (%) oder fester Betrag",
+          "add_another": "Ein weiteres Wertpapier in diesen Sparplan aufnehmen"
+        }
+      },
+      "remove_plan": {
+        "title": "Sparplan entfernen",
+        "description": "Bereits ausgeführte Käufe bleiben im Depot erhalten.",
+        "data": {
+          "id": "Zu entfernender Sparplan"
+        }
+      },
+      "add_valor": {
+        "title": "Wertpapier hinzufügen",
+        "data": {
+          "symbol": "Yahoo-Finance-Symbol",
+          "amount": "Bereits vorhandener Anfangsbestand in Anteilen",
+          "target_share": "Zielanteil (%; optional)"
+        }
+      },
+      "remove_valor": {
+        "title": "Wertpapier entfernen",
+        "data": {
+          "symbol": "Zu entfernendes Wertpapier"
+        }
+      },
+      "edit_valor": {
+        "title": "Wertpapier bearbeiten",
+        "data": {
+          "symbol": "Wertpapier"
+        }
+      },
+      "edit_valor_fields": {
+        "title": "Wertpapier bearbeiten",
+        "description": "Wertpapier: {symbol}",
+        "data": {
+          "amount": "Neuer Anfangsbestand (erfasste Sparplankäufe werden automatisch addiert)",
+          "target_share": "Zielanteil (%; zum Entfernen leeren)"
+        }
+      }
+    },
+    "error": {
+      "invalid_name": "Bitte einen Depotnamen eingeben.",
+      "invalid_symbol": "Bitte ein gültiges Yahoo-Finance-Symbol eingeben.",
+      "symbol_exists": "Dieses Symbol ist bereits im Depot vorhanden.",
+      "target_sum_exceeded": "Die Summe der Zielanteile würde 100 % überschreiten.",
+      "allocation_exists": "Dieses Wertpapier ist im Sparplan bereits enthalten.",
+      "allocation_sum_exceeded": "Die prozentuale Aufteilung würde 100 % überschreiten.",
+      "invalid_plan": "Der Sparplan ist unvollständig. Eine prozentuale Aufteilung muss genau 100 % ergeben.",
+      "currency_change_blocked": "Die Basiswährung kann nicht geändert werden, solange Einzahlungen, Ausschüttungen oder Sparpläne vorhanden sind.",
+      "historical_price_unavailable": "Yahoo hat für diesen Zeitraum keinen Schlusskurs. Bitte den effektiven Stückpreis manuell eintragen.",
+      "historical_fx_unavailable": "Yahoo hat für diesen Kauf keinen historischen Wechselkurs. Bitte den effektiven Stückpreis in der Basiswährung manuell eintragen.",
+      "valor_in_use": "Dieses Wertpapier wird von einer Kauftranche, Ausschüttung oder einem Sparplan verwendet. Diese Einträge zuerst entfernen oder bearbeiten."
+    },
+    "abort": {
+      "no_valors": "Das Depot enthält noch keine Wertpapiere.",
+      "no_contributions": "Das Depot enthält noch keine Einzahlungen.",
+      "no_lots": "Das Depot enthält noch keine erfassten Kauftranchen.",
+      "no_dividends": "Das Depot enthält noch keine Ausschüttungen.",
+      "no_plans": "Das Depot enthält noch keine Sparpläne.",
+      "invalid_plan": "Der Sparplan kann mit dieser Aufteilung nicht gespeichert werden."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "valor": {
+        "name": "{symbol}"
+      },
+      "wallet_total": {
+        "name": "Depotwert"
+      },
+      "wallet_invested": {
+        "name": "Investiert"
+      },
+      "wallet_profit": {
+        "name": "Gewinn"
+      },
+      "wallet_profit_pct": {
+        "name": "Gewinn %"
+      },
+      "valor_deviation": {
+        "name": "{symbol} Zielabweichung"
+      },
+      "valor_profit": {
+        "name": "{symbol} erfasster Gewinn"
+      },
+      "valor_performance": {
+        "name": "{symbol} erfasste Performance"
+      },
+      "valor_annualized_performance": {
+        "name": "{symbol} annualisierte Performance"
+      },
+      "wallet_money_weighted_return": {
+        "name": "Geldgewichtete Rendite"
+      },
+      "wallet_cash_balance": {
+        "name": "Verrechnungskonto"
+      },
+      "wallet_dividends": {
+        "name": "Netto-Ausschüttungen"
+      },
+      "wallet_next_execution": {
+        "name": "Nächste Sparplanausführung"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Depot aktualisieren",
+      "description": "Erzwingt sofort eine Kursaktualisierung für das ausgewählte Depot."
+    }
+  }
+}

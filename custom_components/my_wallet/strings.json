@@ -3,12 +3,11 @@
     "step": {
       "user": {
         "title": "Create a wallet",
-        "description": "Configure a wallet with market valors valued via Yahoo Finance.",
+        "description": "Configure a wallet with market valors valued via Yahoo Finance. Dated contributions can be added after the wallet has been created.",
         "data": {
           "wallet_name": "Wallet name",
           "base_currency": "Base currency (wallet total is shown in this currency)",
-          "scan_interval": "Update interval (minutes)",
-          "invested_amount": "Invested amount (optional, in the base currency; enables profit tracking)"
+          "scan_interval": "Update interval (minutes)"
         }
       },
       "valor": {
@@ -16,7 +15,7 @@
         "description": "Add a market valor to this wallet. Use Yahoo Finance symbols, e.g. AAPL, VWAGY, BTC-USD, or an ETF like VWCE.DE.",
         "data": {
           "symbol": "Symbol (Yahoo Finance)",
-          "amount": "Amount (units held)",
+          "amount": "Opening units already held (tracked savings-plan purchases are added automatically)",
           "target_share": "Target share (%; optional — percent of the wallet this valor should hold; enables the deviation sensor)",
           "add_another": "Add another valor after this one"
         }
@@ -34,7 +33,18 @@
       "init": {
         "title": "Manage wallet",
         "menu_options": {
-          "settings": "Edit wallet settings (name, currency, interval, invested amount)",
+          "settings": "Edit wallet settings (name, currency, interval)",
+          "add_contribution": "Add a dated contribution",
+          "add_lot": "Import a historical purchase lot",
+          "edit_contribution": "Edit a contribution",
+          "remove_contribution": "Remove an execution or contribution",
+          "edit_lot": "Correct a purchase lot",
+          "add_dividend": "Add a dividend credit",
+          "edit_dividend": "Edit a dividend credit",
+          "remove_dividend": "Remove a dividend credit",
+          "add_plan": "Add a monthly savings plan",
+          "edit_plan": "Edit a savings plan",
+          "remove_plan": "Remove a savings plan",
           "add_valor": "Add a valor",
           "remove_valor": "Remove a valor",
           "edit_valor": "Edit a valor (amount, target share)"
@@ -45,15 +55,155 @@
         "data": {
           "wallet_name": "Wallet name",
           "base_currency": "Base currency",
-          "scan_interval": "Update interval (minutes)",
-          "invested_amount": "Invested amount (optional, in the base currency; set empty to disable profit tracking)"
+          "scan_interval": "Update interval (minutes)"
+        }
+      },
+      "add_contribution": {
+        "title": "Add a contribution",
+        "description": "Record money added to the wallet. The amount is in the wallet's base currency.",
+        "data": {
+          "date": "Execution date",
+          "amount": "Amount",
+          "add_another": "Add another contribution after this one"
+        }
+      },
+      "edit_contribution": {
+        "title": "Edit a contribution",
+        "data": {
+          "id": "Contribution"
+        }
+      },
+      "edit_contribution_fields": {
+        "title": "Edit a contribution",
+        "description": "Contribution or plan execution: {contribution}. Existing purchase lots remain unchanged.",
+        "data": {
+          "date": "Execution date",
+          "amount": "Amount"
+        }
+      },
+      "remove_contribution": {
+        "title": "Remove a contribution",
+        "data": {
+          "id": "Contribution to remove"
+        }
+      },
+      "edit_lot": {
+        "title": "Correct a purchase lot",
+        "data": {
+          "id": "Purchase lot"
+        }
+      },
+      "add_lot": {
+        "title": "Import a historical purchase lot",
+        "description": "Yahoo supplies the first close on or after the entered date. If no historical price exists, enter an effective price per unit in the wallet's base currency. Leave ‘already included’ enabled for purchases contained in the opening balance.",
+        "data": {
+          "symbol": "Valor",
+          "date": "Scheduled or actual purchase date",
+          "amount": "Amount invested (base currency)",
+          "unit_price": "Effective unit price in base currency (optional Yahoo fallback)",
+          "included_in_opening": "Purchased units are already included in the configured opening balance"
+        }
+      },
+      "edit_lot_fields": {
+        "title": "Correct a purchase lot",
+        "description": "Purchase lot: {lot}. Changing the amount or units recalculates its effective purchase price.",
+        "data": {
+          "date": "Actual execution date",
+          "amount": "Amount invested (base currency)",
+          "units": "Units purchased",
+          "included_in_opening": "These units are already included in the configured opening balance"
+        }
+      },
+      "add_dividend": {
+        "title": "Add a dividend credit",
+        "description": "Enter the net amount actually credited by the broker. It increases the cash balance and can be included proportionally in the next savings-plan execution.",
+        "data": {
+          "booking_date": "Booking date",
+          "value_date": "Value date (optional; used for the cash balance)",
+          "amount": "Net amount credited",
+          "symbol": "Paying valor (optional)",
+          "note": "Note (optional)"
+        }
+      },
+      "edit_dividend": {
+        "title": "Edit a dividend credit",
+        "data": {
+          "id": "Dividend credit"
+        }
+      },
+      "edit_dividend_fields": {
+        "title": "Edit a dividend credit",
+        "description": "Dividend: {dividend}",
+        "data": {
+          "booking_date": "Booking date",
+          "value_date": "Value date (optional; used for the cash balance)",
+          "amount": "Net amount credited",
+          "symbol": "Paying valor (optional)",
+          "note": "Note (optional)"
+        }
+      },
+      "remove_dividend": {
+        "title": "Remove a dividend credit",
+        "data": {
+          "id": "Dividend credit to remove"
+        }
+      },
+      "add_plan": {
+        "title": "Add a monthly savings plan",
+        "description": "For percentage allocation, enter the total monthly amount. For fixed allocation, the total is calculated from the individual amounts.",
+        "data": {
+          "name": "Plan name",
+          "enabled": "Enabled",
+          "first_date": "First scheduled execution",
+          "end_date": "Last scheduled execution (optional)",
+          "allocation_mode": "Allocation mode",
+          "amount": "Total monthly amount (required only for percentage allocation)",
+          "use_cash_balance": "Include available cash and dividends in the allocation",
+          "opening_cutoff_date": "Purchases through this date are already included in opening units (optional)"
+        }
+      },
+      "edit_plan": {
+        "title": "Edit a savings plan",
+        "data": {
+          "id": "Savings plan"
+        }
+      },
+      "edit_plan_fields": {
+        "title": "Edit a savings plan",
+        "description": "Keep the current allocation for a quick settings change, or clear the checkbox to enter all allocations again.",
+        "data": {
+          "name": "Plan name",
+          "enabled": "Enabled",
+          "first_date": "First scheduled execution",
+          "end_date": "Last scheduled execution (optional)",
+          "allocation_mode": "Allocation mode",
+          "amount": "Total monthly amount (required only for percentage allocation)",
+          "use_cash_balance": "Include available cash and dividends in the allocation",
+          "opening_cutoff_date": "Purchases through this date are already included in opening units (optional)",
+          "keep_allocations": "Keep current allocation"
+        }
+      },
+      "plan_allocation": {
+        "title": "Savings-plan allocation",
+        "description": "Current allocation total: {current_total}. Enter percentages for percentage mode or amounts in the wallet base currency for fixed mode.",
+        "data": {
+          "symbol": "Valor",
+          "value": "Share (%) or fixed amount",
+          "add_another": "Add another valor to this plan"
+        }
+      },
+      "remove_plan": {
+        "title": "Remove a savings plan",
+        "description": "Historical executions remain in the wallet.",
+        "data": {
+          "id": "Savings plan to remove"
         }
       },
       "add_valor": {
         "title": "Add a valor",
         "data": {
           "symbol": "Symbol (Yahoo Finance)",
-          "amount": "Amount (units held)",
+          "amount": "Opening units already held",
           "target_share": "Target share (%; optional — percent of the wallet this valor should hold)"
         }
       },
@@ -73,7 +223,7 @@
         "title": "Edit a valor",
         "description": "Valor: {symbol}",
         "data": {
-          "amount": "New amount (units held)",
+          "amount": "New opening balance (tracked plan purchases are added automatically)",
           "target_share": "Target share (%; clear to remove the target)"
         }
       }
@@ -82,10 +232,22 @@
       "invalid_name": "Please enter a wallet name.",
       "invalid_symbol": "Please enter a valid Yahoo Finance symbol.",
       "symbol_exists": "This symbol is already in the wallet.",
-      "target_sum_exceeded": "The sum of target shares would exceed 100%."
+      "target_sum_exceeded": "The sum of target shares would exceed 100%.",
+      "allocation_exists": "This valor is already allocated in the plan.",
+      "allocation_sum_exceeded": "The percentage allocation would exceed 100%.",
+      "invalid_plan": "The plan is incomplete. Percentage allocations must total exactly 100%.",
+      "currency_change_blocked": "The base currency cannot be changed while contributions, dividends, or savings plans exist.",
+      "historical_price_unavailable": "Yahoo has no close for this date range. Enter the effective unit price manually.",
+      "historical_fx_unavailable": "Yahoo has no historical exchange rate for this purchase. Enter an effective unit price in the wallet's base currency manually.",
+      "valor_in_use": "This valor is referenced by a purchase lot, dividend, or savings plan. Remove or edit those records first."
     },
     "abort": {
-      "no_valors": "The wallet has no valors yet."
+      "no_valors": "The wallet has no valors yet.",
+      "no_contributions": "The wallet has no contributions yet.",
+      "no_lots": "The wallet has no tracked purchase lots yet.",
+      "no_dividends": "The wallet has no dividend credits yet.",
+      "no_plans": "The wallet has no savings plans yet.",
+      "invalid_plan": "The plan cannot be saved with these allocations."
     }
   },
   "entity": {
@@ -107,6 +269,27 @@
       },
       "valor_deviation": {
         "name": "{symbol} target deviation"
+      },
+      "valor_profit": {
+        "name": "{symbol} tracked profit"
+      },
+      "valor_performance": {
+        "name": "{symbol} tracked performance"
+      },
+      "valor_annualized_performance": {
+        "name": "{symbol} annualized performance"
+      },
+      "wallet_money_weighted_return": {
+        "name": "Money-weighted return"
+      },
+      "wallet_cash_balance": {
+        "name": "Cash balance"
+      },
+      "wallet_dividends": {
+        "name": "Net dividends"
+      },
+      "wallet_next_execution": {
+        "name": "Next savings-plan execution"
       }
     }
   },

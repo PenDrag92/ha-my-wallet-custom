@@ -3,12 +3,11 @@
     "step": {
       "user": {
         "title": "Vytvořit peněženku",
-        "description": "Nakonfigurujte peněženku s tržními instrumenty oceňovanými pomocí Yahoo Finance.",
+        "description": "Nakonfigurujte peněženku s tržními instrumenty oceňovanými pomocí Yahoo Finance. Datované vklady lze přidat po vytvoření peněženky.",
         "data": {
           "wallet_name": "Název peněženky",
           "base_currency": "Základní měna (celková hodnota peněženky se zobrazuje v této měně)",
-          "scan_interval": "Interval aktualizace (minuty)",
-          "invested_amount": "Investovaná částka (volitelné, v základní měně; umožňuje sledování zisku)"
+          "scan_interval": "Interval aktualizace (minuty)"
         }
       },
       "valor": {
@@ -34,7 +33,18 @@
       "init": {
         "title": "Spravovat peněženku",
         "menu_options": {
-          "settings": "Nastavení peněženky (název, měna, interval, investovaná částka)",
+          "settings": "Nastavení peněženky (název, měna, interval)",
+          "add_contribution": "Přidat datovaný vklad",
+          "add_lot": "Importovat historickou nákupní tranši",
+          "edit_contribution": "Upravit vklad",
+          "remove_contribution": "Odebrat vklad",
+          "edit_lot": "Opravit nákupní tranši",
+          "add_dividend": "Přidat dividendu",
+          "edit_dividend": "Upravit dividendu",
+          "remove_dividend": "Odstranit dividendu",
+          "add_plan": "Přidat měsíční spořicí plán",
+          "edit_plan": "Upravit spořicí plán",
+          "remove_plan": "Odebrat spořicí plán",
           "add_valor": "Přidat instrument",
           "remove_valor": "Odebrat instrument",
           "edit_valor": "Upravit instrument (množství, cílový podíl)"
@@ -45,8 +55,148 @@
         "data": {
           "wallet_name": "Název peněženky",
           "base_currency": "Základní měna",
-          "scan_interval": "Interval aktualizace (minuty)",
-          "invested_amount": "Investovaná částka (volitelné, v základní měně; vymažte pro vypnutí sledování zisku)"
+          "scan_interval": "Interval aktualizace (minuty)"
+        }
+      },
+      "add_contribution": {
+        "title": "Přidat vklad",
+        "description": "Zaznamenejte peníze vložené do peněženky. Částka je v základní měně peněženky.",
+        "data": {
+          "date": "Datum provedení",
+          "amount": "Částka",
+          "add_another": "Poté přidat další vklad"
+        }
+      },
+      "edit_contribution": {
+        "title": "Upravit vklad",
+        "data": {
+          "id": "Vklad"
+        }
+      },
+      "edit_contribution_fields": {
+        "title": "Upravit vklad",
+        "description": "Vklad nebo provedení plánu: {contribution}. Nákupní tranše zůstanou beze změny.",
+        "data": {
+          "date": "Datum provedení",
+          "amount": "Částka"
+        }
+      },
+      "remove_contribution": {
+        "title": "Odebrat vklad",
+        "data": {
+          "id": "Vklad k odebrání"
+        }
+      },
+      "edit_lot": {
+        "title": "Opravit nákupní tranši",
+        "data": {
+          "id": "Nákupní tranše"
+        }
+      },
+      "add_lot": {
+        "title": "Importovat historickou nákupní tranši",
+        "description": "Yahoo použije první závěrečnou cenu v zadaný den nebo po něm. Pokud cena chybí, zadejte efektivní cenu ručně.",
+        "data": {
+          "symbol": "Instrument",
+          "date": "Datum nákupu",
+          "amount": "Investovaná částka",
+          "unit_price": "Efektivní cena jednotky (volitelné)",
+          "included_in_opening": "Jednotky jsou již zahrnuty v počátečním zůstatku"
+        }
+      },
+      "edit_lot_fields": {
+        "title": "Opravit nákupní tranši",
+        "description": "Nákupní tranše: {lot}. Změna částky nebo jednotek přepočítá efektivní nákupní cenu.",
+        "data": {
+          "date": "Skutečné datum provedení",
+          "amount": "Investovaná částka (základní měna)",
+          "units": "Nakoupené jednotky",
+          "included_in_opening": "Tyto jednotky jsou již zahrnuty v počátečním zůstatku"
+        }
+      },
+      "add_dividend": {
+        "title": "Přidat dividendu",
+        "description": "Zadejte čistou částku skutečně připsanou brokerem. Zvýší hotovost a lze ji poměrně zahrnout do další investice spořicího plánu.",
+        "data": {
+          "booking_date": "Datum zaúčtování",
+          "value_date": "Datum valuty (volitelné)",
+          "amount": "Připsaná čistá částka",
+          "symbol": "Vyplácející instrument (volitelné)",
+          "note": "Poznámka (volitelné)"
+        }
+      },
+      "edit_dividend": {
+        "title": "Upravit dividendu",
+        "data": {
+          "id": "Dividenda"
+        }
+      },
+      "edit_dividend_fields": {
+        "title": "Upravit dividendu",
+        "description": "Dividenda: {dividend}",
+        "data": {
+          "booking_date": "Datum zaúčtování",
+          "value_date": "Datum valuty (volitelné)",
+          "amount": "Připsaná čistá částka",
+          "symbol": "Vyplácející instrument (volitelné)",
+          "note": "Poznámka (volitelné)"
+        }
+      },
+      "remove_dividend": {
+        "title": "Odstranit dividendu",
+        "data": {
+          "id": "Dividenda k odstranění"
+        }
+      },
+      "add_plan": {
+        "title": "Přidat měsíční spořicí plán",
+        "description": "Pro procentuální rozdělení zadejte celkovou měsíční částku. U pevných částek se celková částka vypočítá z jednotlivých položek.",
+        "data": {
+          "name": "Název plánu",
+          "enabled": "Aktivní",
+          "first_date": "První plánované provedení",
+          "end_date": "Poslední plánované provedení (volitelné)",
+          "allocation_mode": "Způsob rozdělení",
+          "amount": "Celková měsíční částka (jen pro procentuální rozdělení)",
+          "use_cash_balance": "Zahrnout hotovost a dividendy do rozdělení",
+          "opening_cutoff_date": "Nákupy do tohoto data jsou již v počátečních jednotkách (volitelné)"
+        }
+      },
+      "edit_plan": {
+        "title": "Upravit spořicí plán",
+        "data": {
+          "id": "Spořicí plán"
+        }
+      },
+      "edit_plan_fields": {
+        "title": "Upravit spořicí plán",
+        "description": "Ponechte současné rozdělení nebo zrušte zaškrtnutí a zadejte všechny položky znovu.",
+        "data": {
+          "name": "Název plánu",
+          "enabled": "Aktivní",
+          "first_date": "První plánované provedení",
+          "end_date": "Poslední plánované provedení (volitelné)",
+          "allocation_mode": "Způsob rozdělení",
+          "amount": "Celková měsíční částka (jen pro procentuální rozdělení)",
+          "use_cash_balance": "Zahrnout hotovost a dividendy do rozdělení",
+          "opening_cutoff_date": "Nákupy do tohoto data jsou již v počátečních jednotkách (volitelné)",
+          "keep_allocations": "Ponechat současné rozdělení"
+        }
+      },
+      "plan_allocation": {
+        "title": "Rozdělení spořicího plánu",
+        "description": "Aktuální součet rozdělení: {current_total}.",
+        "data": {
+          "symbol": "Instrument",
+          "value": "Podíl (%) nebo pevná částka",
+          "add_another": "Přidat další instrument"
+        }
+      },
+      "remove_plan": {
+        "title": "Odebrat spořicí plán",
+        "description": "Historická provedení zůstanou v peněžence.",
+        "data": {
+          "id": "Spořicí plán k odebrání"
         }
       },
       "add_valor": {
@@ -82,10 +232,22 @@
       "invalid_name": "Zadejte název peněženky.",
       "invalid_symbol": "Zadejte platný symbol Yahoo Finance.",
       "symbol_exists": "Tento symbol se již v peněžence nachází.",
-      "target_sum_exceeded": "Součet cílových podílů by překročil 100 %."
+      "target_sum_exceeded": "Součet cílových podílů by překročil 100 %.",
+      "allocation_exists": "Tento instrument je již v plánu rozdělen.",
+      "allocation_sum_exceeded": "Procentuální rozdělení by překročilo 100 %.",
+      "invalid_plan": "Plán není úplný. Procentuální rozdělení musí být přesně 100 %.",
+      "currency_change_blocked": "Základní měnu nelze změnit, dokud existují vklady, dividendy nebo spořicí plány.",
+      "historical_price_unavailable": "Yahoo pro toto období nemá závěrečnou cenu. Zadejte cenu ručně.",
+      "historical_fx_unavailable": "Yahoo nemá historický směnný kurz. Zadejte cenu v základní měně ručně.",
+      "valor_in_use": "Tento instrument používá nákupní tranše, dividenda nebo spořicí plán. Nejprve tyto záznamy odstraňte nebo upravte."
     },
     "abort": {
-      "no_valors": "Peněženka zatím neobsahuje žádné instrumenty."
+      "no_valors": "Peněženka zatím neobsahuje žádné instrumenty.",
+      "no_contributions": "Peněženka zatím neobsahuje žádné vklady.",
+      "no_lots": "Peněženka zatím neobsahuje žádné nákupní tranše.",
+      "no_dividends": "Peněženka zatím neobsahuje žádné dividendy.",
+      "no_plans": "Peněženka zatím neobsahuje žádné spořicí plány.",
+      "invalid_plan": "Plán nelze s tímto rozdělením uložit."
     }
   },
   "entity": {
@@ -107,6 +269,27 @@
       },
       "valor_deviation": {
         "name": "{symbol} odchylka od cíle"
+      },
+      "valor_profit": {
+        "name": "{symbol} sledovaný zisk"
+      },
+      "valor_performance": {
+        "name": "{symbol} sledovaná výkonnost"
+      },
+      "valor_annualized_performance": {
+        "name": "{symbol} anualizovaná výkonnost"
+      },
+      "wallet_money_weighted_return": {
+        "name": "Peněžně vážený výnos"
+      },
+      "wallet_cash_balance": {
+        "name": "Hotovost"
+      },
+      "wallet_dividends": {
+        "name": "Čisté dividendy"
+      },
+      "wallet_next_execution": {
+        "name": "Další provedení spořicího plánu"
       }
     }
   },

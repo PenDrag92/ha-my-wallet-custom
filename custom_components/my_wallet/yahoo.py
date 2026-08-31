@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
+from datetime import time as dt_time
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import aiohttp
 
@@ -40,6 +44,8 @@ class Quote:
     currency: str
     previous_close: float | None = None
     short_name: str | None = None
+    market_date: date | None = None
+    market_closed: bool = False
 
     @property
     def day_change(self) -> float | None:
@@ -54,6 +60,16 @@ class Quote:
         if not self.previous_close:
             return None
         return (self.price - self.previous_close) / self.previous_close * 100
+
+
+@dataclass(frozen=True)
+class HistoricalQuote:
+    """A confirmed Yahoo daily close."""
+
+    symbol: str
+    date: date
+    close: float
+    currency: str
 
 
 def _to_float(value: Any) -> float | None:
@@ -71,6 +87,15 @@ def fx_symbol(from_currency: str, to_currency: str) -> str:
     return f"{from_currency}{to_currency}=X"
 
 
+def _timestamp_date(timestamp: float, timezone_name: str | None) -> date:
+    """Convert a Yahoo timestamp in the exchange's timezone."""
+    try:
+        timezone = ZoneInfo(timezone_name) if timezone_name else UTC
+    except ZoneInfoNotFoundError:
+        timezone = UTC
+    return datetime.fromtimestamp(timestamp, timezone).date()
+
+
 async def fetch_quote(session: aiohttp.ClientSession, symbol: str) -> Quote:
     """Fetch a single quote from the chart endpoint.
 
@@ -79,7 +104,10 @@ async def fetch_quote(session: aiohttp.ClientSession, symbol: str) -> Quote:
     url = CHART_URL.format(symbol=symbol)
     try:
         async with session.get(
-            url, params={"range": "1d", "interval": "1d"}, timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+            url,
+            params={"range": "1d", "interval": "1d"},
+            headers=HEADERS,
+            timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
         ) as resp:
             if resp.status != 200:
                 raise YahooError(f"HTTP {resp.status} for {symbol}")
@@ -98,13 +126,108 @@ async def fetch_quote(session: aiohttp.ClientSession, symbol: str) -> Quote:
     if price is None:
         raise YahooError(f"No price in payload for {symbol}")
 
+    market_timestamp = _to_float(meta.get("regularMarketTime"))
+    market_date = (
+        _timestamp_date(market_timestamp, meta.get("exchangeTimezoneName"))
+        if market_timestamp is not None
+        else None
+    )
+    regular_end = _to_float(
+        meta.get("currentTradingPeriod", {}).get("regular", {}).get("end")
+    )
+    market_closed = bool(
+        market_date is not None
+        and (
+            market_date < datetime.now(UTC).date()
+            or (regular_end is not None and time.time() >= regular_end)
+        )
+    )
+
     return Quote(
         symbol=symbol,
         price=float(price),
         currency=str(currency).upper(),
-        previous_close=_to_float(meta.get("chartPreviousClose") or meta.get("previousClose")),
+        previous_close=_to_float(
+            meta.get("chartPreviousClose") or meta.get("previousClose")
+        ),
         short_name=meta.get("shortName") or meta.get("longName"),
+        market_date=market_date,
+        market_closed=market_closed,
     )
+
+
+async def fetch_history(
+    session: aiohttp.ClientSession,
+    symbol: str,
+    start_date: date,
+    end_date: date,
+) -> list[HistoricalQuote]:
+    """Fetch confirmed daily closes in an inclusive date range."""
+    if end_date < start_date:
+        return []
+    period1 = int(datetime.combine(start_date, dt_time.min, tzinfo=UTC).timestamp())
+    period2 = int(
+        datetime.combine(
+            end_date + timedelta(days=1), dt_time.min, tzinfo=UTC
+        ).timestamp()
+    )
+    url = CHART_URL.format(symbol=symbol)
+    try:
+        async with session.get(
+            url,
+            params={
+                "period1": period1,
+                "period2": period2,
+                "interval": "1d",
+                "events": "history",
+            },
+            headers=HEADERS,
+            timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
+        ) as resp:
+            if resp.status != 200:
+                raise YahooError(f"HTTP {resp.status} for history of {symbol}")
+            payload: dict[str, Any] = await resp.json()
+    except (TimeoutError, aiohttp.ClientError) as err:
+        raise YahooError(f"History request failed for {symbol}: {err}") from err
+
+    try:
+        result = payload["chart"]["result"][0]
+        meta = result["meta"]
+        currency = str(meta["currency"]).upper()
+        timezone_name = meta.get("exchangeTimezoneName")
+        timestamps = result.get("timestamp") or []
+        closes = result["indicators"]["quote"][0].get("close") or []
+    except (KeyError, IndexError, TypeError) as err:
+        raise YahooError(f"Unexpected history payload for {symbol}: {err}") from err
+
+    history: list[HistoricalQuote] = []
+    for timestamp, raw_close in zip(timestamps, closes, strict=False):
+        close = _to_float(raw_close)
+        if close is None or close <= 0:
+            continue
+        quote_date = _timestamp_date(timestamp, timezone_name)
+        if start_date <= quote_date <= end_date:
+            history.append(HistoricalQuote(symbol, quote_date, close, currency))
+    return sorted(history, key=lambda item: item.date)
+
+
+async def fetch_histories(
+    session: aiohttp.ClientSession,
+    symbols: list[str],
+    start_date: date,
+    end_date: date,
+) -> dict[str, list[HistoricalQuote]]:
+    """Fetch daily histories in parallel without failing the whole wallet."""
+
+    async def _safe(symbol: str) -> list[HistoricalQuote]:
+        try:
+            return await fetch_history(session, symbol, start_date, end_date)
+        except YahooError as err:
+            _LOGGER.warning("Yahoo Finance history failed: %s", err)
+            return []
+
+    results = await asyncio.gather(*(_safe(symbol) for symbol in symbols))
+    return dict(zip(symbols, results, strict=True))
 
 
 async def fetch_quotes(
