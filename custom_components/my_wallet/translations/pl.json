@@ -45,6 +45,7 @@
           "add_plan": "Dodaj miesięczny plan oszczędnościowy",
           "edit_plan": "Edytuj plan oszczędnościowy",
           "remove_plan": "Usuń plan oszczędnościowy",
+          "restore_execution": "Przywróć pominiętą realizację",
           "add_valor": "Dodaj walor",
           "remove_valor": "Usuń walor",
           "edit_valor": "Edytuj walor (ilość, udział docelowy)"
@@ -95,13 +96,14 @@
       },
       "add_lot": {
         "title": "Importuj historyczną transzę zakupu",
-        "description": "Yahoo użyje pierwszego kursu zamknięcia w podanym dniu lub później. Jeśli kursu brak, podaj efektywną cenę ręcznie.",
+        "description": "Yahoo użyje pierwszego potwierdzonego kursu zamknięcia w podanym dniu lub później. Import tworzy wpłatę w tej samej kwocie, chyba że wybierzesz wcześniej zapisaną wpłatę.",
         "data": {
           "symbol": "Walor",
           "date": "Data zakupu",
           "amount": "Zainwestowana kwota",
           "unit_price": "Efektywna cena jednostki (opcjonalnie)",
-          "included_in_opening": "Jednostki są już uwzględnione w saldzie początkowym"
+          "included_in_opening": "Jednostki są już uwzględnione w saldzie początkowym",
+          "funding_contribution": "Istniejąca wpłata finansująca (opcjonalnie)"
         }
       },
       "edit_lot_fields": {
@@ -199,6 +201,13 @@
           "id": "Plan oszczędnościowy do usunięcia"
         }
       },
+      "restore_execution": {
+        "title": "Przywróć pominiętą realizację",
+        "description": "Miesięczna realizacja zostanie utworzona przy następnym odświeżeniu, gdy będą dostępne potwierdzone kursy zamknięcia.",
+        "data": {
+          "execution": "Pominięta realizacja"
+        }
+      },
       "add_valor": {
         "title": "Dodaj walor",
         "data": {
@@ -239,7 +248,8 @@
       "currency_change_blocked": "Nie można zmienić waluty bazowej, dopóki istnieją wpłaty, dywidendy lub plany oszczędnościowe.",
       "historical_price_unavailable": "Yahoo nie ma kursu zamknięcia dla tego okresu. Podaj cenę ręcznie.",
       "historical_fx_unavailable": "Yahoo nie ma historycznego kursu wymiany. Podaj cenę w walucie bazowej ręcznie.",
-      "valor_in_use": "Ten walor jest używany przez transzę zakupu, dywidendę lub plan. Najpierw usuń albo edytuj te wpisy."
+      "valor_in_use": "Ten walor jest używany przez transzę zakupu, dywidendę lub plan. Najpierw usuń albo edytuj te wpisy.",
+      "included_units_exceeded": "Transze oznaczone jako uwzględnione przekraczają początkową liczbę jednostek. Zwiększ saldo początkowe lub wyłącz to oznaczenie."
     },
     "abort": {
       "no_valors": "Portfel nie ma jeszcze żadnych walorów.",
@@ -247,7 +257,16 @@
       "no_lots": "Portfel nie ma jeszcze żadnych śledzonych transz zakupu.",
       "no_dividends": "Portfel nie ma jeszcze żadnych dywidend.",
       "no_plans": "Portfel nie ma jeszcze żadnych planów oszczędnościowych.",
+      "no_skipped_executions": "Portfel nie ma pominiętych realizacji planu oszczędnościowego.",
       "invalid_plan": "Nie można zapisać planu z takim podziałem."
+    }
+  },
+  "selector": {
+    "allocation_mode": {
+      "options": {
+        "percentage": "Procentowo",
+        "fixed": "Stałe kwoty"
+      }
     }
   },
   "entity": {

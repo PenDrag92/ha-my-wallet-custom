@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import date
+from math import isfinite
 from typing import Any
 from uuid import uuid4
 
@@ -22,6 +23,9 @@ from .const import (
     DIVIDEND_VALUE_DATE,
     LOT_AMOUNT,
     LOT_DATE,
+    LOT_ID,
+    LOT_INCLUDED_IN_OPENING,
+    LOT_UNITS,
 )
 from .contributions import contributions_from_data, normalize_date
 
@@ -37,7 +41,7 @@ def make_dividend(
 ) -> dict[str, Any]:
     """Create one net dividend credit in the wallet's base currency."""
     normalized_amount = float(amount)
-    if normalized_amount <= 0:
+    if not isfinite(normalized_amount) or normalized_amount <= 0:
         raise ValueError("Dividend amount must be greater than zero")
 
     item: dict[str, Any] = {
@@ -130,3 +134,69 @@ def cash_balance(
     # Avoid display artefacts such as 0.00999999999999801 without discarding
     # fractional currency precision used by some brokers.
     return round(balance, 10)
+
+
+def reinvestable_cash(
+    data: Mapping[str, Any],
+    *,
+    execution_through: date,
+    today: date,
+    reserved: float = 0.0,
+) -> float:
+    """Return cash available both historically and in the current ledger.
+
+    The current-balance cap prevents a retroactive execution from reusing cash
+    that a later, already stored execution has consumed. ``reserved`` prevents
+    several executions prepared in the same refresh from sharing the same cash.
+    """
+    return max(
+        0.0,
+        min(
+            cash_balance(data, through=execution_through),
+            cash_balance(data, through=today),
+        )
+        - reserved,
+    )
+
+
+def attributed_dividend_flows(
+    data: Mapping[str, Any],
+    *,
+    symbol: str,
+    opening_units: float,
+    through: date,
+) -> dict[str, list[tuple[date, float]]]:
+    """Allocate symbol dividends to tracked lots without over-attribution.
+
+    Units from the configured opening position that are not represented by an
+    included lot remain in the denominator. Their dividend share is therefore
+    intentionally left unattributed instead of inflating tracked performance.
+    """
+    from .contributions import lots_for_symbol
+
+    lots = lots_for_symbol(data, symbol, through=through)
+    flows = {str(lot[LOT_ID]): [] for lot in lots}
+    included_units = sum(
+        float(lot[LOT_UNITS]) for lot in lots if lot[LOT_INCLUDED_IN_OPENING]
+    )
+    untracked_opening = max(0.0, float(opening_units) - included_units)
+    for dividend in dividends_from_data(data):
+        if dividend.get(DIVIDEND_SYMBOL) != symbol:
+            continue
+        effective = date.fromisoformat(
+            dividend.get(DIVIDEND_VALUE_DATE) or dividend[DIVIDEND_BOOKING_DATE]
+        )
+        if effective > through:
+            continue
+        eligible = [
+            lot for lot in lots if date.fromisoformat(lot[LOT_DATE]) <= effective
+        ]
+        denominator = untracked_opening + sum(float(lot[LOT_UNITS]) for lot in eligible)
+        if denominator <= 0:
+            continue
+        for lot in eligible:
+            allocated = (
+                float(dividend[DIVIDEND_AMOUNT]) * float(lot[LOT_UNITS]) / denominator
+            )
+            flows[str(lot[LOT_ID])].append((effective, allocated))
+    return flows

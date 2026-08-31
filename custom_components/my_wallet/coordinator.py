@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
 
@@ -42,7 +41,8 @@ from .contributions import (
     make_lot,
     normalize_contributions,
 )
-from .dividends import cash_balance
+from .dividends import cash_balance, reinvestable_cash
+from .models import ValorData, WalletData
 from .plans import allocation_amounts, due_dates, next_scheduled_date, normalize_plan
 from .yahoo import (
     HistoricalQuote,
@@ -54,63 +54,6 @@ from .yahoo import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-
-@dataclass
-class ValorData:
-    """Computed state for a single valor inside the wallet."""
-
-    symbol: str
-    amount: float
-    opening_amount: float
-    quote: Quote | None = None
-    fx_rate: float | None = None
-    error: str | None = None
-    target_share: float | None = None
-
-    @property
-    def available(self) -> bool:
-        return self.quote is not None and self.fx_rate is not None
-
-    @property
-    def value(self) -> float | None:
-        """Valor value converted to the wallet base currency."""
-        if not self.available:
-            return None
-        return self.amount * self.quote.price * self.fx_rate
-
-    @property
-    def has_target(self) -> bool:
-        return self.target_share is not None and self.target_share > 0
-
-
-@dataclass
-class WalletData:
-    """Result of one coordinator update."""
-
-    valors: dict[str, ValorData] = field(default_factory=dict)
-    pending_executions: list[dict[str, Any]] = field(default_factory=list)
-    cash_balance: float = 0.0
-
-    @property
-    def securities_total(self) -> float | None:
-        """Total market value of available securities."""
-        values = [
-            valor.value for valor in self.valors.values() if valor.value is not None
-        ]
-        return sum(values) if values else None
-
-    @property
-    def total(self) -> float | None:
-        """Securities plus the broker cash account in the base currency."""
-        securities = self.securities_total
-        if securities is None:
-            return self.cash_balance if self.cash_balance else None
-        return securities + self.cash_balance
-
-    @property
-    def all_available(self) -> bool:
-        return all(valor.available for valor in self.valors.values())
 
 
 class WalletCoordinator(DataUpdateCoordinator[WalletData]):
@@ -131,6 +74,7 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
             _LOGGER,
             name=f"{DOMAIN}_{entry.data.get(CONF_NAME, entry.title)}",
             update_interval=timedelta(minutes=interval),
+            config_entry=entry,
         )
 
     @property
@@ -170,9 +114,14 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
         today: date,
     ) -> list[dict[str, Any]]:
         """Book every due plan for which a confirmed Yahoo close is available."""
-        contributions = contributions_from_data(self.entry.data)
+        entry_data_snapshot = self.entry.data
+        contributions = contributions_from_data(entry_data_snapshot)
         due: list[tuple[dict[str, Any], date]] = []
-        for plan in self.savings_plans:
+        plans = [
+            normalize_plan(plan)
+            for plan in entry_data_snapshot.get(CONF_SAVINGS_PLANS, [])
+        ]
+        for plan in plans:
             due.extend(
                 (plan, scheduled) for scheduled in due_dates(plan, contributions, today)
             )
@@ -231,6 +180,16 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
                 for item in pending
             )
         ]
+        ready.sort(
+            key=lambda item: (
+                max(
+                    selected[(item[0][PLAN_ID], f"{item[1]}:{symbol}")].date
+                    for symbol in allocation_amounts(item[0])
+                ),
+                item[1],
+                item[0][PLAN_ID],
+            )
+        )
         if not ready:
             return pending
 
@@ -257,17 +216,23 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
             )
 
         booked = False
+        reserved_cash = 0.0
         for plan, scheduled in ready:
             lots: list[dict[str, Any]] = []
             missing_fx = False
             available_amount: float | None = None
             if plan[PLAN_USE_CASH_BALANCE]:
+                execution_through = max(
+                    selected[(plan[PLAN_ID], f"{scheduled}:{symbol}")].date
+                    for symbol in allocation_amounts(plan)
+                )
                 available_amount = float(plan[PLAN_AMOUNT]) + max(
                     0.0,
-                    cash_balance(
-                        self.entry.data,
-                        through=scheduled,
-                        contributions=contributions,
+                    reinvestable_cash(
+                        entry_data_snapshot,
+                        execution_through=execution_through,
+                        today=today,
+                        reserved=reserved_cash,
                     ),
                 )
             allocated_amounts = allocation_amounts(
@@ -335,9 +300,18 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
                     scheduled_date=scheduled,
                 )
             )
+            reserved_cash += max(
+                0.0, sum(allocated_amounts.values()) - float(plan[PLAN_AMOUNT])
+            )
             booked = True
 
         if booked:
+            if self.entry.data is not entry_data_snapshot:
+                _LOGGER.info(
+                    "Deferred savings-plan booking for %s because its data changed",
+                    self.name,
+                )
+                return pending
             data = dict(self.entry.data)
             data[CONF_CONTRIBUTIONS] = normalize_contributions(contributions)
             self.hass.config_entries.async_update_entry(self.entry, data=data)
@@ -346,8 +320,9 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
 
     async def _async_update_data(self) -> WalletData:
         valors = self.valors
+        today = dt_util.now().date()
         if not valors:
-            return WalletData()
+            return WalletData(cash_balance=cash_balance(self.entry.data, through=today))
 
         session = async_get_clientsession(self.hass)
         symbols = [valor[VALOR_SYMBOL] for valor in valors]
@@ -356,7 +331,6 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
         except aiohttp.ClientError as err:  # pragma: no cover - defensive
             raise UpdateFailed(f"Yahoo Finance request failed: {err}") from err
 
-        today = dt_util.now().date()
         pending = await self._async_book_due_plans(session, quotes, today)
 
         pairs: set[tuple[str, str]] = {
@@ -373,7 +347,9 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
         for valor in valors:
             symbol = valor[VALOR_SYMBOL]
             opening_amount = float(valor[VALOR_AMOUNT])
-            amount = opening_amount + additional_units(self.entry.data, symbol)
+            amount = opening_amount + additional_units(
+                self.entry.data, symbol, through=today
+            )
             target = valor.get(VALOR_TARGET_SHARE)
             target = float(target) if target is not None and float(target) > 0 else None
             quote = quotes.get(symbol)

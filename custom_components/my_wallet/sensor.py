@@ -91,6 +91,7 @@ from .const import (
     PLAN_ID,
     PLAN_NAME,
     PLAN_OPENING_CUTOFF_DATE,
+    PLAN_SKIPPED_PERIODS,
     PLAN_USE_CASH_BALANCE,
     SERVICE_REFRESH,
     VALOR_SYMBOL,
@@ -103,15 +104,20 @@ from .contributions import (
     money_weighted_return,
     xirr,
 )
-from .coordinator import ValorData, WalletCoordinator, WalletData
-from .dividends import dividend_total, dividends_from_data
-from .plans import next_scheduled_date, normalize_plan
+from .coordinator import WalletCoordinator
+from .dividends import (
+    attributed_dividend_flows,
+    dividend_total,
+    dividends_from_data,
+)
+from .models import ValorData, WalletData
+from .plans import next_due_date, normalize_plan
 
 _REFRESH_SCHEMA: dict[str, Any] = {}
 
 
 def _invested_amount(entry: ConfigEntry) -> float | None:
-    return invested_total(entry.data)
+    return invested_total(entry.data, through=dt_util.now().date())
 
 
 def _contribution_attributes(entry: ConfigEntry) -> dict[str, Any]:
@@ -187,31 +193,13 @@ def _lot_rows(
         return []
     current_base_price = valor.quote.price * valor.fx_rate
     rows: list[dict[str, Any]] = []
-    lots = lots_for_symbol(entry.data, valor.symbol)
-    dividend_flows: dict[str, list[tuple[date, float]]] = {
-        lot[LOT_ID]: [] for lot in lots
-    }
-    for dividend in dividends_from_data(entry.data):
-        if dividend.get(DIVIDEND_SYMBOL) != valor.symbol:
-            continue
-        effective_date = date.fromisoformat(
-            dividend.get(DIVIDEND_VALUE_DATE) or dividend[DIVIDEND_BOOKING_DATE]
-        )
-        if effective_date > as_of:
-            continue
-        eligible = [
-            lot for lot in lots if date.fromisoformat(lot[LOT_DATE]) <= effective_date
-        ]
-        eligible_units = sum(float(lot[LOT_UNITS]) for lot in eligible)
-        if not eligible_units:
-            continue
-        for lot in eligible:
-            share = (
-                float(dividend[DIVIDEND_AMOUNT])
-                * float(lot[LOT_UNITS])
-                / eligible_units
-            )
-            dividend_flows[lot[LOT_ID]].append((effective_date, share))
+    lots = lots_for_symbol(entry.data, valor.symbol, through=as_of)
+    dividend_flows = attributed_dividend_flows(
+        entry.data,
+        symbol=valor.symbol,
+        opening_units=valor.opening_amount,
+        through=as_of,
+    )
 
     for lot in lots:
         income_flows = dividend_flows[lot[LOT_ID]]
@@ -242,6 +230,10 @@ def _lot_rows(
                 "age_days": int(metrics["age_days"]),
                 LOT_INCLUDED_IN_OPENING: lot[LOT_INCLUDED_IN_OPENING],
                 LOT_ESTIMATED: lot[LOT_ESTIMATED],
+                "_raw_amount": float(lot[LOT_AMOUNT]),
+                "_raw_value": float(metrics["current_value"]),
+                "_raw_income": income,
+                "_income_flows": income_flows,
             }
         )
     return sorted(rows, key=lambda item: item[LOT_DATE])
@@ -250,14 +242,22 @@ def _lot_rows(
 def _tracked_totals(
     rows: list[dict[str, Any]], dividends: float = 0.0
 ) -> tuple[float, float, float]:
-    invested = sum(row[LOT_AMOUNT] for row in rows)
-    value = sum(row["current_value"] for row in rows)
+    invested = sum(row.get("_raw_amount", row[LOT_AMOUNT]) for row in rows)
+    value = sum(row.get("_raw_value", row["current_value"]) for row in rows)
     return invested, value, value + dividends - invested
 
 
 def _tracked_dividend_total(rows: list[dict[str, Any]]) -> float:
     """Return dividends attributed to the tracked lots in display rows."""
-    return sum(float(row[ATTR_DIVIDEND_TOTAL]) for row in rows)
+    return sum(float(row.get("_raw_income", row[ATTR_DIVIDEND_TOTAL])) for row in rows)
+
+
+def _public_lot_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Hide internal full-precision fields from Home Assistant attributes."""
+    return [
+        {key: value for key, value in row.items() if not key.startswith("_")}
+        for row in rows
+    ]
 
 
 async def async_setup_entry(
@@ -443,7 +443,7 @@ class ValorDeviationSensor(WalletBaseSensor):
     def native_value(self) -> float | None:
         valor = self.coordinator.data.valors.get(self._symbol)
         total = self.coordinator.data.total
-        if not valor or not valor.has_target or not valor.value or not total:
+        if not valor or not valor.has_target or valor.value is None or not total:
             return None
         return round(valor.value / total * 100 - valor.target_share, 2)
 
@@ -507,7 +507,7 @@ class ValorTrackedBaseSensor(WalletBaseSensor):
             ATTR_TRACKED_VALUE: round(value, 2),
             ATTR_PROFIT: round(profit, 2),
             ATTR_DIVIDEND_TOTAL: round(dividends, 2),
-            ATTR_LOTS: rows,
+            ATTR_LOTS: _public_lot_rows(rows),
         }
 
 
@@ -571,32 +571,12 @@ class ValorAnnualizedPerformanceSensor(ValorTrackedBaseSensor):
         if not rows:
             return None
         today = dt_util.now().date()
-        lot_dates = [date.fromisoformat(row[LOT_DATE]) for row in rows]
         flows = [
-            (date.fromisoformat(row[LOT_DATE]), -float(row[LOT_AMOUNT])) for row in rows
+            (date.fromisoformat(row[LOT_DATE]), -float(row["_raw_amount"]))
+            for row in rows
         ]
-        flows.extend(
-            (
-                date.fromisoformat(
-                    item.get(DIVIDEND_VALUE_DATE) or item[DIVIDEND_BOOKING_DATE]
-                ),
-                float(item[DIVIDEND_AMOUNT]),
-            )
-            for item in dividends_from_data(self._entry.data)
-            if item.get(DIVIDEND_SYMBOL) == self._symbol
-            and date.fromisoformat(
-                item.get(DIVIDEND_VALUE_DATE) or item[DIVIDEND_BOOKING_DATE]
-            )
-            <= today
-            and any(
-                lot_date
-                <= date.fromisoformat(
-                    item.get(DIVIDEND_VALUE_DATE) or item[DIVIDEND_BOOKING_DATE]
-                )
-                for lot_date in lot_dates
-            )
-        )
-        current_value = sum(row["current_value"] for row in rows)
+        flows.extend(flow for row in rows for flow in row["_income_flows"])
+        current_value = sum(float(row["_raw_value"]) for row in rows)
         result = xirr([*flows, (today, current_value)])
         return round(result * 100, 2) if result is not None else None
 
@@ -613,6 +593,10 @@ class WalletTotalSensor(WalletBaseSensor):
     def native_value(self) -> float | None:
         total = self.coordinator.data.total
         return round(total, 2) if total is not None else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.data.total is not None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -854,7 +838,9 @@ class WalletNextExecutionSensor(CoordinatorEntity[WalletCoordinator], SensorEnti
             return min(date.fromisoformat(item["scheduled_date"]) for item in pending)
         today = dt_util.now().date()
         dates = [
-            next_scheduled_date(normalize_plan(plan), today)
+            next_due_date(
+                normalize_plan(plan), contributions_from_data(self._entry.data), today
+            )
             for plan in self._entry.data.get(CONF_SAVINGS_PLANS, [])
         ]
         dates = [item for item in dates if item is not None]
@@ -893,9 +879,16 @@ class WalletNextExecutionSensor(CoordinatorEntity[WalletCoordinator], SensorEnti
                     ],
                     PLAN_USE_CASH_BALANCE: plan[PLAN_USE_CASH_BALANCE],
                     PLAN_OPENING_CUTOFF_DATE: plan[PLAN_OPENING_CUTOFF_DATE],
+                    PLAN_SKIPPED_PERIODS: plan[PLAN_SKIPPED_PERIODS],
                     ATTR_NEXT_EXECUTION_DATE: (
                         next_date.isoformat()
-                        if (next_date := next_scheduled_date(plan, today))
+                        if (
+                            next_date := next_due_date(
+                                plan,
+                                contributions_from_data(self._entry.data),
+                                today,
+                            )
+                        )
                         else None
                     ),
                 }

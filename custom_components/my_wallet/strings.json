@@ -45,6 +45,7 @@
           "add_plan": "Add a monthly savings plan",
           "edit_plan": "Edit a savings plan",
           "remove_plan": "Remove a savings plan",
+          "restore_execution": "Restore a skipped execution",
           "add_valor": "Add a valor",
           "remove_valor": "Remove a valor",
           "edit_valor": "Edit a valor (amount, target share)"
@@ -95,13 +96,14 @@
       },
       "add_lot": {
         "title": "Import a historical purchase lot",
-        "description": "Yahoo supplies the first close on or after the entered date. If no historical price exists, enter an effective price per unit in the wallet's base currency. Leave ‘already included’ enabled for purchases contained in the opening balance.",
+        "description": "Yahoo supplies the first confirmed close on or after the entered date. Leave ‘already included’ enabled for purchases contained in the opening balance. Importing creates an equal external contribution unless you select one that you already recorded.",
         "data": {
           "symbol": "Valor",
           "date": "Scheduled or actual purchase date",
           "amount": "Amount invested (base currency)",
           "unit_price": "Effective unit price in base currency (optional Yahoo fallback)",
-          "included_in_opening": "Purchased units are already included in the configured opening balance"
+          "included_in_opening": "Purchased units are already included in the configured opening balance",
+          "funding_contribution": "Existing funding contribution (optional)"
         }
       },
       "edit_lot_fields": {
@@ -199,6 +201,13 @@
           "id": "Savings plan to remove"
         }
       },
+      "restore_execution": {
+        "title": "Restore a skipped execution",
+        "description": "The monthly execution will be created on the next refresh once confirmed closing prices are available.",
+        "data": {
+          "execution": "Skipped execution"
+        }
+      },
       "add_valor": {
         "title": "Add a valor",
         "data": {
@@ -239,7 +248,8 @@
       "currency_change_blocked": "The base currency cannot be changed while contributions, dividends, or savings plans exist.",
       "historical_price_unavailable": "Yahoo has no close for this date range. Enter the effective unit price manually.",
       "historical_fx_unavailable": "Yahoo has no historical exchange rate for this purchase. Enter an effective unit price in the wallet's base currency manually.",
-      "valor_in_use": "This valor is referenced by a purchase lot, dividend, or savings plan. Remove or edit those records first."
+      "valor_in_use": "This valor is referenced by a purchase lot, dividend, or savings plan. Remove or edit those records first.",
+      "included_units_exceeded": "Lots marked as included exceed this valor's configured opening units. Increase the opening units or clear the included checkbox."
     },
     "abort": {
       "no_valors": "The wallet has no valors yet.",
@@ -247,7 +257,16 @@
       "no_lots": "The wallet has no tracked purchase lots yet.",
       "no_dividends": "The wallet has no dividend credits yet.",
       "no_plans": "The wallet has no savings plans yet.",
+      "no_skipped_executions": "The wallet has no skipped savings-plan executions.",
       "invalid_plan": "The plan cannot be saved with these allocations."
+    }
+  },
+  "selector": {
+    "allocation_mode": {
+      "options": {
+        "percentage": "Percentage",
+        "fixed": "Fixed amounts"
+      }
     }
   },
   "entity": {

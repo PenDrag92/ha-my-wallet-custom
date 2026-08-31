@@ -1,7 +1,5 @@
 # My Wallet for Home Assistant
 
-[![Validate](https://github.com/no-time-for-good-name/ha-my-wallet/actions/workflows/validate.yml/badge.svg)](https://github.com/no-time-for-good-name/ha-my-wallet/actions/workflows/validate.yml)
-
 A [HACS](https://hacs.xyz) custom integration that tracks investment wallets in
 Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
@@ -81,10 +79,13 @@ Open the config entry and click **Configure** to:
 - edit wallet settings (name, base currency, update interval),
 - add, edit, or remove dated contributions in the wallet's base currency,
 - import historical purchases one tranche at a time, using a Yahoo close or a
-  manually entered effective price when Yahoo has no history,
+  manually entered effective price when Yahoo has no history; select an
+  existing contribution when the deposit was already recorded, so invested
+  capital is not counted twice,
 - add, edit, or remove dividend credits,
 - add monthly savings plans with percentage or fixed-amount allocations,
-- edit, pause or remove savings plans without deleting past executions,
+- edit, pause or remove savings plans without deleting past executions; a
+  deleted automatic execution remains skipped and can be restored explicitly,
 - correct the deposit date or external amount of an individual historical
   execution while retaining its purchase lots,
 - correct the date, invested amount or purchased units of an automatically
@@ -96,7 +97,9 @@ Open the config entry and click **Configure** to:
 The sum of target shares may not exceed 100% (a sum below 100% is fine —
 the remainder can be assets held outside this integration).
 
-Changes take effect immediately (the wallet reloads automatically).
+Changes take effect immediately (the wallet reloads automatically). After an
+integration upgrade, restart Home Assistant completely and reload the browser;
+otherwise Home Assistant can keep the previous translation bundle in memory.
 
 For funds, use the exact Yahoo identifier for the intended share class.
 Check its quote currency and available daily history before reconstructing
@@ -122,8 +125,10 @@ to the wallet base currency when an exchange rate is available.
 | `sensor.<wallet>_money_weighted_return` | annual money-weighted wallet return (XIRR) | `invested`, `total`, `method` |
 | `sensor.<wallet>_next_execution` | next scheduled or still-pending execution date | plans, allocations and pending executions |
 
-The wallet total is the market value of all available securities plus the
-settlement cash balance. Every contribution is entered in the wallet's base currency and is **not**
+The wallet total is the market value of all securities plus the settlement
+cash balance. If any configured quote or FX rate is unavailable, the aggregate
+total, profit and XIRR become unavailable rather than reporting a misleading
+partial loss. Every contribution is entered in the wallet's base currency and is **not**
 re-converted automatically. The base currency is therefore locked while
 contributions, dividends, or plans exist. *Profit %* remains the simple return
 `(total − invested) / invested`; the separate *Money-weighted return* sensor
@@ -169,7 +174,14 @@ Plans can start in the past. Home Assistant creates a separate monthly execution
 and a separate lot per valor for every due month through today. For an existing
 portfolio, use **Configure → Import a historical purchase lot** and leave
 *already included in the opening balance* enabled; this adds its cost and
-performance history without counting its units twice.
+performance history without counting its units twice. If the corresponding
+deposit already exists, select it in the import form. Otherwise the import
+creates a new external contribution equal to the lot amount.
+
+Monthly occurrences are identified by plan and calendar month. Changing the
+execution day therefore does not duplicate older months. Removing an automatic
+execution records that month as skipped; use **Configure → Restore a skipped
+execution** if it should be generated again.
 
 ### Dividends and settlement cash
 
@@ -180,6 +192,8 @@ credit is return, not new invested capital, and is included in the paying
 valor's profit and annualized performance. For tracked purchase lots, each
 dividend is assigned in proportion to the units already held on its value date;
 later lots therefore do not receive earlier distributions.
+When no separate entitlement/ex-dividend date is entered by the broker, this is
+necessarily an approximation based on the available value or booking date.
 
 For example, a fictitious 100.00 EUR contribution plus a prior 1.00 EUR dividend
 creates 101.00 EUR available cash. Two equal 50.00 EUR base orders receive
@@ -200,9 +214,10 @@ of the wallet it should represent. The integration then computes:
   currency; **positive is the amount to buy** to reach the target, negative
   the amount to sell.
 
-Shares are calculated against the currently available securities plus the cash
-balance. If one symbol temporarily fails to update, the remaining shares are
-relative to that available total.
+Shares are calculated against the complete securities value plus the cash
+balance. If one symbol temporarily fails to update, aggregate shares and totals
+stay unavailable until the complete portfolio can be valued; healthy individual
+position sensors continue to update.
 
 ## Service
 
@@ -219,8 +234,9 @@ Refreshes the whole wallet that owns the targeted entity, immediately.
 - Update interval is per wallet; Yahoo may rate-limit very aggressive
   polling, so the minimum interval is 5 minutes.
 - If a single symbol fails (delisted, typo), the rest of the wallet still
-  updates; the affected sensor becomes unavailable and is listed in the
-  total sensor's `unavailable_valors` attribute.
+  updates; the affected sensor becomes unavailable and is listed in the total
+  sensor's `unavailable_valors` attribute. Aggregate value and performance
+  remain unavailable until all symbols have a valid quote and FX rate.
 
 ## License
 

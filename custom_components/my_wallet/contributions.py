@@ -66,9 +66,14 @@ def make_lot(
     normalized_amount = float(amount)
     normalized_price = float(unit_price)
     normalized_fx = float(fx_rate)
-    if normalized_amount <= 0:
+    if not isfinite(normalized_amount) or normalized_amount <= 0:
         raise ValueError("Lot amount must be greater than zero")
-    if normalized_price <= 0 or normalized_fx <= 0:
+    if (
+        not isfinite(normalized_price)
+        or not isfinite(normalized_fx)
+        or normalized_price <= 0
+        or normalized_fx <= 0
+    ):
         raise ValueError("Lot price and FX rate must be greater than zero")
 
     normalized_units = (
@@ -76,16 +81,20 @@ def make_lot(
         if units is not None
         else normalized_amount / (normalized_price * normalized_fx)
     )
-    if normalized_units <= 0:
+    if not isfinite(normalized_units) or normalized_units <= 0:
         raise ValueError("Lot units must be greater than zero")
 
+    normalized_symbol = symbol.strip().upper()
+    normalized_currency = quote_currency.strip().upper()
+    if not normalized_symbol or not normalized_currency:
+        raise ValueError("Lot symbol and quote currency are required")
     return {
         LOT_ID: lot_id or uuid4().hex,
-        LOT_SYMBOL: symbol.strip().upper(),
+        LOT_SYMBOL: normalized_symbol,
         LOT_DATE: normalize_date(execution_date),
         LOT_AMOUNT: normalized_amount,
         LOT_UNIT_PRICE: normalized_price,
-        LOT_QUOTE_CURRENCY: quote_currency.strip().upper(),
+        LOT_QUOTE_CURRENCY: normalized_currency,
         LOT_FX_RATE: normalized_fx,
         LOT_UNITS: normalized_units,
         LOT_INCLUDED_IN_OPENING: bool(included_in_opening),
@@ -126,7 +135,7 @@ def make_contribution(
         if amount is None and normalized_lots
         else float(amount or 0)
     )
-    if normalized_amount <= 0:
+    if not isfinite(normalized_amount) or normalized_amount <= 0:
         raise ValueError("Contribution amount must be greater than zero")
 
     item: dict[str, Any] = {
@@ -171,6 +180,34 @@ def normalize_contributions(
     )
 
 
+def attach_lot(
+    entries: Sequence[Mapping[str, Any]],
+    contribution_id: str,
+    lot: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Attach a purchase lot to an existing external contribution."""
+    contributions = normalize_contributions(entries)
+    if not any(item[CONTRIBUTION_ID] == contribution_id for item in contributions):
+        raise ValueError("Funding contribution does not exist")
+    updated: list[dict[str, Any]] = []
+    for item in contributions:
+        if item[CONTRIBUTION_ID] != contribution_id:
+            updated.append(item)
+            continue
+        updated.append(
+            make_contribution(
+                item[CONTRIBUTION_AMOUNT],
+                item[CONTRIBUTION_DATE],
+                contribution_id=item[CONTRIBUTION_ID],
+                source=item[CONTRIBUTION_SOURCE],
+                lots=[*item[CONTRIBUTION_LOTS], lot],
+                plan_id=item.get(CONTRIBUTION_PLAN_ID),
+                scheduled_date=item.get(CONTRIBUTION_SCHEDULED_DATE),
+            )
+        )
+    return normalize_contributions(updated)
+
+
 def contributions_from_data(data: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Read execution groups, with a fallback for version-1 config data."""
     if CONF_CONTRIBUTIONS in data:
@@ -189,34 +226,64 @@ def contributions_from_data(data: Mapping[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def invested_total(data: Mapping[str, Any]) -> float | None:
+def contributions_through(
+    data: Mapping[str, Any], through: date | None = None
+) -> list[dict[str, Any]]:
+    """Return contributions effective on or before ``through``.
+
+    Legacy contributions without a date remain included because their original
+    execution date is unknown.
+    """
+    return [
+        item
+        for item in contributions_from_data(data)
+        if through is None
+        or item[CONTRIBUTION_DATE] is None
+        or date.fromisoformat(item[CONTRIBUTION_DATE]) <= through
+    ]
+
+
+def invested_total(
+    data: Mapping[str, Any], *, through: date | None = None
+) -> float | None:
     """Return the sum of all executed contributions."""
-    contributions = contributions_from_data(data)
+    contributions = contributions_through(data, through)
     if not contributions:
         return None
     return sum(item[CONTRIBUTION_AMOUNT] for item in contributions)
 
 
-def all_lots(data: Mapping[str, Any]) -> list[dict[str, Any]]:
+def all_lots(
+    data: Mapping[str, Any], *, through: date | None = None
+) -> list[dict[str, Any]]:
     """Flatten every tracked purchase lot."""
     return [
         lot
-        for contribution in contributions_from_data(data)
+        for contribution in contributions_through(data, through)
         for lot in contribution[CONTRIBUTION_LOTS]
+        if through is None or date.fromisoformat(lot[LOT_DATE]) <= through
     ]
 
 
-def lots_for_symbol(data: Mapping[str, Any], symbol: str) -> list[dict[str, Any]]:
+def lots_for_symbol(
+    data: Mapping[str, Any], symbol: str, *, through: date | None = None
+) -> list[dict[str, Any]]:
     """Return purchase lots for one Yahoo symbol."""
     normalized_symbol = symbol.upper()
-    return [lot for lot in all_lots(data) if lot[LOT_SYMBOL] == normalized_symbol]
+    return [
+        lot
+        for lot in all_lots(data, through=through)
+        if lot[LOT_SYMBOL] == normalized_symbol
+    ]
 
 
-def additional_units(data: Mapping[str, Any], symbol: str) -> float:
+def additional_units(
+    data: Mapping[str, Any], symbol: str, *, through: date | None = None
+) -> float:
     """Units created after the configured opening balance."""
     return sum(
         lot[LOT_UNITS]
-        for lot in lots_for_symbol(data, symbol)
+        for lot in lots_for_symbol(data, symbol, through=through)
         if not lot[LOT_INCLUDED_IN_OPENING]
     )
 
@@ -250,7 +317,9 @@ def lot_metrics(
     }
 
 
-def cashflows(data: Mapping[str, Any]) -> list[tuple[date, float]] | None:
+def cashflows(
+    data: Mapping[str, Any], *, through: date | None = None
+) -> list[tuple[date, float]] | None:
     """Return dated external deposits, or None if a date is missing.
 
     Purchase-lot amounts can exceed a deposit when accumulated dividend cash is
@@ -258,7 +327,7 @@ def cashflows(data: Mapping[str, Any]) -> list[tuple[date, float]] | None:
     the external cashflow; lots are only the internal use of that cash.
     """
     result: list[tuple[date, float]] = []
-    for contribution in contributions_from_data(data):
+    for contribution in contributions_through(data, through):
         contribution_date = contribution[CONTRIBUTION_DATE]
         if contribution_date is None:
             return None
@@ -274,9 +343,13 @@ def cashflows(data: Mapping[str, Any]) -> list[tuple[date, float]] | None:
 def xirr(flows: Sequence[tuple[date, float]]) -> float | None:
     """Calculate an annual money-weighted return for conventional cashflows."""
     if (
-        not flows
-        or not any(value < 0 for _, value in flows)
-        or not any(value > 0 for _, value in flows)
+        len({flow_date for flow_date, _ in flows}) < 2
+        or any(not isfinite(float(value)) for _, value in flows)
+        or (
+            not flows
+            or not any(value < 0 for _, value in flows)
+            or not any(value > 0 for _, value in flows)
+        )
     ):
         return None
     origin = min(flow_date for flow_date, _ in flows)
@@ -314,8 +387,13 @@ def money_weighted_return(
     data: Mapping[str, Any], current_value: float, as_of: date
 ) -> float | None:
     """Return the wallet XIRR in percent, using today's value as terminal flow."""
-    flows = cashflows(data)
-    if flows is None or not flows or current_value <= 0:
+    flows = cashflows(data, through=as_of)
+    if (
+        flows is None
+        or not flows
+        or not isfinite(float(current_value))
+        or current_value <= 0
+    ):
         return None
     result = xirr([*flows, (as_of, current_value)])
     return result * 100 if result is not None else None

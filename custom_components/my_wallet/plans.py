@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import calendar
 from collections.abc import Mapping, Sequence
-from datetime import date
-from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
+from datetime import date, timedelta
+from decimal import ROUND_DOWN, Decimal
+from math import isfinite
 from typing import Any
 from uuid import uuid4
 
@@ -25,6 +26,7 @@ from .const import (
     PLAN_ID,
     PLAN_NAME,
     PLAN_OPENING_CUTOFF_DATE,
+    PLAN_SKIPPED_PERIODS,
     PLAN_USE_CASH_BALANCE,
 )
 from .contributions import normalize_date
@@ -44,6 +46,7 @@ def make_plan(
     plan_id: str | None = None,
     use_cash_balance: bool = True,
     opening_cutoff_date: Any | None = None,
+    skipped_periods: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     """Create and validate one monthly savings plan."""
     normalized_name = name.strip()
@@ -57,7 +60,7 @@ def make_plan(
     for allocation in allocations:
         symbol = str(allocation[ALLOCATION_SYMBOL]).strip().upper()
         value = float(allocation[ALLOCATION_VALUE])
-        if not symbol or value <= 0:
+        if not symbol or not isfinite(value) or value <= 0:
             raise ValueError("Allocation symbol and value are required")
         if symbol in seen:
             raise ValueError(f"Duplicate allocation for {symbol}")
@@ -76,15 +79,23 @@ def make_plan(
 
     if allocation_mode == ALLOCATION_MODE_PERCENTAGE:
         normalized_amount = float(amount or 0)
-        if normalized_amount <= 0:
+        if not isfinite(normalized_amount) or normalized_amount <= 0:
             raise ValueError("Plan amount must be greater than zero")
         total_percent = sum(item[ALLOCATION_VALUE] for item in normalized_allocations)
         if abs(total_percent - 100) > _PERCENT_TOLERANCE:
             raise ValueError("Percentage allocations must total 100")
+        if normalized_amount + 1e-9 < 0.01 * len(normalized_allocations):
+            raise ValueError("Plan amount is too small for all allocations")
     else:
         normalized_amount = sum(
             item[ALLOCATION_VALUE] for item in normalized_allocations
         )
+        if not isfinite(normalized_amount):
+            raise ValueError("Plan amount must be finite")
+
+    normalized_skips = sorted(
+        {schedule_period(item) for item in (skipped_periods or [])}
+    )
 
     return {
         PLAN_ID: plan_id or uuid4().hex,
@@ -97,6 +108,7 @@ def make_plan(
         PLAN_ALLOCATIONS: normalized_allocations,
         PLAN_USE_CASH_BALANCE: bool(use_cash_balance),
         PLAN_OPENING_CUTOFF_DATE: normalized_cutoff,
+        PLAN_SKIPPED_PERIODS: normalized_skips,
     }
 
 
@@ -113,6 +125,7 @@ def normalize_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         plan_id=str(plan.get(PLAN_ID) or uuid4().hex),
         use_cash_balance=bool(plan.get(PLAN_USE_CASH_BALANCE, True)),
         opening_cutoff_date=plan.get(PLAN_OPENING_CUTOFF_DATE),
+        skipped_periods=plan.get(PLAN_SKIPPED_PERIODS, []),
     )
 
 
@@ -126,12 +139,18 @@ def allocation_amounts(
     rounding remainder on the cash account.
     """
     normalized = normalize_plan(plan)
-    plan_total = Decimal(str(normalized[PLAN_AMOUNT]))
-    available = (
-        plan_total if available_amount is None else Decimal(str(available_amount))
+    plan_total_float = float(normalized[PLAN_AMOUNT])
+    available_float = (
+        plan_total_float if available_amount is None else float(available_amount)
     )
-    if available <= 0:
-        raise ValueError("Available amount must be greater than zero")
+    if not isfinite(available_float) or available_float <= 0:
+        raise ValueError("Available amount must be finite and greater than zero")
+    if available_float + 1e-9 < plan_total_float:
+        raise ValueError("Available amount must cover the configured plan amount")
+    plan_total = Decimal(str(plan_total_float))
+    available = (
+        plan_total if available_amount is None else Decimal(str(available_float))
+    )
 
     result: dict[str, Decimal] = {}
     allocations = normalized[PLAN_ALLOCATIONS]
@@ -143,17 +162,42 @@ def allocation_amounts(
             }
         )
     else:
-        remaining = plan_total
-        for index, item in enumerate(allocations):
-            value = (
-                remaining
-                if index == len(allocations) - 1
-                else (
-                    plan_total * Decimal(str(item[ALLOCATION_VALUE])) / Decimal(100)
-                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            )
-            result[item[ALLOCATION_SYMBOL]] = value
-            remaining -= value
+        raw = [
+            plan_total * Decimal(str(item[ALLOCATION_VALUE])) / Decimal(100)
+            for item in allocations
+        ]
+        rounded = [
+            value.quantize(Decimal("0.01"), rounding=ROUND_DOWN) for value in raw
+        ]
+        cents = int(((plan_total - sum(rounded)) / Decimal("0.01")).to_integral_value())
+        order = sorted(
+            range(len(allocations)),
+            key=lambda index: (raw[index] - rounded[index], -index),
+            reverse=True,
+        )
+        for index in order[:cents]:
+            rounded[index] += Decimal("0.01")
+        for index, value in enumerate(rounded):
+            if value > 0:
+                continue
+            donors = [
+                donor
+                for donor, donor_value in enumerate(rounded)
+                if donor_value > Decimal("0.01")
+            ]
+            if not donors:
+                raise ValueError("Plan amount is too small for all allocations")
+            donor = max(donors, key=lambda item: rounded[item] - raw[item])
+            rounded[donor] -= Decimal("0.01")
+            rounded[index] += Decimal("0.01")
+        if any(value <= 0 for value in rounded):
+            raise ValueError("Plan amount is too small for all allocations")
+        result.update(
+            {
+                item[ALLOCATION_SYMBOL]: rounded[index]
+                for index, item in enumerate(allocations)
+            }
+        )
 
     extra = max(Decimal(0), available - plan_total)
     if extra:
@@ -169,6 +213,18 @@ def allocation_amounts(
 def _monthly_date(year: int, month: int, day: int) -> date:
     """Use the last day for plans scheduled on day 29, 30, or 31."""
     return date(year, month, min(day, calendar.monthrange(year, month)[1]))
+
+
+def schedule_period(value: date | str) -> str:
+    """Return the canonical month identity for a monthly execution."""
+    if isinstance(value, date):
+        return value.strftime("%Y-%m")
+    text = str(value)
+    if len(text) == 7:
+        parsed = date.fromisoformat(f"{text}-01")
+    else:
+        parsed = date.fromisoformat(text)
+    return parsed.strftime("%Y-%m")
 
 
 def scheduled_dates(plan: Mapping[str, Any], through: date) -> list[date]:
@@ -200,12 +256,12 @@ def scheduled_dates(plan: Mapping[str, Any], through: date) -> list[date]:
     return dates
 
 
-def booked_schedule_dates(
+def booked_schedule_periods(
     contributions: Sequence[Mapping[str, Any]], plan_id: str
-) -> set[date]:
-    """Return schedule dates already booked for a plan."""
+) -> set[str]:
+    """Return schedule months already booked for a plan."""
     return {
-        date.fromisoformat(str(item[CONTRIBUTION_SCHEDULED_DATE]))
+        schedule_period(str(item[CONTRIBUTION_SCHEDULED_DATE]))
         for item in contributions
         if item.get(CONTRIBUTION_PLAN_ID) == plan_id
         and item.get(CONTRIBUTION_SCHEDULED_DATE)
@@ -219,8 +275,13 @@ def due_dates(
 ) -> list[date]:
     """Return unbooked schedule dates through the supplied date."""
     normalized = normalize_plan(plan)
-    booked = booked_schedule_dates(contributions, normalized[PLAN_ID])
-    return [item for item in scheduled_dates(normalized, through) if item not in booked]
+    booked = booked_schedule_periods(contributions, normalized[PLAN_ID])
+    skipped = set(normalized[PLAN_SKIPPED_PERIODS])
+    return [
+        item
+        for item in scheduled_dates(normalized, through)
+        if schedule_period(item) not in booked | skipped
+    ]
 
 
 def next_scheduled_date(plan: Mapping[str, Any], on_or_after: date) -> date | None:
@@ -249,4 +310,19 @@ def next_scheduled_date(plan: Mapping[str, Any], on_or_after: date) -> date | No
             candidate = _monthly_date(year, month, first.day)
     if end is not None and candidate > end:
         return None
+    return candidate
+
+
+def next_due_date(
+    plan: Mapping[str, Any],
+    contributions: Sequence[Mapping[str, Any]],
+    on_or_after: date,
+) -> date | None:
+    """Return the next monthly occurrence that is neither booked nor skipped."""
+    normalized = normalize_plan(plan)
+    booked = booked_schedule_periods(contributions, normalized[PLAN_ID])
+    skipped = set(normalized[PLAN_SKIPPED_PERIODS])
+    candidate = next_scheduled_date(normalized, on_or_after)
+    while candidate is not None and schedule_period(candidate) in booked | skipped:
+        candidate = next_scheduled_date(normalized, candidate + timedelta(days=1))
     return candidate

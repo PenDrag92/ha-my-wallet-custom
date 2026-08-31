@@ -45,6 +45,7 @@
           "add_plan": "Monatlichen Sparplan hinzufügen",
           "edit_plan": "Sparplan bearbeiten",
           "remove_plan": "Sparplan entfernen",
+          "restore_execution": "Übersprungene Ausführung wiederherstellen",
           "add_valor": "Wertpapier hinzufügen",
           "remove_valor": "Wertpapier entfernen",
           "edit_valor": "Wertpapier bearbeiten"
@@ -95,13 +96,14 @@
       },
       "add_lot": {
         "title": "Historische Kauftranche erfassen",
-        "description": "Yahoo liefert den ersten Schlusskurs am oder nach dem angegebenen Datum. Gibt es keinen historischen Kurs, kann der effektive Stückpreis in der Basiswährung manuell eingetragen werden. Das Häkchen gesetzt lassen, wenn der Kauf bereits im Anfangsbestand enthalten ist.",
+        "description": "Yahoo liefert den ersten bestätigten Schlusskurs am oder nach dem angegebenen Datum. Das Häkchen gesetzt lassen, wenn der Kauf bereits im Anfangsbestand enthalten ist. Der Import erzeugt eine gleich hohe Einzahlung, sofern keine bereits erfasste Einzahlung ausgewählt wird.",
         "data": {
           "symbol": "Wertpapier",
           "date": "Geplantes oder tatsächliches Kaufdatum",
           "amount": "Investierter Betrag (Basiswährung)",
           "unit_price": "Effektiver Stückpreis in der Basiswährung (optionaler Yahoo-Ersatz)",
-          "included_in_opening": "Gekaufte Anteile sind bereits im eingetragenen Anfangsbestand enthalten"
+          "included_in_opening": "Gekaufte Anteile sind bereits im eingetragenen Anfangsbestand enthalten",
+          "funding_contribution": "Bereits erfasste zugehörige Einzahlung (optional)"
         }
       },
       "edit_lot_fields": {
@@ -199,6 +201,13 @@
           "id": "Zu entfernender Sparplan"
         }
       },
+      "restore_execution": {
+        "title": "Übersprungene Ausführung wiederherstellen",
+        "description": "Die monatliche Ausführung wird bei der nächsten Aktualisierung erstellt, sobald bestätigte Schlusskurse vorliegen.",
+        "data": {
+          "execution": "Übersprungene Ausführung"
+        }
+      },
       "add_valor": {
         "title": "Wertpapier hinzufügen",
         "data": {
@@ -239,7 +248,8 @@
       "currency_change_blocked": "Die Basiswährung kann nicht geändert werden, solange Einzahlungen, Ausschüttungen oder Sparpläne vorhanden sind.",
       "historical_price_unavailable": "Yahoo hat für diesen Zeitraum keinen Schlusskurs. Bitte den effektiven Stückpreis manuell eintragen.",
       "historical_fx_unavailable": "Yahoo hat für diesen Kauf keinen historischen Wechselkurs. Bitte den effektiven Stückpreis in der Basiswährung manuell eintragen.",
-      "valor_in_use": "Dieses Wertpapier wird von einer Kauftranche, Ausschüttung oder einem Sparplan verwendet. Diese Einträge zuerst entfernen oder bearbeiten."
+      "valor_in_use": "Dieses Wertpapier wird von einer Kauftranche, Ausschüttung oder einem Sparplan verwendet. Diese Einträge zuerst entfernen oder bearbeiten.",
+      "included_units_exceeded": "Die als enthalten markierten Kauftranchen übersteigen den eingetragenen Anfangsbestand. Anfangsbestand erhöhen oder das Häkchen entfernen."
     },
     "abort": {
       "no_valors": "Das Depot enthält noch keine Wertpapiere.",
@@ -247,7 +257,16 @@
       "no_lots": "Das Depot enthält noch keine erfassten Kauftranchen.",
       "no_dividends": "Das Depot enthält noch keine Ausschüttungen.",
       "no_plans": "Das Depot enthält noch keine Sparpläne.",
+      "no_skipped_executions": "Das Depot enthält keine übersprungenen Sparplanausführungen.",
       "invalid_plan": "Der Sparplan kann mit dieser Aufteilung nicht gespeichert werden."
+    }
+  },
+  "selector": {
+    "allocation_mode": {
+      "options": {
+        "percentage": "Prozentual",
+        "fixed": "Feste Beträge"
+      }
     }
   },
   "entity": {

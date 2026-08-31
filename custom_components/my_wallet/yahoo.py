@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from datetime import time as dt_time
+from math import isfinite
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -77,7 +78,8 @@ def _to_float(value: Any) -> float | None:
     if value is None:
         return None
     try:
-        return float(value)
+        converted = float(value)
+        return converted if isfinite(converted) else None
     except (TypeError, ValueError):
         return None
 
@@ -94,6 +96,39 @@ def _timestamp_date(timestamp: float, timezone_name: str | None) -> date:
     except ZoneInfoNotFoundError:
         timezone = UTC
     return datetime.fromtimestamp(timestamp, timezone).date()
+
+
+def _currency_and_factor(raw_currency: Any) -> tuple[str, float]:
+    """Normalize Yahoo minor-unit currencies to ISO major units."""
+    raw = str(raw_currency).strip()
+    minor_units = {
+        "GBp": ("GBP", 0.01),
+        "GBX": ("GBP", 0.01),
+        "ILA": ("ILS", 0.01),
+        "ZAc": ("ZAR", 0.01),
+    }
+    return minor_units.get(raw, (raw.upper(), 1.0))
+
+
+def _market_date_confirmed(
+    market_date: date,
+    timezone_name: str | None,
+    regular_end: float | None,
+    *,
+    now_timestamp: float | None = None,
+) -> bool:
+    """Return whether a daily bar is final in the exchange timezone."""
+    now_timestamp = time.time() if now_timestamp is None else now_timestamp
+    try:
+        timezone = ZoneInfo(timezone_name) if timezone_name else UTC
+    except ZoneInfoNotFoundError:
+        timezone = UTC
+    exchange_today = datetime.fromtimestamp(now_timestamp, timezone).date()
+    return market_date < exchange_today or (
+        market_date == exchange_today
+        and regular_end is not None
+        and now_timestamp >= regular_end
+    )
 
 
 async def fetch_quote(session: aiohttp.ClientSession, symbol: str) -> Quote:
@@ -118,12 +153,12 @@ async def fetch_quote(session: aiohttp.ClientSession, symbol: str) -> Quote:
     try:
         result = payload["chart"]["result"][0]
         meta = result["meta"]
-        price = meta["regularMarketPrice"]
-        currency = meta["currency"]
+        price = _to_float(meta["regularMarketPrice"])
+        currency, price_factor = _currency_and_factor(meta["currency"])
     except (KeyError, IndexError, TypeError) as err:
         raise YahooError(f"Unexpected payload for {symbol}: {err}") from err
 
-    if price is None:
+    if price is None or price <= 0:
         raise YahooError(f"No price in payload for {symbol}")
 
     market_timestamp = _to_float(meta.get("regularMarketTime"))
@@ -137,18 +172,26 @@ async def fetch_quote(session: aiohttp.ClientSession, symbol: str) -> Quote:
     )
     market_closed = bool(
         market_date is not None
-        and (
-            market_date < datetime.now(UTC).date()
-            or (regular_end is not None and time.time() >= regular_end)
+        and _market_date_confirmed(
+            market_date,
+            meta.get("exchangeTimezoneName"),
+            regular_end,
         )
     )
 
     return Quote(
         symbol=symbol,
-        price=float(price),
-        currency=str(currency).upper(),
-        previous_close=_to_float(
-            meta.get("chartPreviousClose") or meta.get("previousClose")
+        price=price * price_factor,
+        currency=currency,
+        previous_close=(
+            previous * price_factor
+            if (
+                previous := _to_float(
+                    meta.get("chartPreviousClose") or meta.get("previousClose")
+                )
+            )
+            is not None
+            else None
         ),
         short_name=meta.get("shortName") or meta.get("longName"),
         market_date=market_date,
@@ -193,8 +236,11 @@ async def fetch_history(
     try:
         result = payload["chart"]["result"][0]
         meta = result["meta"]
-        currency = str(meta["currency"]).upper()
+        currency, price_factor = _currency_and_factor(meta["currency"])
         timezone_name = meta.get("exchangeTimezoneName")
+        regular_end = _to_float(
+            meta.get("currentTradingPeriod", {}).get("regular", {}).get("end")
+        )
         timestamps = result.get("timestamp") or []
         closes = result["indicators"]["quote"][0].get("close") or []
     except (KeyError, IndexError, TypeError) as err:
@@ -206,8 +252,12 @@ async def fetch_history(
         if close is None or close <= 0:
             continue
         quote_date = _timestamp_date(timestamp, timezone_name)
-        if start_date <= quote_date <= end_date:
-            history.append(HistoricalQuote(symbol, quote_date, close, currency))
+        if start_date <= quote_date <= end_date and _market_date_confirmed(
+            quote_date, timezone_name, regular_end
+        ):
+            history.append(
+                HistoricalQuote(symbol, quote_date, close * price_factor, currency)
+            )
     return sorted(history, key=lambda item: item.date)
 
 

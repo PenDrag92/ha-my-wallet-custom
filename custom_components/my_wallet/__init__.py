@@ -22,6 +22,8 @@ from .contributions import (
     normalize_contributions,
 )
 from .coordinator import WalletCoordinator
+from .dividends import normalize_dividends
+from .plans import normalize_plan
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,18 +33,23 @@ type MyWalletConfigEntry = ConfigEntry[WalletCoordinator]
 
 async def async_migrate_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -> bool:
     """Migrate legacy invested amounts and version-2 dated contributions."""
-    if entry.version > 3:
+    if entry.version > 4:
         _LOGGER.error(
             "Cannot migrate My Wallet config entry from unsupported version %s",
             entry.version,
         )
         return False
 
-    if entry.version in (1, 2):
+    if entry.version < 4:
         data: dict[str, Any] = dict(entry.data)
         legacy_amount = data.pop(CONF_INVESTED_AMOUNT, None)
         contributions = list(data.get(CONF_CONTRIBUTIONS, []))
-        if not contributions and legacy_amount is not None and float(legacy_amount) > 0:
+        if (
+            entry.version in (1, 2)
+            and not contributions
+            and legacy_amount is not None
+            and float(legacy_amount) > 0
+        ):
             contributions.append(
                 make_contribution(
                     legacy_amount,
@@ -52,10 +59,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -
                 )
             )
         data[CONF_CONTRIBUTIONS] = normalize_contributions(contributions)
-        data.setdefault(CONF_SAVINGS_PLANS, [])
-        data.setdefault(CONF_DIVIDENDS, [])
-        hass.config_entries.async_update_entry(entry, data=data, version=3)
-        _LOGGER.info("Migrated My Wallet config entry to version 3")
+        data[CONF_SAVINGS_PLANS] = [
+            normalize_plan(plan) for plan in data.get(CONF_SAVINGS_PLANS, [])
+        ]
+        data[CONF_DIVIDENDS] = normalize_dividends(data.get(CONF_DIVIDENDS, []))
+        hass.config_entries.async_update_entry(entry, data=data, version=4)
+        _LOGGER.info("Migrated My Wallet config entry to version 4")
 
     return True
 
@@ -66,15 +75,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -> 
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(_async_update_entry))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -> bool:
     """Unload a wallet."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-
-async def _async_update_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -> None:
-    """Reload the entry when its data (settings or valors) change."""
-    await hass.config_entries.async_reload(entry.entry_id)

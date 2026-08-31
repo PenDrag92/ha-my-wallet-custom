@@ -68,6 +68,7 @@ PLAN_AMOUNT: Final = "amount"
 PLAN_ALLOCATIONS: Final = "allocations"
 PLAN_USE_CASH_BALANCE: Final = "use_cash_balance"
 PLAN_OPENING_CUTOFF_DATE: Final = "opening_cutoff_date"
+PLAN_SKIPPED_PERIODS: Final = "skipped_periods"
 ALLOCATION_SYMBOL: Final = "symbol"
 ALLOCATION_VALUE: Final = "value"
 

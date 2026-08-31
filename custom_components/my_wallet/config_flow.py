@@ -35,6 +35,7 @@ from .const import (
     CONTRIBUTION_PLAN_ID,
     CONTRIBUTION_SCHEDULED_DATE,
     CONTRIBUTION_SOURCE,
+    CONTRIBUTION_SOURCE_PLAN,
     DEFAULT_BASE_CURRENCY,
     DEFAULT_SCAN_INTERVAL,
     DIVIDEND_AMOUNT,
@@ -64,6 +65,7 @@ from .const import (
     PLAN_ID,
     PLAN_NAME,
     PLAN_OPENING_CUTOFF_DATE,
+    PLAN_SKIPPED_PERIODS,
     PLAN_USE_CASH_BALANCE,
     TARGET_SHARE_SUM_TOLERANCE,
     VALOR_AMOUNT,
@@ -72,6 +74,7 @@ from .const import (
 )
 from .contributions import (
     all_lots,
+    attach_lot,
     contributions_from_data,
     make_contribution,
     make_lot,
@@ -82,7 +85,7 @@ from .dividends import (
     make_dividend,
     normalize_dividends,
 )
-from .plans import make_plan, normalize_plan
+from .plans import make_plan, normalize_plan, schedule_period
 from .yahoo import YahooError, fetch_history, fx_symbol
 
 _CURRENCY_SELECTOR = selector.SelectSelector(
@@ -162,17 +165,9 @@ _TARGET_SHARE_SELECTOR = selector.NumberSelector(
 
 _ALLOCATION_MODE_SELECTOR = selector.SelectSelector(
     selector.SelectSelectorConfig(
-        options=[
-            {
-                "value": ALLOCATION_MODE_PERCENTAGE,
-                "label": "Percentage / Prozentual",
-            },
-            {
-                "value": ALLOCATION_MODE_FIXED,
-                "label": "Fixed amounts / Feste Beträge",
-            },
-        ],
+        options=[ALLOCATION_MODE_PERCENTAGE, ALLOCATION_MODE_FIXED],
         mode=selector.SelectSelectorMode.DROPDOWN,
+        translation_key="allocation_mode",
     )
 )
 
@@ -319,34 +314,47 @@ def _allocation_schema(
 
 
 def _manual_lot_schema(
-    symbols: list[str], values: dict[str, Any] | None = None
+    symbols: list[str],
+    contribution_options: list[dict[str, str]],
+    values: dict[str, Any] | None = None,
 ) -> vol.Schema:
     """Build the form for importing one historical purchase lot."""
     values = values or {}
-    return vol.Schema(
-        {
-            vol.Required(
-                LOT_SYMBOL, default=values.get(LOT_SYMBOL)
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=symbols,
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Required(LOT_DATE, default=values.get(LOT_DATE)): _DATE_SELECTOR,
-            vol.Required(
-                LOT_AMOUNT, default=values.get(LOT_AMOUNT)
-            ): _CONTRIBUTION_AMOUNT_SELECTOR,
+    fields: dict[vol.Marker, Any] = {
+        vol.Required(
+            LOT_SYMBOL, default=values.get(LOT_SYMBOL)
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=symbols,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        ),
+        vol.Required(LOT_DATE, default=values.get(LOT_DATE)): _DATE_SELECTOR,
+        vol.Required(
+            LOT_AMOUNT, default=values.get(LOT_AMOUNT)
+        ): _CONTRIBUTION_AMOUNT_SELECTOR,
+        vol.Optional(
+            LOT_UNIT_PRICE,
+            description={"suggested_value": values.get(LOT_UNIT_PRICE)},
+        ): vol.Any(None, _PRICE_SELECTOR),
+        vol.Required(
+            LOT_INCLUDED_IN_OPENING,
+            default=values.get(LOT_INCLUDED_IN_OPENING, True),
+        ): bool,
+    }
+    if contribution_options:
+        fields[
             vol.Optional(
-                LOT_UNIT_PRICE,
-                description={"suggested_value": values.get(LOT_UNIT_PRICE)},
-            ): vol.Any(None, _PRICE_SELECTOR),
-            vol.Required(
-                LOT_INCLUDED_IN_OPENING,
-                default=values.get(LOT_INCLUDED_IN_OPENING, True),
-            ): bool,
-        }
-    )
+                "funding_contribution",
+                description={"suggested_value": values.get("funding_contribution")},
+            )
+        ] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=contribution_options,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+    return vol.Schema(fields)
 
 
 def _dividend_schema(
@@ -358,7 +366,7 @@ def _dividend_schema(
     source_options: list[dict[str, str]] = [
         {
             "value": "__wallet__",
-            "label": "Portfolio / Quelle unbekannt",
+            "label": "—",
         }
     ]
     source_options.extend({"value": symbol, "label": symbol} for symbol in symbols)
@@ -393,7 +401,7 @@ def _dividend_schema(
 class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the initial creation of a wallet."""
 
-    VERSION = 3
+    VERSION = 4
 
     def __init__(self) -> None:
         self._valors: list[dict[str, Any]] = []
@@ -519,6 +527,8 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         menu_options.append("add_plan")
         if self._plans():
             menu_options.extend(["edit_plan", "remove_plan"])
+        if any(plan[PLAN_SKIPPED_PERIODS] for plan in self._plans()):
+            menu_options.append("restore_execution")
         menu_options.extend(["add_valor", "edit_valor", "remove_valor"])
         return self.async_show_menu(step_id="init", menu_options=menu_options)
 
@@ -536,6 +546,28 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
 
     def _dividends(self) -> list[dict[str, Any]]:
         return dividends_from_data(self.config_entry.data)
+
+    def _included_lot_units(
+        self, symbol: str, *, exclude_lot_id: str | None = None
+    ) -> float:
+        """Return units represented by opening-balance purchase lots."""
+        return sum(
+            float(lot[LOT_UNITS])
+            for lot in all_lots(self.config_entry.data)
+            if lot[LOT_SYMBOL] == symbol
+            and lot[LOT_INCLUDED_IN_OPENING]
+            and lot[LOT_ID] != exclude_lot_id
+        )
+
+    def _opening_units(self, symbol: str) -> float:
+        """Return the configured opening units for one symbol."""
+        return float(
+            next(
+                valor[VALOR_AMOUNT]
+                for valor in self._valors()
+                if valor[VALOR_SYMBOL] == symbol
+            )
+        )
 
     def _contribution_options(self) -> list[dict[str, str]]:
         currency = self.config_entry.data.get(CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY)
@@ -570,7 +602,7 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 "value": plan[PLAN_ID],
                 "label": (
                     f"{plan[PLAN_NAME]} · {plan[PLAN_AMOUNT]:.2f} {currency} · "
-                    f"ab {plan[PLAN_FIRST_DATE]}"
+                    f"{plan[PLAN_FIRST_DATE]}"
                 ),
             }
             for plan in self._plans()
@@ -593,14 +625,18 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
     def _update_entry(
         self, valors: list[dict[str, Any]] | None = None, **extra: Any
     ) -> None:
-        """Write config-entry data and trigger the integration's reload listener."""
+        """Write user-originated config data and schedule one reload."""
         data = dict(self.config_entry.data)
         if valors is not None:
             data[CONF_VALORS] = valors
         data.update(extra)
         if CONF_CONTRIBUTIONS in extra:
             data.pop(CONF_INVESTED_AMOUNT, None)
-        self.hass.config_entries.async_update_entry(self.config_entry, data=data)
+        changed = self.hass.config_entries.async_update_entry(
+            self.config_entry, data=data
+        )
+        if changed:
+            self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
 
     async def _save(self, valors: list[dict[str, Any]], **extra: Any) -> FlowResult:
         self._update_entry(valors, **extra)
@@ -857,12 +893,39 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             return self.async_abort(reason="no_contributions")
         if user_input is not None:
             contribution_id = user_input[CONTRIBUTION_ID]
+            removed = next(
+                item
+                for item in contributions
+                if item[CONTRIBUTION_ID] == contribution_id
+            )
             updated = [
                 item
                 for item in contributions
                 if item[CONTRIBUTION_ID] != contribution_id
             ]
-            return await self._save(self._valors(), **{CONF_CONTRIBUTIONS: updated})
+            extra: dict[str, Any] = {CONF_CONTRIBUTIONS: updated}
+            if (
+                removed[CONTRIBUTION_SOURCE] == CONTRIBUTION_SOURCE_PLAN
+                and removed.get(CONTRIBUTION_PLAN_ID)
+                and removed.get(CONTRIBUTION_SCHEDULED_DATE)
+            ):
+                plan_id = removed[CONTRIBUTION_PLAN_ID]
+                period = schedule_period(removed[CONTRIBUTION_SCHEDULED_DATE])
+                plans = []
+                for plan in self._plans():
+                    if plan[PLAN_ID] == plan_id:
+                        plan = normalize_plan(
+                            {
+                                **plan,
+                                PLAN_SKIPPED_PERIODS: [
+                                    *plan[PLAN_SKIPPED_PERIODS],
+                                    period,
+                                ],
+                            }
+                        )
+                    plans.append(plan)
+                extra[CONF_SAVINGS_PLANS] = plans
+            return await self._save(self._valors(), **extra)
         return self.async_show_form(
             step_id="remove_contribution",
             data_schema=vol.Schema(
@@ -926,6 +989,9 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                                 quote_date,
                                 min(today, quote_date + timedelta(days=7)),
                             )
+                        except YahooError:
+                            direct = []
+                        try:
                             inverse = await fetch_history(
                                 session,
                                 fx_symbol(base_currency, quote_currency),
@@ -933,7 +999,7 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                                 min(today, quote_date + timedelta(days=7)),
                             )
                         except YahooError:
-                            direct, inverse = [], []
+                            inverse = []
                         if direct:
                             fx_rate = direct[0].close
                         elif inverse and inverse[0].close:
@@ -952,23 +1018,36 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                     included_in_opening=bool(user_input[LOT_INCLUDED_IN_OPENING]),
                     estimated=estimated,
                 )
-                contribution = make_contribution(
-                    None,
-                    quote_date,
-                    lots=[lot],
-                )
-                return await self._save(
-                    self._valors(),
-                    **{
-                        CONF_CONTRIBUTIONS: normalize_contributions(
+                if lot[LOT_INCLUDED_IN_OPENING] and (
+                    self._included_lot_units(symbol) + float(lot[LOT_UNITS])
+                    > self._opening_units(symbol) + 1e-9
+                ):
+                    errors[LOT_INCLUDED_IN_OPENING] = "included_units_exceeded"
+                else:
+                    funding_id = user_input.get("funding_contribution")
+                    if funding_id:
+                        contributions = attach_lot(
+                            self._contributions(), str(funding_id), lot
+                        )
+                    else:
+                        contribution = make_contribution(
+                            None,
+                            quote_date,
+                            lots=[lot],
+                        )
+                        contributions = normalize_contributions(
                             [*self._contributions(), contribution]
                         )
-                    },
-                )
+                    return await self._save(
+                        self._valors(),
+                        **{CONF_CONTRIBUTIONS: contributions},
+                    )
 
         return self.async_show_form(
             step_id="add_lot",
-            data_schema=_manual_lot_schema(symbols, user_input),
+            data_schema=_manual_lot_schema(
+                symbols, self._contribution_options(), user_input
+            ),
             errors=errors,
         )
 
@@ -1007,6 +1086,7 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             for lot in contribution[CONTRIBUTION_LOTS]
             if lot[LOT_ID] == lot_id
         )
+        errors: dict[str, str] = {}
         if user_input is not None:
             amount = float(user_input[LOT_AMOUNT])
             units = float(user_input[LOT_UNITS])
@@ -1023,30 +1103,39 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 estimated=False,
                 lot_id=lot_id,
             )
-            updated: list[dict[str, Any]] = []
-            for contribution in contributions:
-                lots = contribution[CONTRIBUTION_LOTS]
-                if not any(lot[LOT_ID] == lot_id for lot in lots):
-                    updated.append(contribution)
-                    continue
-                new_lots = [
-                    replacement if lot[LOT_ID] == lot_id else lot for lot in lots
-                ]
-                updated.append(
-                    make_contribution(
-                        contribution[CONTRIBUTION_AMOUNT],
-                        contribution[CONTRIBUTION_DATE],
-                        contribution_id=contribution[CONTRIBUTION_ID],
-                        source=contribution[CONTRIBUTION_SOURCE],
-                        lots=new_lots,
-                        plan_id=contribution.get(CONTRIBUTION_PLAN_ID),
-                        scheduled_date=contribution.get(CONTRIBUTION_SCHEDULED_DATE),
+            if replacement[LOT_INCLUDED_IN_OPENING] and (
+                self._included_lot_units(replacement[LOT_SYMBOL], exclude_lot_id=lot_id)
+                + float(replacement[LOT_UNITS])
+                > self._opening_units(replacement[LOT_SYMBOL]) + 1e-9
+            ):
+                errors[LOT_UNITS] = "included_units_exceeded"
+            else:
+                updated: list[dict[str, Any]] = []
+                for contribution in contributions:
+                    lots = contribution[CONTRIBUTION_LOTS]
+                    if not any(lot[LOT_ID] == lot_id for lot in lots):
+                        updated.append(contribution)
+                        continue
+                    new_lots = [
+                        replacement if lot[LOT_ID] == lot_id else lot for lot in lots
+                    ]
+                    updated.append(
+                        make_contribution(
+                            contribution[CONTRIBUTION_AMOUNT],
+                            contribution[CONTRIBUTION_DATE],
+                            contribution_id=contribution[CONTRIBUTION_ID],
+                            source=contribution[CONTRIBUTION_SOURCE],
+                            lots=new_lots,
+                            plan_id=contribution.get(CONTRIBUTION_PLAN_ID),
+                            scheduled_date=contribution.get(
+                                CONTRIBUTION_SCHEDULED_DATE
+                            ),
+                        )
                     )
+                return await self._save(
+                    self._valors(),
+                    **{CONF_CONTRIBUTIONS: normalize_contributions(updated)},
                 )
-            return await self._save(
-                self._valors(),
-                **{CONF_CONTRIBUTIONS: normalize_contributions(updated)},
-            )
 
         return self.async_show_form(
             step_id="edit_lot_fields",
@@ -1068,6 +1157,7 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             description_placeholders={
                 "lot": f"{current[LOT_DATE]} · {current[LOT_SYMBOL]}"
             },
+            errors=errors,
         )
 
     async def async_step_add_plan(
@@ -1142,6 +1232,18 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
     def _plan_arguments(self, allocations: list[dict[str, Any]]) -> dict[str, Any]:
         """Build validated make_plan keyword arguments from flow state."""
         fields = self._working_plan_fields or {}
+        skipped_periods: list[str] = []
+        if self._working_plan_id is not None:
+            current = next(
+                (
+                    plan
+                    for plan in self._plans()
+                    if plan[PLAN_ID] == self._working_plan_id
+                ),
+                None,
+            )
+            if current is not None:
+                skipped_periods = current[PLAN_SKIPPED_PERIODS]
         return {
             "name": fields[PLAN_NAME],
             "first_date": fields[PLAN_FIRST_DATE],
@@ -1153,6 +1255,7 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             "plan_id": self._working_plan_id,
             "use_cash_balance": bool(fields[PLAN_USE_CASH_BALANCE]),
             "opening_cutoff_date": fields.get(PLAN_OPENING_CUTOFF_DATE),
+            "skipped_periods": skipped_periods,
         }
 
     async def _save_plan(self, plan: dict[str, Any]) -> FlowResult:
@@ -1297,6 +1400,53 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             ),
         )
 
+    async def async_step_restore_execution(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Restore a previously skipped automatic monthly execution."""
+        plans = self._plans()
+        options = [
+            {
+                "value": f"{plan[PLAN_ID]}|{period}",
+                "label": f"{plan[PLAN_NAME]} · {period}",
+            }
+            for plan in plans
+            for period in plan[PLAN_SKIPPED_PERIODS]
+        ]
+        if not options:
+            return self.async_abort(reason="no_skipped_executions")
+        if user_input is not None:
+            plan_id, period = str(user_input["execution"]).split("|", 1)
+            updated = [
+                normalize_plan(
+                    {
+                        **plan,
+                        PLAN_SKIPPED_PERIODS: [
+                            item
+                            for item in plan[PLAN_SKIPPED_PERIODS]
+                            if item != period
+                        ],
+                    }
+                )
+                if plan[PLAN_ID] == plan_id
+                else plan
+                for plan in plans
+            ]
+            return await self._save(self._valors(), **{CONF_SAVINGS_PLANS: updated})
+        return self.async_show_form(
+            step_id="restore_execution",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("execution"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=options,
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            ),
+        )
+
     async def async_step_add_valor(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -1423,6 +1573,24 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         """Apply the new amount / target share for the previously selected valor."""
         symbol = self._edit_symbol
         valors = self._valors()
+        amount = float(user_input[VALOR_AMOUNT])
+        if amount + 1e-9 < self._included_lot_units(str(symbol)):
+            return self.async_show_form(
+                step_id="edit_valor_fields",
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(VALOR_AMOUNT, default=amount): _AMOUNT_SELECTOR,
+                        vol.Optional(
+                            VALOR_TARGET_SHARE,
+                            description={
+                                "suggested_value": user_input.get(VALOR_TARGET_SHARE)
+                            },
+                        ): vol.Any(None, _TARGET_SHARE_SELECTOR),
+                    }
+                ),
+                description_placeholders={VALOR_SYMBOL: str(symbol)},
+                errors={VALOR_AMOUNT: "included_units_exceeded"},
+            )
         target = _normalize_target_share(user_input.get(VALOR_TARGET_SHARE))
         others = (v for v in valors if v[VALOR_SYMBOL] != symbol)
         if target is not None and _target_sum_exceeded(others, target):
@@ -1450,7 +1618,7 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 new_valors.append(v)
                 continue
             item = dict(v)  # preserve keys we do not edit
-            item[VALOR_AMOUNT] = float(user_input[VALOR_AMOUNT])
+            item[VALOR_AMOUNT] = amount
             if target is not None:
                 item[VALOR_TARGET_SHARE] = target
             else:

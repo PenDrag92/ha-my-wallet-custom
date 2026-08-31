@@ -45,6 +45,7 @@
           "add_plan": "Přidat měsíční spořicí plán",
           "edit_plan": "Upravit spořicí plán",
           "remove_plan": "Odebrat spořicí plán",
+          "restore_execution": "Obnovit přeskočené provedení",
           "add_valor": "Přidat instrument",
           "remove_valor": "Odebrat instrument",
           "edit_valor": "Upravit instrument (množství, cílový podíl)"
@@ -95,13 +96,14 @@
       },
       "add_lot": {
         "title": "Importovat historickou nákupní tranši",
-        "description": "Yahoo použije první závěrečnou cenu v zadaný den nebo po něm. Pokud cena chybí, zadejte efektivní cenu ručně.",
+        "description": "Yahoo použije první potvrzenou závěrečnou cenu v zadaný den nebo po něm. Import vytvoří stejně vysoký vklad, pokud nevyberete již zaznamenaný vklad.",
         "data": {
           "symbol": "Instrument",
           "date": "Datum nákupu",
           "amount": "Investovaná částka",
           "unit_price": "Efektivní cena jednotky (volitelné)",
-          "included_in_opening": "Jednotky jsou již zahrnuty v počátečním zůstatku"
+          "included_in_opening": "Jednotky jsou již zahrnuty v počátečním zůstatku",
+          "funding_contribution": "Existující financující vklad (volitelné)"
         }
       },
       "edit_lot_fields": {
@@ -199,6 +201,13 @@
           "id": "Spořicí plán k odebrání"
         }
       },
+      "restore_execution": {
+        "title": "Obnovit přeskočené provedení",
+        "description": "Měsíční provedení se vytvoří při příští aktualizaci, jakmile budou k dispozici potvrzené závěrečné ceny.",
+        "data": {
+          "execution": "Přeskočené provedení"
+        }
+      },
       "add_valor": {
         "title": "Přidat instrument",
         "data": {
@@ -239,7 +248,8 @@
       "currency_change_blocked": "Základní měnu nelze změnit, dokud existují vklady, dividendy nebo spořicí plány.",
       "historical_price_unavailable": "Yahoo pro toto období nemá závěrečnou cenu. Zadejte cenu ručně.",
       "historical_fx_unavailable": "Yahoo nemá historický směnný kurz. Zadejte cenu v základní měně ručně.",
-      "valor_in_use": "Tento instrument používá nákupní tranše, dividenda nebo spořicí plán. Nejprve tyto záznamy odstraňte nebo upravte."
+      "valor_in_use": "Tento instrument používá nákupní tranše, dividenda nebo spořicí plán. Nejprve tyto záznamy odstraňte nebo upravte.",
+      "included_units_exceeded": "Tranše označené jako zahrnuté překračují počáteční počet jednotek. Zvyšte počáteční stav nebo označení zrušte."
     },
     "abort": {
       "no_valors": "Peněženka zatím neobsahuje žádné instrumenty.",
@@ -247,7 +257,16 @@
       "no_lots": "Peněženka zatím neobsahuje žádné nákupní tranše.",
       "no_dividends": "Peněženka zatím neobsahuje žádné dividendy.",
       "no_plans": "Peněženka zatím neobsahuje žádné spořicí plány.",
+      "no_skipped_executions": "Peněženka nemá žádná přeskočená provedení spořicího plánu.",
       "invalid_plan": "Plán nelze s tímto rozdělením uložit."
+    }
+  },
+  "selector": {
+    "allocation_mode": {
+      "options": {
+        "percentage": "Procenta",
+        "fixed": "Pevné částky"
+      }
     }
   },
   "entity": {
