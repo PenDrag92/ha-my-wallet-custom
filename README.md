@@ -8,6 +8,26 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
 
+## 1.3.4: keep legacy wallets recoverable
+
+A legacy wallet can contain purchase lots marked as already included in
+opening holdings whose combined units exceed the configured opening units.
+This disagreement no longer prevents migration or access to the options.
+All recorded quantities, lots and payments are preserved. Automatic plan
+bookings pause and historical portfolio values remain unavailable until
+the discrepancy is reconciled against the user's statements. The panel,
+options menu and next-execution sensor identify the affected holdings.
+
+Correct the opening units or purchase lots through the existing options.
+Several corrections may be needed; each step may preserve or reduce an
+existing discrepancy, but cannot increase it. A complete statement import
+can alternatively create a separate wallet without changing the old one.
+Do not increase holdings merely to dismiss a warning. Back up Home Assistant
+before upgrading. Config-entry schema remains version 6.
+
+Documentation and setup examples are generic. Private statements and
+prepared import files are never part of the public source package.
+
 ## Features
 
 - **Multiple wallets** — each wallet is created separately via

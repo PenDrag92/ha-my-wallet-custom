@@ -17,7 +17,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
 from . import const as c
-from .contributions import invested_total
+from .contributions import invested_total, opening_balance_conflicts
 from .dividends import cash_balance, dividend_total
 from .history import async_history
 from .history_import import IMPORT_BATCH, async_prepare_import
@@ -89,7 +89,7 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.3.3",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.3.4",
         embed_iframe=False,
         require_admin=True,
     )
@@ -120,6 +120,7 @@ def ws_wallets(hass, connection, msg):
                 else None,
                 "pending": current.pending_executions if current is not None else [],
                 "plans": entry.data.get(c.CONF_SAVINGS_PLANS, []),
+                "opening_conflicts": opening_balance_conflicts(entry.data),
             }
         )
     connection.send_result(msg["id"], {"wallets": wallets})

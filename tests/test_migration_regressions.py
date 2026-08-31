@@ -287,7 +287,9 @@ class MigrationRegressionTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(entry.data, original)
                 self.assertEqual(hass.config_entries.calls, [])
 
-    async def test_v4_opening_unit_overflow_fails_atomically(self) -> None:
+    async def test_v4_opening_unit_overflow_loads_without_rewriting_quantities(
+        self,
+    ) -> None:
         data = {
             "valors": [{"symbol": "AAA", "amount": 1}],
             "contributions": [
@@ -319,14 +321,21 @@ class MigrationRegressionTests(unittest.IsolatedAsyncioTestCase):
         hass = _Hass()
         entry = _Entry(4, data)
 
-        with self.assertLogs(migration._LOGGER.name, level="ERROR") as logs:
+        with self.assertLogs(migration._LOGGER.name, level="WARNING") as logs:
             result = await migration.async_migrate_entry(hass, entry)
 
-        self.assertFalse(result)
-        self.assertEqual(entry.version, 4)
-        self.assertEqual(entry.data, original)
-        self.assertEqual(hass.config_entries.calls, [])
-        self.assertIn("exceed configured units", "\n".join(logs.output))
+        self.assertTrue(result)
+        self.assertEqual(entry.version, 6)
+        for key in original:
+            self.assertEqual(entry.data[key], original[key])
+        self.assertEqual(len(hass.config_entries.calls), 1)
+        self.assertIn("Preserved opening-balance conflict", "\n".join(logs.output))
+        self.assertIn("configured=1, included lots=2", "\n".join(logs.output))
+        self.assertIn("bookings are paused", "\n".join(logs.output))
+        migrated_once = copy.deepcopy(entry.data)
+        self.assertTrue(await migration.async_migrate_entry(hass, entry))
+        self.assertEqual(entry.data, migrated_once)
+        self.assertEqual(len(hass.config_entries.calls), 1)
 
 
 if __name__ == "__main__":

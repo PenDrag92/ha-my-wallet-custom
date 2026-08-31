@@ -11,6 +11,7 @@ from uuid import uuid4
 from .const import (
     CONF_CONTRIBUTIONS,
     CONF_INVESTED_AMOUNT,
+    CONF_VALORS,
     CONTRIBUTION_AMOUNT,
     CONTRIBUTION_DATE,
     CONTRIBUTION_ID,
@@ -34,6 +35,8 @@ from .const import (
     LOT_SYMBOL,
     LOT_UNIT_PRICE,
     LOT_UNITS,
+    VALOR_AMOUNT,
+    VALOR_SYMBOL,
 )
 
 LEGACY_CONTRIBUTION_ID = "legacy_invested_amount"
@@ -330,6 +333,28 @@ def lots_for_symbol(
         for lot in all_lots(data, through=through)
         if lot[LOT_SYMBOL] == normalized_symbol
     ]
+
+
+def opening_balance_conflicts(data: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Describe legacy inconsistencies without guessing or rewriting holdings."""
+    included: dict[str, float] = {}
+    for lot in all_lots(data):
+        if lot[LOT_INCLUDED_IN_OPENING]:
+            symbol = lot[LOT_SYMBOL]
+            included[symbol] = included.get(symbol, 0.0) + float(lot[LOT_UNITS])
+    return sorted(
+        [
+            {
+                "symbol": valor[VALOR_SYMBOL],
+                "configured_units": float(valor[VALOR_AMOUNT]),
+                "included_units": included[valor[VALOR_SYMBOL]],
+            }
+            for valor in data.get(CONF_VALORS, [])
+            if included.get(valor[VALOR_SYMBOL], 0.0)
+            > float(valor[VALOR_AMOUNT]) + 1e-9
+        ],
+        key=lambda item: item["symbol"],
+    )
 
 
 def additional_units(

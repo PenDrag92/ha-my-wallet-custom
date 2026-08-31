@@ -103,6 +103,7 @@ from .contributions import (
     lot_metrics,
     lots_for_symbol,
     money_weighted_return,
+    opening_balance_conflicts,
     xirr,
 )
 from .coordinator import WalletCoordinator
@@ -898,6 +899,7 @@ class WalletNextExecutionSensor(CoordinatorEntity[WalletCoordinator], SensorEnti
             ],
             ATTR_PENDING_EXECUTIONS: self.coordinator.data.pending_executions,
             "pending_count": len(self.coordinator.data.pending_executions),
+            "opening_conflicts": opening_balance_conflicts(self._entry.data),
             "last_result": self._entry.data.get(CONF_LAST_PLAN_RESULT, {}),
         }
 

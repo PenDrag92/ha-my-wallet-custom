@@ -54,7 +54,8 @@
           "add_valor": "Přidat instrument",
           "remove_valor": "Odebrat instrument",
           "edit_valor": "Upravit instrument (množství, cílový podíl)"
-        }
+        },
+        "description": "{opening_conflict}"
       },
       "settings": {
         "title": "Nastavení peněženky",

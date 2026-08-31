@@ -594,8 +594,9 @@ class PlanOptionsMixin:
                 f"{item['scheduled_date']} · "
                 f"{self._text(item.get('reason', 'booking_failed'))}"
                 + (
-                    " · " + ", ".join(item["missing_symbols"])
-                    if item.get("missing_symbols")
+                    " · "
+                    + ", ".join(item.get("affected_symbols") or item["missing_symbols"])
+                    if item.get("affected_symbols") or item.get("missing_symbols")
                     else ""
                 )
                 for item in report.get("pending", [])

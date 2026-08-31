@@ -11,6 +11,8 @@ const WORDS = {
     noRows: "Für diese Auswahl sind keine Buchungen vorhanden.", loading: "Verlauf und historische Kurse werden geladen …",
     estimated: "Stückzahlen mit dem Hinweis „geschätzt“ beruhen auf Yahoo-Schlusskursen. Der Depotwert ist damit ebenfalls eine Näherung; die erfassten Zahlungsbeträge bleiben unverändert.",
     openingWarning: "Für Teile des Anfangsbestands fehlen Kaufdaten. Der historische Depotwert bleibt deshalb leer; Einzahlungen und Cash werden angezeigt.",
+    openingConflict: "Anfangsbestand und enthaltene Kauftranchen passen nicht zusammen. Automatische Sparplanbuchungen sind pausiert; die historische Wertkurve bleibt leer. Prüfe unter „Verwalten“ den Anfangsbestand und die als enthalten markierten Kauftranchen anhand deiner Abrechnungen. Die gespeicherten Stückzahlen wurden nicht verändert.",
+    configuredUnits: "Anfangsbestand", includedUnits: "als enthalten markierte Anteile",
     quotesWarning: "Bei fehlenden historischen Kursen oder Wechselkursen bleibt die Wertkurve an den betroffenen Tagen unterbrochen.",
     limited: "Die Kurve zeigt höchstens die letzten zehn Jahre. Der Buchungsverlauf enthält weiterhin alle Einträge.",
     closeHint: "Tageswerte anhand bestätigter Schlusskurse; heutiger Depotwert oben nach dem letzten Sensor-Update.",
@@ -43,6 +45,8 @@ const WORDS = {
     noRows: "No transactions match this selection.", loading: "Loading history and historical prices …",
     estimated: "Units marked estimated use Yahoo daily closes. Portfolio values are therefore approximate; recorded payment amounts are unchanged.",
     openingWarning: "Some opening holdings have no purchase dates. Historical portfolio values remain empty; deposits and cash are shown.",
+    openingConflict: "Opening holdings and included purchase lots disagree. Automatic plan bookings are paused and the historical value curve remains empty. Use Manage to reconcile opening units and included purchase lots against your statements. Stored quantities were not changed.",
+    configuredUnits: "opening units", includedUnits: "units marked included",
     quotesWarning: "Missing historical prices or exchange rates leave gaps in the value curve.",
     limited: "The chart shows up to ten years. The ledger still includes every transaction.",
     closeHint: "Daily values use confirmed closing prices. The current value above comes from the latest sensor update.",
@@ -200,6 +204,16 @@ class MyWalletPanel extends HTMLElement {
     if (this._importOpen) this._renderImport(main);
     const wallet = this._wallet();
     if (!wallet) { this._notice(main, this.t("noWallet")); return; }
+    if (wallet.opening_conflicts?.length) {
+      const warning = node("div", null, "notice warning");
+      warning.setAttribute("role", "alert");
+      warning.append(node("p", this.t("openingConflict")));
+      const list = node("ul");
+      const number = new Intl.NumberFormat(this._lang, { maximumFractionDigits: 12 });
+      for (const item of wallet.opening_conflicts) list.append(node("li", `${item.symbol}: ${this.t("configuredUnits")} ${number.format(item.configured_units)}; ${this.t("includedUnits")} ${number.format(item.included_units)}`));
+      warning.append(list);
+      main.append(warning);
+    }
     const stats = node("div", null, "stats");
     for (const [key, value] of [["value", wallet.total], ["invested", wallet.invested], ["cash", wallet.cash], ["dividends", wallet.dividends]]) this._stat(stats, this.t(key), this.money(value));
     main.append(stats);

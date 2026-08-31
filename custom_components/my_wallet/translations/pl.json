@@ -54,7 +54,8 @@
           "add_valor": "Dodaj walor",
           "remove_valor": "Usuń walor",
           "edit_valor": "Edytuj walor (ilość, udział docelowy)"
-        }
+        },
+        "description": "{opening_conflict}"
       },
       "settings": {
         "title": "Ustawienia portfela",

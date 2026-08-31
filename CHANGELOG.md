@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.4
+
+- Let legacy wallets with conflicting opening quantities migrate without
+  changing holdings, payment amounts or purchase lots. Keep structural
+  validation for malformed data and missing asset references.
+- Surface the discrepancy in the panel, options and sensor attributes.
+  Pause automatic plan bookings and suppress the historical value curve
+  until reconciliation; retain deposits, cash and the transaction ledger.
+- Allow incremental manual corrections without worsening a discrepancy;
+  resume normal operation automatically after the quantities agree.
+- Replace portfolio-specific public examples with generic guidance.
+- Add migration, persistence, recalculation and recovery regressions.
+
 ## 1.3.3
 
 - Add an automatically registered, authenticated administrator sidebar panel

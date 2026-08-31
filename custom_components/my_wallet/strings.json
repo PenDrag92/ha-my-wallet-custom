@@ -54,7 +54,8 @@
           "add_valor": "Add a valor",
           "remove_valor": "Remove a valor",
           "edit_valor": "Edit a valor (amount, target share)"
-        }
+        },
+        "description": "{opening_conflict}"
       },
       "settings": {
         "title": "Wallet settings",

@@ -35,7 +35,12 @@ from .const import (
     VALOR_AMOUNT,
     VALOR_SYMBOL,
 )
-from .contributions import contributions_from_data, make_contribution, make_lot
+from .contributions import (
+    contributions_from_data,
+    make_contribution,
+    make_lot,
+    opening_balance_conflicts,
+)
 from .dividends import cash_balance, reinvestable_cash
 from .plans import (
     allocation_amounts,
@@ -214,6 +219,25 @@ async def async_prepare_executions(
     ]
     result = dict(data)
     if not due:
+        return result, report
+    conflicts = opening_balance_conflicts(data)
+    if conflicts:
+        # Never build new history on top of contradictory legacy quantities,
+        # including when an explicit recalculation would remove old rows.
+        report["pending"] = [
+            {
+                "plan_id": plan[PLAN_ID],
+                "plan_name": plan[PLAN_NAME],
+                "scheduled_date": day.isoformat(),
+                "reason": "opening_balance_conflict",
+                "missing_symbols": [],
+                "affected_symbols": [item["symbol"] for item in conflicts],
+                "repair_required": True,
+            }
+            for plan, day in due
+        ]
+        report["rolled_back"] = bool(replacement_ids)
+        report["failed"] = len(report["pending"])
         return result, report
     base_currency = str(data[CONF_BASE_CURRENCY])
     symbols = sorted({symbol for plan, _ in due for symbol in allocation_amounts(plan)})

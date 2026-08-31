@@ -1,3 +1,21 @@
+# My Wallet 1.3.4 verification note
+
+This is not an independent security certification. The migration recovery
+does not infer the correct holding quantity from conflicting legacy data.
+It preserves both recorded quantities, exposes the disagreement and blocks
+automatic plan writes while allowing the user to repair existing entries.
+It does not lift structural validation or the guard against new conflicts.
+Current holdings still use the configured opening units plus later lots;
+the contradictory historical portfolio curve remains unavailable.
+
+Tests cover an unchanged first refresh, a blocked destructive recalculation,
+incremental repairs, automatic resumption, missing-reference rejection and
+warnings without due plans or market data. Public text uses generic examples.
+Existing external Git history is outside this local package and has not
+been rewritten. No live Home Assistant upgrade or remote CI is claimed.
+
+---
+
 # My Wallet 1.3.3 verification note
 
 This is a local code-review and regression-test note, not an independent

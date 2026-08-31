@@ -23,6 +23,13 @@ MESSAGES = {
         "whether the funding deposit is already recorded.",
         "estimated": "(estimated)",
         "new_plan": "Create due executions using this plan",
+        "opening_balance_conflict": "Opening holdings and included purchase lots "
+        "disagree. Automatic plan bookings are paused. Check the opening units "
+        "under Edit a valor and the included units under Correct a purchase lot. "
+        "Stored quantities were preserved; do not increase them without checking "
+        "your statements.",
+        "configured_units": "opening units",
+        "included_units": "units marked included",
     },
     "de": {
         "deposit": "Einzahlung",
@@ -50,6 +57,13 @@ MESSAGES = {
         "zugehörige Einzahlung bereits erfasst ist.",
         "estimated": "(geschätzt)",
         "new_plan": "Fällige Ausführungen dieses neuen Plans nachholen",
+        "opening_balance_conflict": "Anfangsbestand und enthaltene Kauftranchen "
+        "passen nicht zusammen. Automatische Sparplanbuchungen sind pausiert. "
+        "Prüfe die Stückzahlen unter Wertpapier bearbeiten und Kauftranche "
+        "korrigieren anhand deiner Abrechnungen. Die gespeicherten Stückzahlen "
+        "wurden beibehalten; bitte nicht ungeprüft erhöhen.",
+        "configured_units": "Anfangsbestand",
+        "included_units": "als enthalten markierte Anteile",
     },
     "pl": {
         "deposit": "Wpłata",
@@ -73,6 +87,12 @@ MESSAGES = {
         "wpłata finansująca została już zapisana.",
         "estimated": "(szacowane)",
         "new_plan": "Utwórz należne wykonania nowego planu",
+        "opening_balance_conflict": "Saldo początkowe i zakupy oznaczone jako "
+        "uwzględnione są niespójne. Automatyczne wykonania są wstrzymane. "
+        "Sprawdź liczbę jednostek i transze zakupów na podstawie potwierdzeń. "
+        "Zapisane ilości nie zostały zmienione.",
+        "configured_units": "jednostki początkowe",
+        "included_units": "jednostki oznaczone jako uwzględnione",
     },
     "cs": {
         "deposit": "Vklad",
@@ -96,6 +116,12 @@ MESSAGES = {
         "již byl zaznamenán příslušný vklad.",
         "estimated": "(odhad)",
         "new_plan": "Doplnit splatná provedení nového plánu",
+        "opening_balance_conflict": "Počáteční stav a zahrnuté nákupy si "
+        "odporují. Automatická provedení jsou pozastavena. Zkontrolujte "
+        "počty podílů a nákupní tranše podle výpisů. Uložené počty "
+        "zůstaly nezměněny.",
+        "configured_units": "počáteční podíly",
+        "included_units": "podíly označené jako zahrnuté",
     },
 }
 

@@ -20,9 +20,7 @@ from .const import (
     CONF_VALORS,
     CONTRIBUTION_SOURCE_LEGACY,
     DIVIDEND_SYMBOL,
-    LOT_INCLUDED_IN_OPENING,
     LOT_SYMBOL,
-    LOT_UNITS,
     PLAN_ALLOCATIONS,
     PLAN_ENABLED,
     PLAN_ID,
@@ -38,6 +36,7 @@ from .contributions import (
     make_contribution,
     normalize_contributions,
     normalize_date,
+    opening_balance_conflicts,
 )
 from .coordinator import WalletCoordinator
 from .dividends import normalize_dividends
@@ -88,7 +87,7 @@ def _normalize_migrated_plan(
 
 
 def _validate_migrated_references(data: dict[str, Any]) -> None:
-    """Reject hidden holdings and impossible opening-unit histories."""
+    """Reject malformed references; keep repairable opening conflicts editable."""
     opening_units: dict[str, float] = {}
     for valor in data.get(CONF_VALORS, []):
         symbol = str(valor[VALOR_SYMBOL]).strip().upper()
@@ -97,23 +96,10 @@ def _validate_migrated_references(data: dict[str, Any]) -> None:
             raise ValueError("Invalid or duplicate configured valor")
         opening_units[symbol] = amount
 
-    included_units = {symbol: 0.0 for symbol in opening_units}
     for lot in all_lots(data):
         symbol = lot[LOT_SYMBOL]
         if symbol not in opening_units:
             raise ValueError(f"Purchase lot references missing valor {symbol}")
-        if lot[LOT_INCLUDED_IN_OPENING]:
-            included_units[symbol] += float(lot[LOT_UNITS])
-
-    exceeded = sorted(
-        symbol
-        for symbol, units in included_units.items()
-        if units > opening_units[symbol] + 1e-9
-    )
-    if exceeded:
-        raise ValueError(
-            "Included opening lots exceed configured units for " + ", ".join(exceeded)
-        )
 
     for plan in data.get(CONF_SAVINGS_PLANS, []):
         for allocation in plan[PLAN_ALLOCATIONS]:
@@ -163,7 +149,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -
 
         # Version 4 briefly allowed lot edits that could violate their parent
         # funding date or legacy-opening semantics.  Validate every ledger on
-        # the v5 boundary instead of loading contradictory cash history.
+        # the schema boundary instead of loading contradictory cash history.
+        # Opening-unit disagreements are different: preserve both versions of
+        # the recorded quantities and allow the user to reconcile them in UI.
         data[CONF_CONTRIBUTIONS] = normalize_contributions(
             data.get(CONF_CONTRIBUTIONS, [])
         )
@@ -191,6 +179,20 @@ async def async_migrate_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -
         )
         return False
 
+    conflicts = opening_balance_conflicts(data)
+    if conflicts:
+        _LOGGER.warning(
+            "Preserved opening-balance conflict while migrating My Wallet from "
+            "version %s: %s. No holdings or purchase quantities were changed. "
+            "Automatic savings-plan bookings are paused until the opening "
+            "holdings and included purchase lots are reconciled in the options",
+            original_version,
+            "; ".join(
+                f"{item['symbol']}: configured={item['configured_units']:.12g}, "
+                f"included lots={item['included_units']:.12g}"
+                for item in conflicts
+            ),
+        )
     hass.config_entries.async_update_entry(entry, data=data, version=6)
     _LOGGER.info(
         "Migrated My Wallet config entry from version %s to version 6 "

@@ -83,6 +83,7 @@ from .contributions import (
     make_contribution,
     make_lot,
     normalize_contributions,
+    opening_balance_conflicts,
 )
 from .display import text as display_text
 from .dividends import (
@@ -728,7 +729,24 @@ class MyWalletOptionsFlow(
         ):
             menu_options.append("restore_execution")
         menu_options.extend(["add_valor", "edit_valor", "remove_valor"])
-        return self.async_show_menu(step_id="init", menu_options=menu_options)
+        conflicts = opening_balance_conflicts(self.config_entry.data)
+        warning = ""
+        if conflicts:
+            warning = (
+                self._text("opening_balance_conflict")
+                + "\n\n"
+                + "\n".join(
+                    f"- {item['symbol']}: {self._text('configured_units')} "
+                    f"{item['configured_units']:.12g}; {self._text('included_units')} "
+                    f"{item['included_units']:.12g}"
+                    for item in conflicts
+                )
+            )
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=menu_options,
+            description_placeholders={"opening_conflict": warning},
+        )
 
     def _valors(self) -> list[dict[str, Any]]:
         return list(self.config_entry.data.get(CONF_VALORS, []))
@@ -1388,7 +1406,11 @@ class MyWalletOptionsFlow(
                             replacement[LOT_SYMBOL], exclude_lot_id=lot_id
                         )
                         + float(replacement[LOT_UNITS])
-                        > self._opening_units(replacement[LOT_SYMBOL]) + 1e-9
+                        > max(
+                            self._opening_units(replacement[LOT_SYMBOL]),
+                            self._included_lot_units(replacement[LOT_SYMBOL]),
+                        )
+                        + 1e-9
                     ):
                         errors[LOT_UNITS] = "included_units_exceeded"
                     else:
@@ -1738,7 +1760,11 @@ class MyWalletOptionsFlow(
                 description_placeholders={VALOR_SYMBOL: str(symbol)},
                 errors={VALOR_AMOUNT: "invalid_number"},
             )
-        if amount + 1e-9 < self._included_lot_units(str(symbol)):
+        # A legacy conflict may need several corrections. Permit each step
+        # that preserves or reduces it, but never create or enlarge a conflict.
+        if amount + 1e-9 < min(
+            self._included_lot_units(str(symbol)), self._opening_units(str(symbol))
+        ):
             return self.async_show_form(
                 step_id="edit_valor_fields",
                 data_schema=_valor_fields_schema(

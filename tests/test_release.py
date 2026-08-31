@@ -87,8 +87,8 @@ class ReleaseTests(unittest.TestCase):
         project = tomllib.loads((ROOT / "pyproject.toml").read_text())
         hacs = json.loads((ROOT / "hacs.json").read_text())
 
-        self.assertEqual(manifest["version"], "1.3.3")
-        self.assertEqual(project["project"]["version"], "1.3.3")
+        self.assertEqual(manifest["version"], "1.3.4")
+        self.assertEqual(project["project"]["version"], "1.3.4")
         self.assertEqual(hacs["homeassistant"], "2024.11.3")
         self.assertEqual(manifest["codeowners"], ["@PenDrag92"])
         self.assertEqual(

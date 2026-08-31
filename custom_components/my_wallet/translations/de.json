@@ -54,7 +54,8 @@
           "add_valor": "Wertpapier hinzufügen",
           "remove_valor": "Wertpapier entfernen",
           "edit_valor": "Wertpapier bearbeiten"
-        }
+        },
+        "description": "{opening_conflict}"
       },
       "settings": {
         "title": "Depoteinstellungen",

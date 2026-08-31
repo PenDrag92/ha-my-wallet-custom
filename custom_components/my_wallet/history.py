@@ -8,7 +8,11 @@ from datetime import date, timedelta
 from typing import Any
 
 from . import const as c
-from .contributions import all_lots, contributions_from_data
+from .contributions import (
+    all_lots,
+    contributions_from_data,
+    opening_balance_conflicts,
+)
 from .dividends import dividends_from_data
 from .yahoo import HistoricalQuote, fetch_histories, fx_symbol
 
@@ -121,6 +125,7 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
         for valor in data[c.CONF_VALORS]
         if valor[c.VALOR_AMOUNT] - included[valor[c.VALOR_SYMBOL]] > 1e-8
     ]
+    conflicts = opening_balance_conflicts(data)
     positions = defaultdict(float)
     cash = invested = 0.0
     pointer = 0
@@ -141,7 +146,7 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
                 positions[row["symbol"]] += row["units"]
             pointer += 1
         value = cash
-        complete = not unknown_opening
+        complete = not unknown_opening and not conflicts
         for symbol, units in positions.items():
             if units <= 1e-10:
                 continue
@@ -167,6 +172,7 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
         "ledger": events,
         "estimated": any(row.get("estimated") for row in events),
         "unknown_opening": unknown_opening,
+        "opening_conflicts": conflicts,
         "missing_history": sorted(missing),
         "range_limited": start != first,
     }
