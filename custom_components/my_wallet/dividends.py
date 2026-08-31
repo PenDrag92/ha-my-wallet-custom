@@ -128,6 +128,11 @@ def cash_balance(
             balance += float(contribution[CONTRIBUTION_AMOUNT])
 
         for lot in contribution[CONTRIBUTION_LOTS]:
+            if (
+                contribution[CONTRIBUTION_SOURCE] == CONTRIBUTION_SOURCE_LEGACY
+                and lot[LOT_INCLUDED_IN_OPENING]
+            ):
+                continue
             if through is None or date.fromisoformat(lot[LOT_DATE]) <= through:
                 balance -= float(lot[LOT_AMOUNT])
 
@@ -143,19 +148,35 @@ def reinvestable_cash(
     today: date,
     reserved: float = 0.0,
 ) -> float:
-    """Return cash available both historically and in the current ledger.
+    """Return cash available throughout the relevant ledger interval.
 
-    The current-balance cap prevents a retroactive execution from reusing cash
-    that a later, already stored execution has consumed. ``reserved`` prevents
-    several executions prepared in the same refresh from sharing the same cash.
+    Every cash-event date is checked so a later replenishment cannot hide an
+    intervening overdraft. ``reserved`` prevents several executions prepared in
+    the same refresh from sharing the same cash.
     """
+    event_dates = {execution_through, today}
+    if execution_through <= today:
+        for contribution in contributions_from_data(data):
+            contribution_date = contribution.get(CONTRIBUTION_DATE)
+            if contribution_date is not None:
+                effective = date.fromisoformat(str(contribution_date))
+                if execution_through <= effective <= today:
+                    event_dates.add(effective)
+            for lot in contribution[CONTRIBUTION_LOTS]:
+                effective = date.fromisoformat(lot[LOT_DATE])
+                if execution_through <= effective <= today:
+                    event_dates.add(effective)
+        for dividend in dividends_from_data(data):
+            effective = date.fromisoformat(
+                dividend.get(DIVIDEND_VALUE_DATE) or dividend[DIVIDEND_BOOKING_DATE]
+            )
+            if execution_through <= effective <= today:
+                event_dates.add(effective)
+
     return max(
         0.0,
-        min(
-            cash_balance(data, through=execution_through),
-            cash_balance(data, through=today),
-        )
-        - reserved,
+        min(cash_balance(data, through=effective) for effective in event_dates)
+        - float(reserved),
     )
 
 

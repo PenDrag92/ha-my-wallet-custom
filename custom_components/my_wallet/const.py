@@ -20,6 +20,10 @@ CONF_VALORS: Final = "valors"
 # retained only for migrating config entries created by version 1.
 CONF_CONTRIBUTIONS: Final = "contributions"
 CONF_SAVINGS_PLANS: Final = "savings_plans"
+# Removed plans are retained as inert identity records.  This allows an
+# otherwise identical plan to be re-created without booking its historical
+# schedule a second time.
+CONF_RETIRED_SAVINGS_PLANS: Final = "retired_savings_plans"
 CONF_DIVIDENDS: Final = "dividends"
 CONF_INVESTED_AMOUNT: Final = "invested_amount"  # optional, in base currency
 

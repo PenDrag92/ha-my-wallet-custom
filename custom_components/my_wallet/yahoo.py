@@ -93,9 +93,31 @@ def _timestamp_date(timestamp: float, timezone_name: str | None) -> date:
     """Convert a Yahoo timestamp in the exchange's timezone."""
     try:
         timezone = ZoneInfo(timezone_name) if timezone_name else UTC
-    except ZoneInfoNotFoundError:
+    except (TypeError, ZoneInfoNotFoundError):
         timezone = UTC
     return datetime.fromtimestamp(timestamp, timezone).date()
+
+
+def _safe_timestamp_date(timestamp: Any, timezone_name: str | None) -> date | None:
+    """Best-effort Yahoo timestamp conversion for untrusted payload data."""
+    normalized = _to_float(timestamp)
+    if normalized is None:
+        return None
+    try:
+        return _timestamp_date(normalized, timezone_name)
+    except (OverflowError, OSError, TypeError, ValueError):
+        return None
+
+
+async def _response_json(response: Any, context: str) -> dict[str, Any]:
+    """Decode one Yahoo response and normalize malformed JSON to YahooError."""
+    try:
+        payload = await response.json()
+    except (TypeError, ValueError) as err:
+        raise YahooError(f"Invalid JSON for {context}: {err}") from err
+    if not isinstance(payload, dict):
+        raise YahooError(f"Invalid JSON for {context}: expected an object")
+    return payload
 
 
 def _currency_and_factor(raw_currency: Any) -> tuple[str, float]:
@@ -110,6 +132,16 @@ def _currency_and_factor(raw_currency: Any) -> tuple[str, float]:
     return minor_units.get(raw, (raw.upper(), 1.0))
 
 
+def _regular_session_end(meta: dict[str, Any]) -> float | None:
+    """Return the regular-session end without trusting nested Yahoo objects."""
+    try:
+        trading_period = meta.get("currentTradingPeriod") or {}
+        regular = trading_period.get("regular") or {}
+        return _to_float(regular.get("end"))
+    except AttributeError:
+        return None
+
+
 def _market_date_confirmed(
     market_date: date,
     timezone_name: str | None,
@@ -121,7 +153,7 @@ def _market_date_confirmed(
     now_timestamp = time.time() if now_timestamp is None else now_timestamp
     try:
         timezone = ZoneInfo(timezone_name) if timezone_name else UTC
-    except ZoneInfoNotFoundError:
+    except (TypeError, ZoneInfoNotFoundError):
         timezone = UTC
     exchange_today = datetime.fromtimestamp(now_timestamp, timezone).date()
     return market_date < exchange_today or (
@@ -146,7 +178,7 @@ async def fetch_quote(session: aiohttp.ClientSession, symbol: str) -> Quote:
         ) as resp:
             if resp.status != 200:
                 raise YahooError(f"HTTP {resp.status} for {symbol}")
-            payload: dict[str, Any] = await resp.json()
+            payload = await _response_json(resp, symbol)
     except (TimeoutError, aiohttp.ClientError) as err:
         raise YahooError(f"Request failed for {symbol}: {err}") from err
 
@@ -155,21 +187,16 @@ async def fetch_quote(session: aiohttp.ClientSession, symbol: str) -> Quote:
         meta = result["meta"]
         price = _to_float(meta["regularMarketPrice"])
         currency, price_factor = _currency_and_factor(meta["currency"])
-    except (KeyError, IndexError, TypeError) as err:
+    except (AttributeError, KeyError, IndexError, TypeError) as err:
         raise YahooError(f"Unexpected payload for {symbol}: {err}") from err
 
     if price is None or price <= 0:
         raise YahooError(f"No price in payload for {symbol}")
 
-    market_timestamp = _to_float(meta.get("regularMarketTime"))
-    market_date = (
-        _timestamp_date(market_timestamp, meta.get("exchangeTimezoneName"))
-        if market_timestamp is not None
-        else None
+    market_date = _safe_timestamp_date(
+        meta.get("regularMarketTime"), meta.get("exchangeTimezoneName")
     )
-    regular_end = _to_float(
-        meta.get("currentTradingPeriod", {}).get("regular", {}).get("end")
-    )
+    regular_end = _regular_session_end(meta)
     market_closed = bool(
         market_date is not None
         and _market_date_confirmed(
@@ -229,7 +256,7 @@ async def fetch_history(
         ) as resp:
             if resp.status != 200:
                 raise YahooError(f"HTTP {resp.status} for history of {symbol}")
-            payload: dict[str, Any] = await resp.json()
+            payload = await _response_json(resp, f"history of {symbol}")
     except (TimeoutError, aiohttp.ClientError) as err:
         raise YahooError(f"History request failed for {symbol}: {err}") from err
 
@@ -238,12 +265,12 @@ async def fetch_history(
         meta = result["meta"]
         currency, price_factor = _currency_and_factor(meta["currency"])
         timezone_name = meta.get("exchangeTimezoneName")
-        regular_end = _to_float(
-            meta.get("currentTradingPeriod", {}).get("regular", {}).get("end")
-        )
+        regular_end = _regular_session_end(meta)
         timestamps = result.get("timestamp") or []
         closes = result["indicators"]["quote"][0].get("close") or []
-    except (KeyError, IndexError, TypeError) as err:
+        if not isinstance(timestamps, list) or not isinstance(closes, list):
+            raise TypeError("timestamps and closes must be arrays")
+    except (AttributeError, KeyError, IndexError, TypeError) as err:
         raise YahooError(f"Unexpected history payload for {symbol}: {err}") from err
 
     history: list[HistoricalQuote] = []
@@ -251,7 +278,9 @@ async def fetch_history(
         close = _to_float(raw_close)
         if close is None or close <= 0:
             continue
-        quote_date = _timestamp_date(timestamp, timezone_name)
+        quote_date = _safe_timestamp_date(timestamp, timezone_name)
+        if quote_date is None:
+            continue
         if start_date <= quote_date <= end_date and _market_date_confirmed(
             quote_date, timezone_name, regular_end
         ):
@@ -275,6 +304,9 @@ async def fetch_histories(
         except YahooError as err:
             _LOGGER.warning("Yahoo Finance history failed: %s", err)
             return []
+        except Exception:  # pragma: no cover - defensive task boundary
+            _LOGGER.exception("Unexpected Yahoo Finance history failure for %s", symbol)
+            return []
 
     results = await asyncio.gather(*(_safe(symbol) for symbol in symbols))
     return dict(zip(symbols, results, strict=True))
@@ -294,6 +326,9 @@ async def fetch_quotes(
             return await fetch_quote(session, symbol)
         except YahooError as err:
             _LOGGER.warning("Yahoo Finance quote failed: %s", err)
+            return None
+        except Exception:  # pragma: no cover - defensive task boundary
+            _LOGGER.exception("Unexpected Yahoo Finance quote failure for %s", symbol)
             return None
 
     results = await asyncio.gather(*(_safe(sym) for sym in symbols))

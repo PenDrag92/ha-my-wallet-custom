@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -20,9 +20,14 @@ from .const import (
     CONF_SAVINGS_PLANS,
     CONF_SCAN_INTERVAL,
     CONF_VALORS,
+    CONF_WALLET_NAME,
+    CONTRIBUTION_LOTS,
     CONTRIBUTION_SOURCE_PLAN,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    LOT_INCLUDED_IN_OPENING,
+    LOT_SYMBOL,
+    LOT_UNITS,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
     PLAN_AMOUNT,
@@ -56,6 +61,57 @@ from .yahoo import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _close_date_bounds(close_dates: Sequence[date]) -> tuple[date, date]:
+    """Return stable earliest/latest bounds for one multi-symbol execution."""
+    if not close_dates:
+        raise ValueError("At least one close date is required")
+    ordered = sorted(close_dates)
+    return ordered[0], ordered[-1]
+
+
+def _execution_sort_key(
+    close_dates: Sequence[date], scheduled: date, plan_id: str
+) -> tuple[date, date, str]:
+    """Order executions by usable cash date, then their stable plan identity."""
+    earliest_close, _ = _close_date_bounds(close_dates)
+    return earliest_close, scheduled, plan_id
+
+
+def _included_opening_overflows(
+    valors: Sequence[Mapping[str, Any]],
+    contributions: Sequence[Mapping[str, Any]],
+    proposed_lots: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    """Return symbols whose proposed opening lots exceed configured units."""
+    proposed_symbols = {
+        str(lot[LOT_SYMBOL])
+        for lot in proposed_lots
+        if lot.get(LOT_INCLUDED_IN_OPENING)
+    }
+    if not proposed_symbols:
+        return []
+
+    opening_units = {
+        str(valor[VALOR_SYMBOL]): float(valor[VALOR_AMOUNT]) for valor in valors
+    }
+    included_units = {symbol: 0.0 for symbol in proposed_symbols}
+    all_lots = [
+        lot
+        for contribution in contributions
+        for lot in contribution.get(CONTRIBUTION_LOTS, [])
+    ]
+    for lot in [*all_lots, *proposed_lots]:
+        symbol = str(lot[LOT_SYMBOL])
+        if symbol in proposed_symbols and lot.get(LOT_INCLUDED_IN_OPENING):
+            included_units[symbol] += float(lot[LOT_UNITS])
+
+    return sorted(
+        symbol
+        for symbol, units in included_units.items()
+        if units > opening_units.get(symbol, 0.0) + 1e-9
+    )
+
+
 class WalletCoordinator(DataUpdateCoordinator[WalletData]):
     """Refresh quotes and book due monthly savings-plan executions."""
 
@@ -72,7 +128,7 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
         super().__init__(
             hass,
             _LOGGER,
-            name=f"{DOMAIN}_{entry.data.get(CONF_NAME, entry.title)}",
+            name=f"{DOMAIN}_{entry.data.get(CONF_WALLET_NAME, entry.title)}",
             update_interval=timedelta(minutes=interval),
             config_entry=entry,
         )
@@ -180,12 +236,13 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
                 for item in pending
             )
         ]
+
         ready.sort(
-            key=lambda item: (
-                max(
+            key=lambda item: _execution_sort_key(
+                [
                     selected[(item[0][PLAN_ID], f"{item[1]}:{symbol}")].date
                     for symbol in allocation_amounts(item[0])
-                ),
+                ],
                 item[1],
                 item[0][PLAN_ID],
             )
@@ -222,9 +279,11 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
             missing_fx = False
             available_amount: float | None = None
             if plan[PLAN_USE_CASH_BALANCE]:
-                execution_through = max(
-                    selected[(plan[PLAN_ID], f"{scheduled}:{symbol}")].date
-                    for symbol in allocation_amounts(plan)
+                execution_through, _ = _close_date_bounds(
+                    [
+                        selected[(plan[PLAN_ID], f"{scheduled}:{symbol}")].date
+                        for symbol in allocation_amounts(plan)
+                    ]
                 )
                 available_amount = float(plan[PLAN_AMOUNT]) + max(
                     0.0,
@@ -286,6 +345,23 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
                         "plan_name": plan[PLAN_NAME],
                         "scheduled_date": scheduled.isoformat(),
                         "missing_symbols": ["fx_rate"],
+                    }
+                )
+                continue
+
+            opening_overflows = _included_opening_overflows(
+                entry_data_snapshot.get(CONF_VALORS, []), contributions, lots
+            )
+            if opening_overflows:
+                pending.append(
+                    {
+                        "plan_id": plan[PLAN_ID],
+                        "plan_name": plan[PLAN_NAME],
+                        "scheduled_date": scheduled.isoformat(),
+                        "missing_symbols": [],
+                        "repair_required": True,
+                        "reason": "included_units_exceeded",
+                        "affected_symbols": opening_overflows,
                     }
                 )
                 continue

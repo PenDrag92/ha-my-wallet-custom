@@ -130,6 +130,16 @@ def make_contribution(
 ) -> dict[str, Any]:
     """Create one execution group, optionally containing purchase lots."""
     normalized_lots = [normalize_lot(item) for item in (lots or [])]
+    normalized_date = normalize_date(execution_date, allow_none=True)
+    if source == CONTRIBUTION_SOURCE_LEGACY and any(
+        not lot[LOT_INCLUDED_IN_OPENING] for lot in normalized_lots
+    ):
+        raise ValueError("Legacy funding only accepts opening-balance lots")
+    if normalized_date is not None and any(
+        date.fromisoformat(lot[LOT_DATE]) < date.fromisoformat(normalized_date)
+        for lot in normalized_lots
+    ):
+        raise ValueError("Funding contribution date must not be after lot date")
     normalized_amount = (
         sum(item[LOT_AMOUNT] for item in normalized_lots)
         if amount is None and normalized_lots
@@ -140,7 +150,7 @@ def make_contribution(
 
     item: dict[str, Any] = {
         CONTRIBUTION_ID: contribution_id or uuid4().hex,
-        CONTRIBUTION_DATE: normalize_date(execution_date, allow_none=True),
+        CONTRIBUTION_DATE: normalized_date,
         CONTRIBUTION_AMOUNT: normalized_amount,
         CONTRIBUTION_SOURCE: source,
         CONTRIBUTION_LOTS: normalized_lots,
@@ -187,8 +197,24 @@ def attach_lot(
 ) -> list[dict[str, Any]]:
     """Attach a purchase lot to an existing external contribution."""
     contributions = normalize_contributions(entries)
-    if not any(item[CONTRIBUTION_ID] == contribution_id for item in contributions):
+    contribution = next(
+        (item for item in contributions if item[CONTRIBUTION_ID] == contribution_id),
+        None,
+    )
+    if contribution is None:
         raise ValueError("Funding contribution does not exist")
+    normalized_lot = normalize_lot(lot)
+    if (
+        contribution[CONTRIBUTION_SOURCE] == CONTRIBUTION_SOURCE_LEGACY
+        and not normalized_lot[LOT_INCLUDED_IN_OPENING]
+    ):
+        raise ValueError("Legacy funding only accepts opening-balance lots")
+    contribution_date = contribution[CONTRIBUTION_DATE]
+    if contribution_date is not None and date.fromisoformat(
+        contribution_date
+    ) > date.fromisoformat(normalized_lot[LOT_DATE]):
+        raise ValueError("Funding contribution date must not be after lot date")
+
     updated: list[dict[str, Any]] = []
     for item in contributions:
         if item[CONTRIBUTION_ID] != contribution_id:
@@ -200,7 +226,7 @@ def attach_lot(
                 item[CONTRIBUTION_DATE],
                 contribution_id=item[CONTRIBUTION_ID],
                 source=item[CONTRIBUTION_SOURCE],
-                lots=[*item[CONTRIBUTION_LOTS], lot],
+                lots=[*item[CONTRIBUTION_LOTS], normalized_lot],
                 plan_id=item.get(CONTRIBUTION_PLAN_ID),
                 scheduled_date=item.get(CONTRIBUTION_SCHEDULED_DATE),
             )
@@ -303,11 +329,15 @@ def lot_metrics(
     age_days = max(0, (as_of - lot_date).days)
     annualized: float | None = None
     if age_days > 0 and current_value + income > 0:
-        annualized = (
-            ((current_value + income) / invested) ** (_DAYS_PER_YEAR / age_days) - 1
-        ) * 100
-        if not isfinite(annualized):
+        try:
+            annualized = (
+                ((current_value + income) / invested) ** (_DAYS_PER_YEAR / age_days) - 1
+            ) * 100
+        except (OverflowError, ZeroDivisionError):
             annualized = None
+        else:
+            if not isfinite(annualized):
+                annualized = None
     return {
         "current_value": current_value,
         "profit": profit,

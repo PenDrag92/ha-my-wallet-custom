@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import date, timedelta
+from math import isfinite
 from typing import Any
 
 import voluptuous as vol
@@ -24,6 +25,7 @@ from .const import (
     CONF_CONTRIBUTIONS,
     CONF_DIVIDENDS,
     CONF_INVESTED_AMOUNT,
+    CONF_RETIRED_SAVINGS_PLANS,
     CONF_SAVINGS_PLANS,
     CONF_SCAN_INTERVAL,
     CONF_VALORS,
@@ -35,6 +37,7 @@ from .const import (
     CONTRIBUTION_PLAN_ID,
     CONTRIBUTION_SCHEDULED_DATE,
     CONTRIBUTION_SOURCE,
+    CONTRIBUTION_SOURCE_LEGACY,
     CONTRIBUTION_SOURCE_PLAN,
     DEFAULT_BASE_CURRENCY,
     DEFAULT_SCAN_INTERVAL,
@@ -85,7 +88,13 @@ from .dividends import (
     make_dividend,
     normalize_dividends,
 )
-from .plans import make_plan, normalize_plan, schedule_period
+from .plans import (
+    is_scheduled_period,
+    make_plan,
+    normalize_plan,
+    reactivate_matching_plan,
+    schedule_period,
+)
 from .yahoo import YahooError, fetch_history, fx_symbol
 
 _CURRENCY_SELECTOR = selector.SelectSelector(
@@ -171,20 +180,81 @@ _ALLOCATION_MODE_SELECTOR = selector.SelectSelector(
     )
 )
 
+_MAX_NUMBER = 10_000_000_000.0
+
+
+def _finite_number(
+    value: Any,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float | None:
+    """Return a finite in-range number, or None for invalid flow input."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not isfinite(number):
+        return None
+    if minimum is not None and number < minimum:
+        return None
+    if maximum is not None and number > maximum:
+        return None
+    return number
+
+
+def _plan_field_errors(fields: dict[str, Any]) -> dict[str, str]:
+    """Validate plan fields that must be rejected before allocation entry."""
+    errors: dict[str, str] = {}
+    amount = fields.get(PLAN_AMOUNT)
+    if (
+        amount not in (None, "")
+        and _finite_number(amount, minimum=0.01, maximum=_MAX_NUMBER) is None
+    ):
+        errors[PLAN_AMOUNT] = "invalid_number"
+
+    cutoff = fields.get(PLAN_OPENING_CUTOFF_DATE)
+    if cutoff not in (None, ""):
+        try:
+            cutoff_date = date.fromisoformat(str(cutoff))
+        except ValueError:
+            errors[PLAN_OPENING_CUTOFF_DATE] = "invalid_input"
+        else:
+            if cutoff_date > dt_util.now().date():
+                errors[PLAN_OPENING_CUTOFF_DATE] = "opening_cutoff_future"
+    return errors
+
 
 def _valor_schema(
     symbol: str | None = None,
     amount: float | None = None,
     target_share: float | None = None,
 ) -> vol.Schema:
+    safe_amount = _finite_number(amount, minimum=0, maximum=_MAX_NUMBER)
+    safe_target = _finite_number(target_share, minimum=0, maximum=100)
     return vol.Schema(
         {
             vol.Required(VALOR_SYMBOL, default=symbol): str,
-            vol.Required(VALOR_AMOUNT, default=amount): _AMOUNT_SELECTOR,
+            vol.Required(VALOR_AMOUNT, default=safe_amount): _AMOUNT_SELECTOR,
             # Suggested value (not default): an empty optional field is then
             # omitted from the submitted data instead of being sent as null.
             vol.Optional(
-                VALOR_TARGET_SHARE, description={"suggested_value": target_share}
+                VALOR_TARGET_SHARE, description={"suggested_value": safe_target}
+            ): vol.Any(None, _TARGET_SHARE_SELECTOR),
+        }
+    )
+
+
+def _valor_fields_schema(amount: Any, target_share: Any) -> vol.Schema:
+    """Build the editable numeric fields for an existing holding."""
+    safe_amount = _finite_number(amount, minimum=0, maximum=_MAX_NUMBER)
+    safe_target = _finite_number(target_share, minimum=0, maximum=100)
+    return vol.Schema(
+        {
+            vol.Required(VALOR_AMOUNT, default=safe_amount): _AMOUNT_SELECTOR,
+            vol.Optional(
+                VALOR_TARGET_SHARE,
+                description={"suggested_value": safe_target},
             ): vol.Any(None, _TARGET_SHARE_SELECTOR),
         }
     )
@@ -194,7 +264,9 @@ def _normalize_target_share(value: Any) -> float | None:
     """Return a target share in (0, 100] or None when no target is set."""
     if value is None:
         return None
-    target = float(value)
+    target = _finite_number(value, minimum=0, maximum=100)
+    if target is None:
+        raise ValueError("Target share must be finite and between 0 and 100")
     return target if target > 0 else None
 
 
@@ -211,13 +283,21 @@ def _target_sum_exceeded(others: Iterable[dict[str, Any]], target: float) -> boo
 def _settings_schema(
     name: str | None = None,
     currency: str = DEFAULT_BASE_CURRENCY,
-    interval: int = DEFAULT_SCAN_INTERVAL,
+    interval: Any = DEFAULT_SCAN_INTERVAL,
 ) -> vol.Schema:
+    safe_interval = _finite_number(
+        interval, minimum=MIN_SCAN_INTERVAL, maximum=MAX_SCAN_INTERVAL
+    )
     return vol.Schema(
         {
             vol.Required(CONF_WALLET_NAME, default=name): str,
             vol.Required(CONF_BASE_CURRENCY, default=currency): _CURRENCY_SELECTOR,
-            vol.Required(CONF_SCAN_INTERVAL, default=interval): _INTERVAL_SELECTOR,
+            vol.Required(
+                CONF_SCAN_INTERVAL,
+                default=int(safe_interval)
+                if safe_interval is not None
+                else DEFAULT_SCAN_INTERVAL,
+            ): _INTERVAL_SELECTOR,
         }
     )
 
@@ -231,8 +311,10 @@ def _contribution_schema(
     amount_marker: vol.Marker = vol.Required(CONTRIBUTION_AMOUNT)
     if execution_date is not None:
         date_marker = vol.Required(CONTRIBUTION_DATE, default=execution_date)
-    if amount is not None:
-        amount_marker = vol.Required(CONTRIBUTION_AMOUNT, default=amount)
+    if (
+        safe_amount := _finite_number(amount, minimum=0.01, maximum=_MAX_NUMBER)
+    ) is not None:
+        amount_marker = vol.Required(CONTRIBUTION_AMOUNT, default=safe_amount)
     return vol.Schema(
         {
             date_marker: _DATE_SELECTOR,
@@ -246,7 +328,7 @@ def _plan_schema(plan: dict[str, Any] | None = None) -> vol.Schema:
     is_new = plan is None
     plan = plan or {}
     end_date = plan.get(PLAN_END_DATE)
-    amount = plan.get(PLAN_AMOUNT)
+    amount = _finite_number(plan.get(PLAN_AMOUNT), minimum=0.01, maximum=_MAX_NUMBER)
     return vol.Schema(
         {
             vol.Required(PLAN_NAME, default=plan.get(PLAN_NAME)): str,
@@ -295,10 +377,11 @@ def _allocation_schema(
     )
     symbol_marker: vol.Marker = vol.Required(ALLOCATION_SYMBOL)
     value_marker: vol.Marker = vol.Required(ALLOCATION_VALUE)
-    if symbol is not None:
+    if symbol in symbols:
         symbol_marker = vol.Required(ALLOCATION_SYMBOL, default=symbol)
-    if value is not None:
-        value_marker = vol.Required(ALLOCATION_VALUE, default=value)
+    maximum = 100 if mode == ALLOCATION_MODE_PERCENTAGE else _MAX_NUMBER
+    if (safe_value := _finite_number(value, minimum=0.01, maximum=maximum)) is not None:
+        value_marker = vol.Required(ALLOCATION_VALUE, default=safe_value)
     return vol.Schema(
         {
             symbol_marker: selector.SelectSelector(
@@ -320,22 +403,25 @@ def _manual_lot_schema(
 ) -> vol.Schema:
     """Build the form for importing one historical purchase lot."""
     values = values or {}
+    amount = _finite_number(values.get(LOT_AMOUNT), minimum=0.01, maximum=_MAX_NUMBER)
+    unit_price = _finite_number(
+        values.get(LOT_UNIT_PRICE), minimum=0.000001, maximum=_MAX_NUMBER
+    )
+    selected_symbol = values.get(LOT_SYMBOL)
+    if selected_symbol not in symbols:
+        selected_symbol = None
     fields: dict[vol.Marker, Any] = {
-        vol.Required(
-            LOT_SYMBOL, default=values.get(LOT_SYMBOL)
-        ): selector.SelectSelector(
+        vol.Required(LOT_SYMBOL, default=selected_symbol): selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=symbols,
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
         ),
         vol.Required(LOT_DATE, default=values.get(LOT_DATE)): _DATE_SELECTOR,
-        vol.Required(
-            LOT_AMOUNT, default=values.get(LOT_AMOUNT)
-        ): _CONTRIBUTION_AMOUNT_SELECTOR,
+        vol.Required(LOT_AMOUNT, default=amount): _CONTRIBUTION_AMOUNT_SELECTOR,
         vol.Optional(
             LOT_UNIT_PRICE,
-            description={"suggested_value": values.get(LOT_UNIT_PRICE)},
+            description={"suggested_value": unit_price},
         ): vol.Any(None, _PRICE_SELECTOR),
         vol.Required(
             LOT_INCLUDED_IN_OPENING,
@@ -362,7 +448,12 @@ def _dividend_schema(
 ) -> vol.Schema:
     """Build the form for one net dividend credit."""
     dividend = dividend or {}
+    amount = _finite_number(
+        dividend.get(DIVIDEND_AMOUNT), minimum=0.01, maximum=_MAX_NUMBER
+    )
     source = dividend.get(DIVIDEND_SYMBOL, "__wallet__")
+    if source != "__wallet__" and source not in symbols:
+        source = "__wallet__"
     source_options: list[dict[str, str]] = [
         {
             "value": "__wallet__",
@@ -382,7 +473,7 @@ def _dividend_schema(
             ): vol.Any(None, _DATE_SELECTOR),
             vol.Required(
                 DIVIDEND_AMOUNT,
-                default=dividend.get(DIVIDEND_AMOUNT),
+                default=amount,
             ): _CONTRIBUTION_AMOUNT_SELECTOR,
             vol.Required(DIVIDEND_SYMBOL, default=source): selector.SelectSelector(
                 selector.SelectSelectorConfig(
@@ -401,7 +492,7 @@ def _dividend_schema(
 class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the initial creation of a wallet."""
 
-    VERSION = 4
+    VERSION = 5
 
     def __init__(self) -> None:
         self._valors: list[dict[str, Any]] = []
@@ -416,12 +507,19 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             name = user_input[CONF_WALLET_NAME].strip()
+            interval = _finite_number(
+                user_input.get(CONF_SCAN_INTERVAL),
+                minimum=MIN_SCAN_INTERVAL,
+                maximum=MAX_SCAN_INTERVAL,
+            )
             if not name:
                 errors[CONF_WALLET_NAME] = "invalid_name"
+            elif interval is None or not interval.is_integer():
+                errors[CONF_SCAN_INTERVAL] = "invalid_number"
             else:
                 self._name = name
                 self._currency = user_input[CONF_BASE_CURRENCY]
-                self._interval = user_input[CONF_SCAN_INTERVAL]
+                self._interval = int(interval)
                 return await self.async_step_valor()
         return self.async_show_form(
             step_id="user",
@@ -437,20 +535,32 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Re-submit the entered values when the form is shown again after an error.
         schema = _valor_schema(
             user_input.get(VALOR_SYMBOL) if user_input else None,
-            float(user_input[VALOR_AMOUNT]) if user_input else None,
+            user_input.get(VALOR_AMOUNT) if user_input else None,
             user_input.get(VALOR_TARGET_SHARE) if user_input else None,
         ).extend({vol.Optional("add_another", default=True): bool})
         if user_input is not None:
             symbol = user_input[VALOR_SYMBOL].strip().upper()
-            amount = float(user_input[VALOR_AMOUNT])
-            target = _normalize_target_share(user_input.get(VALOR_TARGET_SHARE))
+            amount = _finite_number(
+                user_input.get(VALOR_AMOUNT), minimum=0, maximum=_MAX_NUMBER
+            )
+            try:
+                target = _normalize_target_share(user_input.get(VALOR_TARGET_SHARE))
+            except ValueError:
+                target = None
+                errors[VALOR_TARGET_SHARE] = "invalid_number"
             if not symbol:
                 errors[VALOR_SYMBOL] = "invalid_symbol"
+            elif amount is None:
+                errors[VALOR_AMOUNT] = "invalid_number"
             elif any(v[VALOR_SYMBOL] == symbol for v in self._valors):
                 errors[VALOR_SYMBOL] = "symbol_exists"
-            elif target is not None and _target_sum_exceeded(self._valors, target):
+            elif (
+                not errors
+                and target is not None
+                and _target_sum_exceeded(self._valors, target)
+            ):
                 errors[VALOR_TARGET_SHARE] = "target_sum_exceeded"
-            else:
+            elif not errors:
                 valor: dict[str, Any] = {VALOR_SYMBOL: symbol, VALOR_AMOUNT: amount}
                 if target is not None:
                     valor[VALOR_TARGET_SHARE] = target
@@ -475,6 +585,7 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_VALORS: self._valors,
             CONF_CONTRIBUTIONS: [],
             CONF_SAVINGS_PLANS: [],
+            CONF_RETIRED_SAVINGS_PLANS: [],
             CONF_DIVIDENDS: [],
         }
         return self.async_create_entry(title=self._name or "Wallet", data=data)
@@ -497,6 +608,9 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
     _working_plan_id: str | None = None
     _working_plan_fields: dict[str, Any] | None = None
     _working_allocations: list[dict[str, Any]] | None = None
+    _working_base_currency: str | None = None
+    _pending_contributions: list[dict[str, Any]] | None = None
+    _pending_base_currency: str | None = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -509,6 +623,9 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         self._working_plan_id = None
         self._working_plan_fields = None
         self._working_allocations = None
+        self._working_base_currency = None
+        self._pending_contributions = None
+        self._pending_base_currency = None
         menu_options = [
             "settings",
             "add_contribution",
@@ -527,7 +644,11 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         menu_options.append("add_plan")
         if self._plans():
             menu_options.extend(["edit_plan", "remove_plan"])
-        if any(plan[PLAN_SKIPPED_PERIODS] for plan in self._plans()):
+        if any(
+            is_scheduled_period(plan, period)
+            for plan in self._plans()
+            for period in plan[PLAN_SKIPPED_PERIODS]
+        ):
             menu_options.append("restore_execution")
         menu_options.extend(["add_valor", "edit_valor", "remove_valor"])
         return self.async_show_menu(step_id="init", menu_options=menu_options)
@@ -542,6 +663,13 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         return [
             normalize_plan(item)
             for item in self.config_entry.data.get(CONF_SAVINGS_PLANS, [])
+        ]
+
+    def _retired_plans(self) -> list[dict[str, Any]]:
+        """Return inert plan identities retained for duplicate prevention."""
+        return [
+            normalize_plan(item)
+            for item in self.config_entry.data.get(CONF_RETIRED_SAVINGS_PLANS, [])
         ]
 
     def _dividends(self) -> list[dict[str, Any]]:
@@ -623,7 +751,11 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         ]
 
     def _update_entry(
-        self, valors: list[dict[str, Any]] | None = None, **extra: Any
+        self,
+        valors: list[dict[str, Any]] | None = None,
+        *,
+        entry_title: str | None = None,
+        **extra: Any,
     ) -> None:
         """Write user-originated config data and schedule one reload."""
         data = dict(self.config_entry.data)
@@ -632,14 +764,25 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         data.update(extra)
         if CONF_CONTRIBUTIONS in extra:
             data.pop(CONF_INVESTED_AMOUNT, None)
-        changed = self.hass.config_entries.async_update_entry(
-            self.config_entry, data=data
-        )
+        if entry_title is None:
+            changed = self.hass.config_entries.async_update_entry(
+                self.config_entry, data=data
+            )
+        else:
+            changed = self.hass.config_entries.async_update_entry(
+                self.config_entry, data=data, title=entry_title
+            )
         if changed:
             self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
 
-    async def _save(self, valors: list[dict[str, Any]], **extra: Any) -> FlowResult:
-        self._update_entry(valors, **extra)
+    async def _save(
+        self,
+        valors: list[dict[str, Any]],
+        *,
+        entry_title: str | None = None,
+        **extra: Any,
+    ) -> FlowResult:
+        self._update_entry(valors, entry_title=entry_title, **extra)
         return self.async_create_entry(title="", data={})
 
     async def async_step_settings(
@@ -648,8 +791,15 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         errors: dict[str, str] = {}
         if user_input is not None:
             name = user_input[CONF_WALLET_NAME].strip()
+            interval = _finite_number(
+                user_input.get(CONF_SCAN_INTERVAL),
+                minimum=MIN_SCAN_INTERVAL,
+                maximum=MAX_SCAN_INTERVAL,
+            )
             if not name:
                 errors[CONF_WALLET_NAME] = "invalid_name"
+            elif interval is None or not interval.is_integer():
+                errors[CONF_SCAN_INTERVAL] = "invalid_number"
             elif user_input[CONF_BASE_CURRENCY] != self.config_entry.data.get(
                 CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY
             ) and (self._contributions() or self._plans() or self._dividends()):
@@ -657,10 +807,11 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             else:
                 return await self._save(
                     self._valors(),
+                    entry_title=name,
                     **{
                         CONF_WALLET_NAME: name,
                         CONF_BASE_CURRENCY: user_input[CONF_BASE_CURRENCY],
-                        CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
+                        CONF_SCAN_INTERVAL: int(interval),
                     },
                 )
         data = self.config_entry.data
@@ -678,24 +829,46 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Record a net dividend credit on the broker cash account."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            symbol = user_input.get(DIVIDEND_SYMBOL)
-            dividend = make_dividend(
-                booking_date=user_input[DIVIDEND_BOOKING_DATE],
-                value_date=user_input.get(DIVIDEND_VALUE_DATE),
-                amount=user_input[DIVIDEND_AMOUNT],
-                symbol=None if symbol == "__wallet__" else symbol,
-                note=user_input.get(DIVIDEND_NOTE),
+            amount = _finite_number(
+                user_input.get(DIVIDEND_AMOUNT),
+                minimum=0.01,
+                maximum=_MAX_NUMBER,
             )
-            return await self._save(
-                self._valors(),
-                **{CONF_DIVIDENDS: normalize_dividends([*self._dividends(), dividend])},
-            )
+            if amount is None:
+                errors[DIVIDEND_AMOUNT] = "invalid_number"
+            else:
+                symbol = user_input.get(DIVIDEND_SYMBOL)
+                configured = {valor[VALOR_SYMBOL] for valor in self._valors()}
+                if symbol != "__wallet__" and symbol not in configured:
+                    errors[DIVIDEND_SYMBOL] = "invalid_symbol"
+                if not errors:
+                    try:
+                        dividend = make_dividend(
+                            booking_date=user_input[DIVIDEND_BOOKING_DATE],
+                            value_date=user_input.get(DIVIDEND_VALUE_DATE),
+                            amount=amount,
+                            symbol=None if symbol == "__wallet__" else symbol,
+                            note=user_input.get(DIVIDEND_NOTE),
+                        )
+                    except (TypeError, ValueError):
+                        errors["base"] = "invalid_input"
+                    else:
+                        return await self._save(
+                            self._valors(),
+                            **{
+                                CONF_DIVIDENDS: normalize_dividends(
+                                    [*self._dividends(), dividend]
+                                )
+                            },
+                        )
         return self.async_show_form(
             step_id="add_dividend",
             data_schema=_dividend_schema(
-                [valor[VALOR_SYMBOL] for valor in self._valors()]
+                [valor[VALOR_SYMBOL] for valor in self._valors()], user_input
             ),
+            errors=errors,
         )
 
     async def async_step_edit_dividend(
@@ -727,38 +900,63 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         """Edit one dividend credit."""
         dividend_id = self._edit_dividend_id
         dividends = self._dividends()
-        current = next(item for item in dividends if item[DIVIDEND_ID] == dividend_id)
+        current = next(
+            (item for item in dividends if item[DIVIDEND_ID] == dividend_id), None
+        )
+        if current is None:
+            return self.async_abort(reason="stale_selection")
+        errors: dict[str, str] = {}
         if user_input is not None:
-            symbol = user_input.get(DIVIDEND_SYMBOL)
-            replacement = make_dividend(
-                booking_date=user_input[DIVIDEND_BOOKING_DATE],
-                value_date=user_input.get(DIVIDEND_VALUE_DATE),
-                amount=user_input[DIVIDEND_AMOUNT],
-                symbol=None if symbol == "__wallet__" else symbol,
-                note=user_input.get(DIVIDEND_NOTE),
-                dividend_id=dividend_id,
+            amount = _finite_number(
+                user_input.get(DIVIDEND_AMOUNT),
+                minimum=0.01,
+                maximum=_MAX_NUMBER,
             )
-            return await self._save(
-                self._valors(),
-                **{
-                    CONF_DIVIDENDS: normalize_dividends(
-                        [
-                            replacement if item[DIVIDEND_ID] == dividend_id else item
-                            for item in dividends
-                        ]
-                    )
-                },
-            )
+            if amount is None:
+                errors[DIVIDEND_AMOUNT] = "invalid_number"
+            else:
+                symbol = user_input.get(DIVIDEND_SYMBOL)
+                configured = {valor[VALOR_SYMBOL] for valor in self._valors()}
+                if symbol != "__wallet__" and symbol not in configured:
+                    errors[DIVIDEND_SYMBOL] = "invalid_symbol"
+                if not errors:
+                    try:
+                        replacement = make_dividend(
+                            booking_date=user_input[DIVIDEND_BOOKING_DATE],
+                            value_date=user_input.get(DIVIDEND_VALUE_DATE),
+                            amount=amount,
+                            symbol=None if symbol == "__wallet__" else symbol,
+                            note=user_input.get(DIVIDEND_NOTE),
+                            dividend_id=dividend_id,
+                        )
+                    except (TypeError, ValueError):
+                        errors["base"] = "invalid_input"
+                    else:
+                        return await self._save(
+                            self._valors(),
+                            **{
+                                CONF_DIVIDENDS: normalize_dividends(
+                                    [
+                                        replacement
+                                        if item[DIVIDEND_ID] == dividend_id
+                                        else item
+                                        for item in dividends
+                                    ]
+                                )
+                            },
+                        )
+        shown = user_input if user_input is not None else current
         return self.async_show_form(
             step_id="edit_dividend_fields",
             data_schema=_dividend_schema(
-                [valor[VALOR_SYMBOL] for valor in self._valors()], current
+                [valor[VALOR_SYMBOL] for valor in self._valors()], shown
             ),
             description_placeholders={
                 "dividend": (
                     f"{current[DIVIDEND_BOOKING_DATE]} · {current[DIVIDEND_AMOUNT]:.2f}"
                 )
             },
+            errors=errors,
         )
 
     async def async_step_remove_dividend(
@@ -770,6 +968,8 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             return self.async_abort(reason="no_dividends")
         if user_input is not None:
             dividend_id = user_input[DIVIDEND_ID]
+            if not any(item[DIVIDEND_ID] == dividend_id for item in dividends):
+                return self.async_abort(reason="stale_selection")
             return await self._save(
                 self._valors(),
                 **{
@@ -796,31 +996,65 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Add one or more dated cash contributions."""
+        current_currency = self.config_entry.data.get(
+            CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY
+        )
+        if self._pending_base_currency is None:
+            self._pending_base_currency = current_currency
+        errors: dict[str, str] = {}
         schema = _contribution_schema(
             str(user_input[CONTRIBUTION_DATE])
             if user_input and user_input.get(CONTRIBUTION_DATE)
             else None,
-            float(user_input[CONTRIBUTION_AMOUNT])
+            user_input[CONTRIBUTION_AMOUNT]
             if user_input and user_input.get(CONTRIBUTION_AMOUNT) is not None
             else None,
         ).extend({vol.Optional("add_another", default=False): bool})
         if user_input is not None:
-            contribution = make_contribution(
-                user_input[CONTRIBUTION_AMOUNT], user_input[CONTRIBUTION_DATE]
+            amount = _finite_number(
+                user_input.get(CONTRIBUTION_AMOUNT),
+                minimum=0.01,
+                maximum=_MAX_NUMBER,
             )
-            contributions = normalize_contributions(
-                [*self._contributions(), contribution]
-            )
-            self._update_entry(self._valors(), **{CONF_CONTRIBUTIONS: contributions})
-            if not user_input.get("add_another"):
-                return self.async_create_entry(title="", data={})
-            return self.async_show_form(
-                step_id="add_contribution",
-                data_schema=_contribution_schema().extend(
-                    {vol.Optional("add_another", default=False): bool}
-                ),
-            )
-        return self.async_show_form(step_id="add_contribution", data_schema=schema)
+            if amount is None:
+                errors[CONTRIBUTION_AMOUNT] = "invalid_number"
+            else:
+                try:
+                    contribution = make_contribution(
+                        amount, user_input[CONTRIBUTION_DATE]
+                    )
+                except (TypeError, ValueError):
+                    errors["base"] = "invalid_input"
+                else:
+                    if self._pending_base_currency != current_currency:
+                        self._pending_contributions = None
+                        self._pending_base_currency = None
+                        return self.async_abort(reason="entry_changed")
+                    if self._pending_contributions is None:
+                        self._pending_contributions = []
+                    self._pending_contributions.append(contribution)
+                    if user_input.get("add_another"):
+                        return self.async_show_form(
+                            step_id="add_contribution",
+                            data_schema=_contribution_schema().extend(
+                                {vol.Optional("add_another", default=False): bool}
+                            ),
+                        )
+                    contributions = normalize_contributions(
+                        [
+                            *self._contributions(),
+                            *self._pending_contributions,
+                        ]
+                    )
+                    self._pending_contributions = None
+                    self._pending_base_currency = None
+                    return await self._save(
+                        self._valors(),
+                        **{CONF_CONTRIBUTIONS: contributions},
+                    )
+        return self.async_show_form(
+            step_id="add_contribution", data_schema=schema, errors=errors
+        )
 
     async def async_step_edit_contribution(
         self, user_input: dict[str, Any] | None = None
@@ -852,29 +1086,64 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         contribution_id = self._edit_contribution_id
         contributions = self._contributions()
         current = next(
-            item for item in contributions if item[CONTRIBUTION_ID] == contribution_id
+            (
+                item
+                for item in contributions
+                if item[CONTRIBUTION_ID] == contribution_id
+            ),
+            None,
         )
+        if current is None:
+            return self.async_abort(reason="stale_selection")
+        errors: dict[str, str] = {}
         if user_input is not None:
-            replacement = make_contribution(
-                user_input[CONTRIBUTION_AMOUNT],
-                user_input[CONTRIBUTION_DATE],
-                contribution_id=contribution_id,
-                source=current[CONTRIBUTION_SOURCE],
-                lots=current[CONTRIBUTION_LOTS],
-                plan_id=current.get(CONTRIBUTION_PLAN_ID),
-                scheduled_date=current.get(CONTRIBUTION_SCHEDULED_DATE),
+            amount = _finite_number(
+                user_input.get(CONTRIBUTION_AMOUNT),
+                minimum=0.01,
+                maximum=_MAX_NUMBER,
             )
-            updated = normalize_contributions(
-                [
-                    replacement if item[CONTRIBUTION_ID] == contribution_id else item
-                    for item in contributions
-                ]
-            )
-            return await self._save(self._valors(), **{CONF_CONTRIBUTIONS: updated})
+            try:
+                execution_date = date.fromisoformat(str(user_input[CONTRIBUTION_DATE]))
+            except ValueError:
+                errors[CONTRIBUTION_DATE] = "invalid_input"
+            else:
+                if any(
+                    date.fromisoformat(str(lot[LOT_DATE])) < execution_date
+                    for lot in current[CONTRIBUTION_LOTS]
+                ):
+                    errors[CONTRIBUTION_DATE] = "contribution_date_after_lot"
+            if amount is None:
+                errors[CONTRIBUTION_AMOUNT] = "invalid_number"
+            if not errors:
+                try:
+                    replacement = make_contribution(
+                        amount,
+                        user_input[CONTRIBUTION_DATE],
+                        contribution_id=contribution_id,
+                        source=current[CONTRIBUTION_SOURCE],
+                        lots=current[CONTRIBUTION_LOTS],
+                        plan_id=current.get(CONTRIBUTION_PLAN_ID),
+                        scheduled_date=current.get(CONTRIBUTION_SCHEDULED_DATE),
+                    )
+                except (TypeError, ValueError):
+                    errors["base"] = "invalid_input"
+                else:
+                    updated = normalize_contributions(
+                        [
+                            replacement
+                            if item[CONTRIBUTION_ID] == contribution_id
+                            else item
+                            for item in contributions
+                        ]
+                    )
+                    return await self._save(
+                        self._valors(), **{CONF_CONTRIBUTIONS: updated}
+                    )
+        shown = user_input if user_input is not None else current
         return self.async_show_form(
             step_id="edit_contribution_fields",
             data_schema=_contribution_schema(
-                current[CONTRIBUTION_DATE], current[CONTRIBUTION_AMOUNT]
+                str(shown[CONTRIBUTION_DATE]), shown[CONTRIBUTION_AMOUNT]
             ),
             description_placeholders={
                 "contribution": (
@@ -882,6 +1151,7 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                     f"{current[CONTRIBUTION_AMOUNT]:.2f}"
                 )
             },
+            errors=errors,
         )
 
     async def async_step_remove_contribution(
@@ -894,10 +1164,15 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         if user_input is not None:
             contribution_id = user_input[CONTRIBUTION_ID]
             removed = next(
-                item
-                for item in contributions
-                if item[CONTRIBUTION_ID] == contribution_id
+                (
+                    item
+                    for item in contributions
+                    if item[CONTRIBUTION_ID] == contribution_id
+                ),
+                None,
             )
+            if removed is None:
+                return self.async_abort(reason="stale_selection")
             updated = [
                 item
                 for item in contributions
@@ -911,10 +1186,14 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             ):
                 plan_id = removed[CONTRIBUTION_PLAN_ID]
                 period = schedule_period(removed[CONTRIBUTION_SCHEDULED_DATE])
-                plans = []
-                for plan in self._plans():
-                    if plan[PLAN_ID] == plan_id:
-                        plan = normalize_plan(
+                for key, plans in (
+                    (CONF_SAVINGS_PLANS, self._plans()),
+                    (CONF_RETIRED_SAVINGS_PLANS, self._retired_plans()),
+                ):
+                    if not any(plan[PLAN_ID] == plan_id for plan in plans):
+                        continue
+                    extra[key] = [
+                        normalize_plan(
                             {
                                 **plan,
                                 PLAN_SKIPPED_PERIODS: [
@@ -923,8 +1202,10 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                                 ],
                             }
                         )
-                    plans.append(plan)
-                extra[CONF_SAVINGS_PLANS] = plans
+                        if plan[PLAN_ID] == plan_id
+                        else plan
+                        for plan in plans
+                    ]
             return await self._save(self._valors(), **extra)
         return self.async_show_form(
             step_id="remove_contribution",
@@ -947,21 +1228,40 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         symbols = [valor[VALOR_SYMBOL] for valor in self._valors()]
         if not symbols:
             return self.async_abort(reason="no_valors")
+        starting_currency = self.config_entry.data.get(
+            CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY
+        )
         errors: dict[str, str] = {}
         if user_input is not None:
             symbol = user_input[LOT_SYMBOL]
-            requested_date = date.fromisoformat(str(user_input[LOT_DATE]))
-            amount = float(user_input[LOT_AMOUNT])
-            manual_price = user_input.get(LOT_UNIT_PRICE)
-            quote_date = requested_date
-            quote_currency = self.config_entry.data.get(
-                CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY
+            symbol_was_configured = symbol in symbols
+            if not symbol_was_configured:
+                errors[LOT_SYMBOL] = "invalid_symbol"
+            try:
+                requested_date = date.fromisoformat(str(user_input[LOT_DATE]))
+            except ValueError:
+                requested_date = None
+                errors[LOT_DATE] = "invalid_input"
+            amount = _finite_number(
+                user_input.get(LOT_AMOUNT), minimum=0.01, maximum=_MAX_NUMBER
             )
+            if amount is None:
+                errors[LOT_AMOUNT] = "invalid_number"
+            manual_price = user_input.get(LOT_UNIT_PRICE)
+            has_manual_price = manual_price not in (None, "")
+            unit_price = (
+                _finite_number(manual_price, minimum=0.000001, maximum=_MAX_NUMBER)
+                if has_manual_price
+                else None
+            )
+            if has_manual_price and unit_price is None:
+                errors[LOT_UNIT_PRICE] = "invalid_number"
+            quote_date = requested_date
+            quote_currency = starting_currency
             fx_rate = 1.0
-            estimated = manual_price is None
-            unit_price = float(manual_price) if manual_price is not None else None
+            estimated = not has_manual_price
 
-            if unit_price is None:
+            if not errors and unit_price is None and requested_date is not None:
                 today = dt_util.now().date()
                 end_date = min(today, requested_date + timedelta(days=14))
                 session = async_get_clientsession(self.hass)
@@ -978,9 +1278,7 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                     quote_date = quote.date
                     quote_currency = quote.currency
                     unit_price = quote.close
-                    base_currency = self.config_entry.data.get(
-                        CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY
-                    )
+                    base_currency = starting_currency
                     if quote_currency != base_currency:
                         try:
                             direct = await fetch_history(
@@ -1007,42 +1305,68 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                         else:
                             errors[LOT_UNIT_PRICE] = "historical_fx_unavailable"
 
-            if not errors and unit_price is not None:
-                lot = make_lot(
-                    symbol=symbol,
-                    execution_date=quote_date,
-                    amount=amount,
-                    unit_price=unit_price,
-                    quote_currency=quote_currency,
-                    fx_rate=fx_rate,
-                    included_in_opening=bool(user_input[LOT_INCLUDED_IN_OPENING]),
-                    estimated=estimated,
-                )
-                if lot[LOT_INCLUDED_IN_OPENING] and (
-                    self._included_lot_units(symbol) + float(lot[LOT_UNITS])
-                    > self._opening_units(symbol) + 1e-9
-                ):
-                    errors[LOT_INCLUDED_IN_OPENING] = "included_units_exceeded"
-                else:
-                    funding_id = user_input.get("funding_contribution")
-                    if funding_id:
-                        contributions = attach_lot(
-                            self._contributions(), str(funding_id), lot
-                        )
-                    else:
-                        contribution = make_contribution(
-                            None,
-                            quote_date,
-                            lots=[lot],
-                        )
-                        contributions = normalize_contributions(
-                            [*self._contributions(), contribution]
-                        )
-                    return await self._save(
-                        self._valors(),
-                        **{CONF_CONTRIBUTIONS: contributions},
-                    )
+            current_symbols = {valor[VALOR_SYMBOL] for valor in self._valors()}
+            current_currency = self.config_entry.data.get(
+                CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY
+            )
+            if symbol_was_configured and symbol not in current_symbols:
+                return self.async_abort(reason="entry_changed")
+            if starting_currency != current_currency:
+                return self.async_abort(reason="entry_changed")
 
+            if not errors and unit_price is not None and quote_date is not None:
+                try:
+                    lot = make_lot(
+                        symbol=symbol,
+                        execution_date=quote_date,
+                        amount=amount,
+                        unit_price=unit_price,
+                        quote_currency=quote_currency,
+                        fx_rate=fx_rate,
+                        included_in_opening=bool(user_input[LOT_INCLUDED_IN_OPENING]),
+                        estimated=estimated,
+                    )
+                except (TypeError, ValueError):
+                    errors["base"] = "invalid_input"
+                else:
+                    if lot[LOT_INCLUDED_IN_OPENING] and (
+                        self._included_lot_units(symbol) + float(lot[LOT_UNITS])
+                        > self._opening_units(symbol) + 1e-9
+                    ):
+                        errors[LOT_INCLUDED_IN_OPENING] = "included_units_exceeded"
+                    else:
+                        funding_id = user_input.get("funding_contribution")
+                        if funding_id:
+                            try:
+                                contributions = attach_lot(
+                                    self._contributions(), str(funding_id), lot
+                                )
+                            except ValueError:
+                                errors["funding_contribution"] = (
+                                    "funding_contribution_invalid"
+                                )
+                        else:
+                            try:
+                                contribution = make_contribution(
+                                    None,
+                                    quote_date,
+                                    lots=[lot],
+                                )
+                            except (TypeError, ValueError):
+                                errors["base"] = "invalid_input"
+                            else:
+                                contributions = normalize_contributions(
+                                    [*self._contributions(), contribution]
+                                )
+                        if not errors:
+                            return await self._save(
+                                self._valors(),
+                                **{CONF_CONTRIBUTIONS: contributions},
+                            )
+
+        symbols = [valor[VALOR_SYMBOL] for valor in self._valors()]
+        if not symbols:
+            return self.async_abort(reason="entry_changed")
         return self.async_show_form(
             step_id="add_lot",
             data_schema=_manual_lot_schema(
@@ -1081,61 +1405,112 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         lot_id = self._edit_lot_id
         contributions = self._contributions()
         current = next(
-            lot
-            for contribution in contributions
-            for lot in contribution[CONTRIBUTION_LOTS]
-            if lot[LOT_ID] == lot_id
+            (
+                lot
+                for contribution in contributions
+                for lot in contribution[CONTRIBUTION_LOTS]
+                if lot[LOT_ID] == lot_id
+            ),
+            None,
         )
+        if current is None:
+            return self.async_abort(reason="stale_selection")
+        if current[LOT_SYMBOL] not in {valor[VALOR_SYMBOL] for valor in self._valors()}:
+            return self.async_abort(reason="entry_changed")
         errors: dict[str, str] = {}
         if user_input is not None:
-            amount = float(user_input[LOT_AMOUNT])
-            units = float(user_input[LOT_UNITS])
-            fx_rate = float(current[LOT_FX_RATE])
-            replacement = make_lot(
-                symbol=current[LOT_SYMBOL],
-                execution_date=user_input[LOT_DATE],
-                amount=amount,
-                unit_price=amount / (units * fx_rate),
-                quote_currency=current[LOT_QUOTE_CURRENCY],
-                fx_rate=fx_rate,
-                units=units,
-                included_in_opening=bool(user_input[LOT_INCLUDED_IN_OPENING]),
-                estimated=False,
-                lot_id=lot_id,
+            amount = _finite_number(
+                user_input.get(LOT_AMOUNT), minimum=0.01, maximum=_MAX_NUMBER
             )
-            if replacement[LOT_INCLUDED_IN_OPENING] and (
-                self._included_lot_units(replacement[LOT_SYMBOL], exclude_lot_id=lot_id)
-                + float(replacement[LOT_UNITS])
-                > self._opening_units(replacement[LOT_SYMBOL]) + 1e-9
-            ):
-                errors[LOT_UNITS] = "included_units_exceeded"
-            else:
-                updated: list[dict[str, Any]] = []
-                for contribution in contributions:
-                    lots = contribution[CONTRIBUTION_LOTS]
-                    if not any(lot[LOT_ID] == lot_id for lot in lots):
-                        updated.append(contribution)
-                        continue
-                    new_lots = [
-                        replacement if lot[LOT_ID] == lot_id else lot for lot in lots
-                    ]
-                    updated.append(
-                        make_contribution(
-                            contribution[CONTRIBUTION_AMOUNT],
-                            contribution[CONTRIBUTION_DATE],
-                            contribution_id=contribution[CONTRIBUTION_ID],
-                            source=contribution[CONTRIBUTION_SOURCE],
-                            lots=new_lots,
-                            plan_id=contribution.get(CONTRIBUTION_PLAN_ID),
-                            scheduled_date=contribution.get(
-                                CONTRIBUTION_SCHEDULED_DATE
-                            ),
-                        )
+            units = _finite_number(
+                user_input.get(LOT_UNITS), minimum=0.000001, maximum=_MAX_NUMBER
+            )
+            if amount is None:
+                errors[LOT_AMOUNT] = "invalid_number"
+            if units is None:
+                errors[LOT_UNITS] = "invalid_number"
+            if not errors:
+                fx_rate = float(current[LOT_FX_RATE])
+                try:
+                    replacement = make_lot(
+                        symbol=current[LOT_SYMBOL],
+                        execution_date=user_input[LOT_DATE],
+                        amount=amount,
+                        unit_price=amount / (units * fx_rate),
+                        quote_currency=current[LOT_QUOTE_CURRENCY],
+                        fx_rate=fx_rate,
+                        units=units,
+                        included_in_opening=bool(user_input[LOT_INCLUDED_IN_OPENING]),
+                        estimated=False,
+                        lot_id=lot_id,
                     )
-                return await self._save(
-                    self._valors(),
-                    **{CONF_CONTRIBUTIONS: normalize_contributions(updated)},
-                )
+                except (TypeError, ValueError, ZeroDivisionError):
+                    errors["base"] = "invalid_input"
+                else:
+                    if replacement[LOT_INCLUDED_IN_OPENING] and (
+                        self._included_lot_units(
+                            replacement[LOT_SYMBOL], exclude_lot_id=lot_id
+                        )
+                        + float(replacement[LOT_UNITS])
+                        > self._opening_units(replacement[LOT_SYMBOL]) + 1e-9
+                    ):
+                        errors[LOT_UNITS] = "included_units_exceeded"
+                    else:
+                        funding = next(
+                            contribution
+                            for contribution in contributions
+                            if any(
+                                lot[LOT_ID] == lot_id
+                                for lot in contribution[CONTRIBUTION_LOTS]
+                            )
+                        )
+                        funding_date = funding[CONTRIBUTION_DATE]
+                        if (
+                            funding[CONTRIBUTION_SOURCE] == CONTRIBUTION_SOURCE_LEGACY
+                            and not replacement[LOT_INCLUDED_IN_OPENING]
+                        ):
+                            errors[LOT_INCLUDED_IN_OPENING] = "legacy_opening_required"
+                        elif funding_date is not None and date.fromisoformat(
+                            funding_date
+                        ) > date.fromisoformat(replacement[LOT_DATE]):
+                            errors[LOT_DATE] = "contribution_date_after_lot"
+                    if not errors:
+                        without_replaced_lot: list[dict[str, Any]] = []
+                        try:
+                            for contribution in contributions:
+                                lots = contribution[CONTRIBUTION_LOTS]
+                                if not any(lot[LOT_ID] == lot_id for lot in lots):
+                                    without_replaced_lot.append(contribution)
+                                    continue
+                                without_replaced_lot.append(
+                                    make_contribution(
+                                        contribution[CONTRIBUTION_AMOUNT],
+                                        contribution[CONTRIBUTION_DATE],
+                                        contribution_id=contribution[CONTRIBUTION_ID],
+                                        source=contribution[CONTRIBUTION_SOURCE],
+                                        lots=[
+                                            lot for lot in lots if lot[LOT_ID] != lot_id
+                                        ],
+                                        plan_id=contribution.get(CONTRIBUTION_PLAN_ID),
+                                        scheduled_date=contribution.get(
+                                            CONTRIBUTION_SCHEDULED_DATE
+                                        ),
+                                    )
+                                )
+                            updated = attach_lot(
+                                without_replaced_lot,
+                                funding[CONTRIBUTION_ID],
+                                replacement,
+                            )
+                        except (TypeError, ValueError):
+                            errors["base"] = "invalid_input"
+                        else:
+                            return await self._save(
+                                self._valors(),
+                                **{
+                                    CONF_CONTRIBUTIONS: normalize_contributions(updated)
+                                },
+                            )
 
         return self.async_show_form(
             step_id="edit_lot_fields",
@@ -1166,7 +1541,18 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         """Start creating a monthly savings plan."""
         if not self._valors():
             return self.async_abort(reason="no_valors")
+        if self._working_base_currency is None:
+            self._working_base_currency = self.config_entry.data.get(
+                CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY
+            )
         if user_input is not None:
+            errors = _plan_field_errors(user_input)
+            if errors:
+                return self.async_show_form(
+                    step_id="add_plan",
+                    data_schema=_plan_schema(user_input),
+                    errors=errors,
+                )
             self._working_plan_id = None
             self._working_plan_fields = dict(user_input)
             self._working_allocations = []
@@ -1181,6 +1567,9 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             return self.async_abort(reason="no_plans")
         if user_input is not None:
             self._working_plan_id = user_input[PLAN_ID]
+            self._working_base_currency = self.config_entry.data.get(
+                CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY
+            )
             return await self.async_step_edit_plan_fields()
         return self.async_show_form(
             step_id="edit_plan",
@@ -1201,13 +1590,27 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
     ) -> FlowResult:
         """Edit settings and optionally rebuild plan allocations."""
         current = next(
-            plan for plan in self._plans() if plan[PLAN_ID] == self._working_plan_id
+            (plan for plan in self._plans() if plan[PLAN_ID] == self._working_plan_id),
+            None,
         )
+        if current is None:
+            return self.async_abort(reason="stale_selection")
         if user_input is not None:
-            keep_allocations = bool(user_input.pop("keep_allocations")) and (
-                user_input[PLAN_ALLOCATION_MODE] == current[PLAN_ALLOCATION_MODE]
+            fields = dict(user_input)
+            keep_requested = bool(fields.pop("keep_allocations", True))
+            errors = _plan_field_errors(fields)
+            if errors:
+                return self.async_show_form(
+                    step_id="edit_plan_fields",
+                    data_schema=_plan_schema(fields).extend(
+                        {vol.Optional("keep_allocations", default=keep_requested): bool}
+                    ),
+                    errors=errors,
+                )
+            keep_allocations = keep_requested and (
+                fields[PLAN_ALLOCATION_MODE] == current[PLAN_ALLOCATION_MODE]
             )
-            self._working_plan_fields = dict(user_input)
+            self._working_plan_fields = fields
             if keep_allocations:
                 try:
                     plan = make_plan(**self._plan_arguments(current[PLAN_ALLOCATIONS]))
@@ -1260,14 +1663,38 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
 
     async def _save_plan(self, plan: dict[str, Any]) -> FlowResult:
         plans = self._plans()
+        retired_plans = self._retired_plans()
+        current_currency = self.config_entry.data.get(
+            CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY
+        )
+        if (
+            self._working_base_currency is not None
+            and self._working_base_currency != current_currency
+        ):
+            return self.async_abort(reason="entry_changed")
+        configured_symbols = {valor[VALOR_SYMBOL] for valor in self._valors()}
+        if any(
+            allocation[ALLOCATION_SYMBOL] not in configured_symbols
+            for allocation in plan[PLAN_ALLOCATIONS]
+        ):
+            return self.async_abort(reason="entry_changed")
         if self._working_plan_id is None:
+            plan, retired_plans = reactivate_matching_plan(plan, retired_plans)
             plans.append(plan)
         else:
+            if not any(item[PLAN_ID] == self._working_plan_id for item in plans):
+                return self.async_abort(reason="stale_selection")
             plans = [
                 plan if item[PLAN_ID] == self._working_plan_id else item
                 for item in plans
             ]
-        return await self._save(self._valors(), **{CONF_SAVINGS_PLANS: plans})
+        return await self._save(
+            self._valors(),
+            **{
+                CONF_SAVINGS_PLANS: plans,
+                CONF_RETIRED_SAVINGS_PLANS: retired_plans,
+            },
+        )
 
     async def async_step_plan_allocation(
         self, user_input: dict[str, Any] | None = None
@@ -1278,8 +1705,22 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         errors: dict[str, str] = {}
         if user_input is not None:
             symbol = user_input[ALLOCATION_SYMBOL]
-            value = float(user_input[ALLOCATION_VALUE])
-            if any(item[ALLOCATION_SYMBOL] == symbol for item in allocations):
+            configured_symbols = {valor[VALOR_SYMBOL] for valor in self._valors()}
+            maximum = (
+                100
+                if fields.get(PLAN_ALLOCATION_MODE) == ALLOCATION_MODE_PERCENTAGE
+                else _MAX_NUMBER
+            )
+            value = _finite_number(
+                user_input.get(ALLOCATION_VALUE),
+                minimum=0.01,
+                maximum=maximum,
+            )
+            if symbol not in configured_symbols:
+                errors[ALLOCATION_SYMBOL] = "invalid_symbol"
+            elif value is None:
+                errors[ALLOCATION_VALUE] = "invalid_number"
+            elif any(item[ALLOCATION_SYMBOL] == symbol for item in allocations):
                 errors[ALLOCATION_SYMBOL] = "allocation_exists"
             elif (
                 fields[PLAN_ALLOCATION_MODE] == ALLOCATION_MODE_PERCENTAGE
@@ -1354,9 +1795,7 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 available_symbols,
                 fields.get(PLAN_ALLOCATION_MODE, ALLOCATION_MODE_PERCENTAGE),
                 prefill.get(ALLOCATION_SYMBOL) if prefill else None,
-                float(prefill[ALLOCATION_VALUE])
-                if prefill and prefill.get(ALLOCATION_VALUE) is not None
-                else None,
+                prefill.get(ALLOCATION_VALUE) if prefill else None,
             ),
             errors=errors,
             description_placeholders={
@@ -1378,12 +1817,20 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             return self.async_abort(reason="no_plans")
         if user_input is not None:
             plan_id = user_input[PLAN_ID]
+            removed = next((plan for plan in plans if plan[PLAN_ID] == plan_id), None)
+            if removed is None:
+                return self.async_abort(reason="stale_selection")
+            retired = [
+                plan for plan in self._retired_plans() if plan[PLAN_ID] != plan_id
+            ]
+            retired.append(removed)
             return await self._save(
                 self._valors(),
                 **{
                     CONF_SAVINGS_PLANS: [
                         plan for plan in plans if plan[PLAN_ID] != plan_id
-                    ]
+                    ],
+                    CONF_RETIRED_SAVINGS_PLANS: retired,
                 },
             )
         return self.async_show_form(
@@ -1412,10 +1859,27 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             }
             for plan in plans
             for period in plan[PLAN_SKIPPED_PERIODS]
+            if is_scheduled_period(plan, period)
         ]
         if not options:
             return self.async_abort(reason="no_skipped_executions")
         if user_input is not None:
+            valid_executions = {item["value"] for item in options}
+            if user_input.get("execution") not in valid_executions:
+                return self.async_show_form(
+                    step_id="restore_execution",
+                    data_schema=vol.Schema(
+                        {
+                            vol.Required("execution"): selector.SelectSelector(
+                                selector.SelectSelectorConfig(
+                                    options=options,
+                                    mode=selector.SelectSelectorMode.DROPDOWN,
+                                )
+                            )
+                        }
+                    ),
+                    errors={"execution": "invalid_plan"},
+                )
             plan_id, period = str(user_input["execution"]).split("|", 1)
             updated = [
                 normalize_plan(
@@ -1454,23 +1918,32 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         valors = self._valors()
         schema = _valor_schema(
             user_input.get(VALOR_SYMBOL) if user_input else None,
-            float(user_input[VALOR_AMOUNT]) if user_input else None,
+            user_input.get(VALOR_AMOUNT) if user_input else None,
             user_input.get(VALOR_TARGET_SHARE) if user_input else None,
         )
         if user_input is not None:
             symbol = user_input[VALOR_SYMBOL].strip().upper()
+            amount = _finite_number(
+                user_input.get(VALOR_AMOUNT), minimum=0, maximum=_MAX_NUMBER
+            )
+            try:
+                target = _normalize_target_share(user_input.get(VALOR_TARGET_SHARE))
+            except ValueError:
+                target = None
+                errors[VALOR_TARGET_SHARE] = "invalid_number"
             if not symbol:
                 errors[VALOR_SYMBOL] = "invalid_symbol"
+            elif amount is None:
+                errors[VALOR_AMOUNT] = "invalid_number"
             elif any(v[VALOR_SYMBOL] == symbol for v in valors):
                 errors[VALOR_SYMBOL] = "symbol_exists"
-            else:
-                target = _normalize_target_share(user_input.get(VALOR_TARGET_SHARE))
+            elif not errors:
                 if target is not None and _target_sum_exceeded(valors, target):
                     errors[VALOR_TARGET_SHARE] = "target_sum_exceeded"
                 else:
                     valor: dict[str, Any] = {
                         VALOR_SYMBOL: symbol,
-                        VALOR_AMOUNT: float(user_input[VALOR_AMOUNT]),
+                        VALOR_AMOUNT: amount,
                     }
                     if target is not None:
                         valor[VALOR_TARGET_SHARE] = target
@@ -1489,6 +1962,8 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         errors: dict[str, str] = {}
         if user_input is not None:
             symbol = user_input[VALOR_SYMBOL]
+            if not any(valor[VALOR_SYMBOL] == symbol for valor in valors):
+                return self.async_abort(reason="stale_selection")
             referenced = (
                 any(
                     lot[LOT_SYMBOL] == symbol
@@ -1534,22 +2009,15 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             return self.async_abort(reason="no_valors")
         if user_input is not None:
             self._edit_symbol = user_input[VALOR_SYMBOL]
-            current = next(v for v in valors if v[VALOR_SYMBOL] == self._edit_symbol)
+            current = next(
+                (v for v in valors if v[VALOR_SYMBOL] == self._edit_symbol), None
+            )
+            if current is None:
+                return self.async_abort(reason="stale_selection")
             return self.async_show_form(
                 step_id="edit_valor_fields",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required(
-                            VALOR_AMOUNT, default=current[VALOR_AMOUNT]
-                        ): _AMOUNT_SELECTOR,
-                        # Clearing the field removes the target share.
-                        vol.Optional(
-                            VALOR_TARGET_SHARE,
-                            description={
-                                "suggested_value": current.get(VALOR_TARGET_SHARE)
-                            },
-                        ): vol.Any(None, _TARGET_SHARE_SELECTOR),
-                    }
+                data_schema=_valor_fields_schema(
+                    current[VALOR_AMOUNT], current.get(VALOR_TARGET_SHARE)
                 ),
                 description_placeholders={VALOR_SYMBOL: self._edit_symbol},
             )
@@ -1573,41 +2041,56 @@ class MyWalletOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         """Apply the new amount / target share for the previously selected valor."""
         symbol = self._edit_symbol
         valors = self._valors()
-        amount = float(user_input[VALOR_AMOUNT])
+        if not any(v[VALOR_SYMBOL] == symbol for v in valors):
+            return self.async_abort(reason="stale_selection")
+        if user_input is None:
+            current = next(v for v in valors if v[VALOR_SYMBOL] == symbol)
+            return self.async_show_form(
+                step_id="edit_valor_fields",
+                data_schema=_valor_fields_schema(
+                    current[VALOR_AMOUNT], current.get(VALOR_TARGET_SHARE)
+                ),
+                description_placeholders={VALOR_SYMBOL: str(symbol)},
+            )
+        amount = _finite_number(
+            user_input.get(VALOR_AMOUNT), minimum=0, maximum=_MAX_NUMBER
+        )
+        if amount is None:
+            return self.async_show_form(
+                step_id="edit_valor_fields",
+                data_schema=_valor_fields_schema(
+                    user_input.get(VALOR_AMOUNT),
+                    user_input.get(VALOR_TARGET_SHARE),
+                ),
+                description_placeholders={VALOR_SYMBOL: str(symbol)},
+                errors={VALOR_AMOUNT: "invalid_number"},
+            )
         if amount + 1e-9 < self._included_lot_units(str(symbol)):
             return self.async_show_form(
                 step_id="edit_valor_fields",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required(VALOR_AMOUNT, default=amount): _AMOUNT_SELECTOR,
-                        vol.Optional(
-                            VALOR_TARGET_SHARE,
-                            description={
-                                "suggested_value": user_input.get(VALOR_TARGET_SHARE)
-                            },
-                        ): vol.Any(None, _TARGET_SHARE_SELECTOR),
-                    }
+                data_schema=_valor_fields_schema(
+                    amount, user_input.get(VALOR_TARGET_SHARE)
                 ),
                 description_placeholders={VALOR_SYMBOL: str(symbol)},
                 errors={VALOR_AMOUNT: "included_units_exceeded"},
             )
-        target = _normalize_target_share(user_input.get(VALOR_TARGET_SHARE))
+        try:
+            target = _normalize_target_share(user_input.get(VALOR_TARGET_SHARE))
+        except ValueError:
+            return self.async_show_form(
+                step_id="edit_valor_fields",
+                data_schema=_valor_fields_schema(
+                    amount, user_input.get(VALOR_TARGET_SHARE)
+                ),
+                description_placeholders={VALOR_SYMBOL: str(symbol)},
+                errors={VALOR_TARGET_SHARE: "invalid_number"},
+            )
         others = (v for v in valors if v[VALOR_SYMBOL] != symbol)
         if target is not None and _target_sum_exceeded(others, target):
             return self.async_show_form(
                 step_id="edit_valor_fields",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required(
-                            VALOR_AMOUNT, default=float(user_input[VALOR_AMOUNT])
-                        ): _AMOUNT_SELECTOR,
-                        vol.Optional(
-                            VALOR_TARGET_SHARE,
-                            description={
-                                "suggested_value": user_input.get(VALOR_TARGET_SHARE)
-                            },
-                        ): vol.Any(None, _TARGET_SHARE_SELECTOR),
-                    }
+                data_schema=_valor_fields_schema(
+                    amount, user_input.get(VALOR_TARGET_SHARE)
                 ),
                 description_placeholders={VALOR_SYMBOL: symbol},
                 errors={VALOR_TARGET_SHARE: "target_sum_exceeded"},

@@ -49,6 +49,7 @@ def make_plan(
     skipped_periods: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     """Create and validate one monthly savings plan."""
+    normalized_enabled = bool(enabled)
     normalized_name = name.strip()
     if not normalized_name:
         raise ValueError("Savings-plan name is required")
@@ -84,7 +85,9 @@ def make_plan(
         total_percent = sum(item[ALLOCATION_VALUE] for item in normalized_allocations)
         if abs(total_percent - 100) > _PERCENT_TOLERANCE:
             raise ValueError("Percentage allocations must total 100")
-        if normalized_amount + 1e-9 < 0.01 * len(normalized_allocations):
+        if normalized_enabled and normalized_amount + 1e-9 < 0.01 * len(
+            normalized_allocations
+        ):
             raise ValueError("Plan amount is too small for all allocations")
     else:
         normalized_amount = sum(
@@ -100,7 +103,7 @@ def make_plan(
     return {
         PLAN_ID: plan_id or uuid4().hex,
         PLAN_NAME: normalized_name,
-        PLAN_ENABLED: bool(enabled),
+        PLAN_ENABLED: normalized_enabled,
         PLAN_FIRST_DATE: normalized_first,
         PLAN_END_DATE: normalized_end,
         PLAN_ALLOCATION_MODE: allocation_mode,
@@ -127,6 +130,47 @@ def normalize_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         opening_cutoff_date=plan.get(PLAN_OPENING_CUTOFF_DATE),
         skipped_periods=plan.get(PLAN_SKIPPED_PERIODS, []),
     )
+
+
+def same_plan_definition(
+    first_plan: Mapping[str, Any], second_plan: Mapping[str, Any]
+) -> bool:
+    """Return whether two plans share one schedule and allocation identity.
+
+    Enabled state is deliberately not identity: removing a paused plan and
+    re-creating it as active must still retain its historical execution ID.
+    """
+    ignored = {PLAN_ENABLED, PLAN_ID, PLAN_SKIPPED_PERIODS}
+    first = normalize_plan(first_plan)
+    second = normalize_plan(second_plan)
+    return {key: value for key, value in first.items() if key not in ignored} == {
+        key: value for key, value in second.items() if key not in ignored
+    }
+
+
+def reactivate_matching_plan(
+    plan: Mapping[str, Any], retired_plans: Sequence[Mapping[str, Any]]
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Restore a retired plan's identity when its definition is re-created.
+
+    Plan IDs are part of the monthly execution identity.  Reusing the old ID
+    therefore keeps already booked and deliberately skipped months booked.
+    """
+    normalized = normalize_plan(plan)
+    retired = [normalize_plan(item) for item in retired_plans]
+    for index in range(len(retired) - 1, -1, -1):
+        previous = retired[index]
+        if not same_plan_definition(normalized, previous):
+            continue
+        restored = normalize_plan(
+            {
+                **normalized,
+                PLAN_ID: previous[PLAN_ID],
+                PLAN_SKIPPED_PERIODS: previous[PLAN_SKIPPED_PERIODS],
+            }
+        )
+        return restored, retired[:index] + retired[index + 1 :]
+    return normalized, retired
 
 
 def allocation_amounts(
@@ -225,6 +269,24 @@ def schedule_period(value: date | str) -> str:
     else:
         parsed = date.fromisoformat(text)
     return parsed.strftime("%Y-%m")
+
+
+def is_scheduled_period(plan: Mapping[str, Any], period: date | str) -> bool:
+    """Return whether a month belongs to a plan's configured date range.
+
+    Unlike :func:`scheduled_dates`, this deliberately ignores whether the plan
+    is enabled.  A skipped execution marker may still be managed while a plan
+    is temporarily disabled.
+    """
+    normalized = normalize_plan(plan)
+    first = date.fromisoformat(normalized[PLAN_FIRST_DATE])
+    normalized_period = schedule_period(period)
+    year, month = (int(part) for part in normalized_period.split("-", 1))
+    candidate = _monthly_date(year, month, first.day)
+    if candidate < first:
+        return False
+    end_value = normalized[PLAN_END_DATE]
+    return end_value is None or candidate <= date.fromisoformat(end_value)
 
 
 def scheduled_dates(plan: Mapping[str, Any], through: date) -> list[date]:

@@ -25,7 +25,8 @@
       "invalid_name": "Podaj nazwę portfela.",
       "invalid_symbol": "Podaj poprawny symbol Yahoo Finance.",
       "symbol_exists": "Ten symbol znajduje się już w portfelu.",
-      "target_sum_exceeded": "Suma udziałów docelowych przekroczy 100%."
+      "target_sum_exceeded": "Suma udziałów docelowych przekroczy 100%.",
+      "invalid_number": "Wprowadź skończoną wartość w dozwolonym zakresie."
     }
   },
   "options": {
@@ -249,7 +250,13 @@
       "historical_price_unavailable": "Yahoo nie ma kursu zamknięcia dla tego okresu. Podaj cenę ręcznie.",
       "historical_fx_unavailable": "Yahoo nie ma historycznego kursu wymiany. Podaj cenę w walucie bazowej ręcznie.",
       "valor_in_use": "Ten walor jest używany przez transzę zakupu, dywidendę lub plan. Najpierw usuń albo edytuj te wpisy.",
-      "included_units_exceeded": "Transze oznaczone jako uwzględnione przekraczają początkową liczbę jednostek. Zwiększ saldo początkowe lub wyłącz to oznaczenie."
+      "included_units_exceeded": "Transze oznaczone jako uwzględnione przekraczają początkową liczbę jednostek. Zwiększ saldo początkowe lub wyłącz to oznaczenie.",
+      "invalid_number": "Wprowadź skończoną wartość z dozwolonego zakresu.",
+      "invalid_input": "Sprawdź wprowadzone wartości.",
+      "contribution_date_after_lot": "Data wpłaty nie może być późniejsza niż data przypisanej transzy zakupu.",
+      "legacy_opening_required": "Transza starego salda początkowego musi pozostać oznaczona jako już uwzględniona w saldzie początkowym.",
+      "funding_contribution_invalid": "Wybrana wpłata jest niedostępna lub nie może sfinansować zakupu z tą datą.",
+      "opening_cutoff_future": "Data graniczna salda początkowego nie może przypadać w przyszłości."
     },
     "abort": {
       "no_valors": "Portfel nie ma jeszcze żadnych walorów.",
@@ -258,7 +265,9 @@
       "no_dividends": "Portfel nie ma jeszcze żadnych dywidend.",
       "no_plans": "Portfel nie ma jeszcze żadnych planów oszczędnościowych.",
       "no_skipped_executions": "Portfel nie ma pominiętych realizacji planu oszczędnościowego.",
-      "invalid_plan": "Nie można zapisać planu z takim podziałem."
+      "invalid_plan": "Nie można zapisać planu z takim podziałem.",
+      "stale_selection": "Wybrany wpis już nie istnieje. Otwórz ponownie konfigurację i spróbuj jeszcze raz.",
+      "entry_changed": "Portfel zmienił się, gdy formularz był otwarty. Otwórz ponownie konfigurację i wprowadź wartości jeszcze raz."
     }
   },
   "selector": {

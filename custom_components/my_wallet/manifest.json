@@ -1,11 +1,11 @@
 {
   "domain": "my_wallet",
   "name": "My Wallet",
-  "codeowners": ["@no-time-for-good-name"],
+  "codeowners": ["@PenDrag92"],
   "config_flow": true,
-  "documentation": "https://github.com/no-time-for-good-name/ha-my-wallet",
+  "documentation": "https://github.com/PenDrag92/ha-my-wallet-custom",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/no-time-for-good-name/ha-my-wallet/issues",
-  "version": "1.3.1"
+  "issue_tracker": "https://github.com/PenDrag92/ha-my-wallet-custom/issues",
+  "version": "1.3.2"
 }

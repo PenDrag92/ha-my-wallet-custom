@@ -25,7 +25,8 @@
       "invalid_name": "Please enter a wallet name.",
       "invalid_symbol": "Please enter a valid Yahoo Finance symbol.",
       "symbol_exists": "This symbol is already in the wallet.",
-      "target_sum_exceeded": "The sum of target shares would exceed 100%."
+      "target_sum_exceeded": "The sum of target shares would exceed 100%.",
+      "invalid_number": "Enter a finite value within the allowed range."
     }
   },
   "options": {
@@ -249,7 +250,13 @@
       "historical_price_unavailable": "Yahoo has no close for this date range. Enter the effective unit price manually.",
       "historical_fx_unavailable": "Yahoo has no historical exchange rate for this purchase. Enter an effective unit price in the wallet's base currency manually.",
       "valor_in_use": "This valor is referenced by a purchase lot, dividend, or savings plan. Remove or edit those records first.",
-      "included_units_exceeded": "Lots marked as included exceed this valor's configured opening units. Increase the opening units or clear the included checkbox."
+      "included_units_exceeded": "Lots marked as included exceed this valor's configured opening units. Increase the opening units or clear the included checkbox.",
+      "invalid_number": "Enter a finite value within the allowed range.",
+      "invalid_input": "Check the entered values.",
+      "contribution_date_after_lot": "The contribution date cannot be later than a purchase lot retained in this contribution.",
+      "legacy_opening_required": "A legacy opening-balance lot must remain marked as already included in the opening balance.",
+      "funding_contribution_invalid": "The selected funding contribution is unavailable or cannot fund this purchase date.",
+      "opening_cutoff_future": "The opening-balance cutoff cannot be in the future."
     },
     "abort": {
       "no_valors": "The wallet has no valors yet.",
@@ -258,7 +265,9 @@
       "no_dividends": "The wallet has no dividend credits yet.",
       "no_plans": "The wallet has no savings plans yet.",
       "no_skipped_executions": "The wallet has no skipped savings-plan executions.",
-      "invalid_plan": "The plan cannot be saved with these allocations."
+      "invalid_plan": "The plan cannot be saved with these allocations.",
+      "stale_selection": "The selected item no longer exists. Reopen Configure and try again.",
+      "entry_changed": "The wallet changed while this form was open. Reopen Configure and enter the values again."
     }
   },
   "selector": {

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -16,6 +18,15 @@ def leaf_keys(value: object, prefix: str = "") -> set[str]:
     result: set[str] = set()
     for key, child in value.items():
         result |= leaf_keys(child, f"{prefix}.{key}" if prefix else key)
+    return result
+
+
+def leaf_values(value: object, prefix: str = "") -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {prefix: str(value)}
+    result: dict[str, str] = {}
+    for key, child in value.items():
+        result |= leaf_values(child, f"{prefix}.{key}" if prefix else key)
     return result
 
 
@@ -58,11 +69,50 @@ class ReleaseTests(unittest.TestCase):
         for path, document in zip(sources[1:], documents[1:], strict=True):
             self.assertEqual(leaf_keys(document), expected, path.name)
 
-    def test_manifest_version_and_no_generated_files(self) -> None:
+        expected_values = leaf_values(documents[0])
+        placeholder_pattern = re.compile(r"{([A-Za-z0-9_]+)}")
+        for path, document in zip(sources[1:], documents[1:], strict=True):
+            actual_values = leaf_values(document)
+            for key, expected_value in expected_values.items():
+                self.assertEqual(
+                    set(placeholder_pattern.findall(actual_values[key])),
+                    set(placeholder_pattern.findall(expected_value)),
+                    f"{path.name}: {key}",
+                )
+
+    def test_release_versions_and_metadata(self) -> None:
         manifest = json.loads(
             (ROOT / "custom_components" / "my_wallet" / "manifest.json").read_text()
         )
-        self.assertEqual(manifest["version"], "1.3.1")
+        project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+        hacs = json.loads((ROOT / "hacs.json").read_text())
+
+        self.assertEqual(manifest["version"], "1.3.2")
+        self.assertEqual(project["project"]["version"], "1.3.2")
+        self.assertEqual(hacs["homeassistant"], "2024.11.3")
+        self.assertEqual(manifest["codeowners"], ["@PenDrag92"])
+        self.assertEqual(
+            manifest["documentation"],
+            "https://github.com/PenDrag92/ha-my-wallet-custom",
+        )
+        self.assertEqual(
+            manifest["issue_tracker"],
+            "https://github.com/PenDrag92/ha-my-wallet-custom/issues",
+        )
+
+    def test_release_notes_describe_ledger_hardening(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        audit = (ROOT / "AUDIT.md").read_text(encoding="utf-8")
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+        self.assertIn("## 1.3.2", changelog)
+        for text in (readme, audit, changelog):
+            self.assertIn("opening", text.lower())
+            self.assertIn("cash", text.lower())
+        self.assertIn("not an independent", audit)
+        self.assertIn("security certification", audit)
+
+    def test_no_generated_files_are_tracked(self) -> None:
         if not (ROOT / ".git").exists():
             return
         tracked = subprocess.check_output(
@@ -75,6 +125,44 @@ class ReleaseTests(unittest.TestCase):
             or Path(path).suffix in {".pyc", ".pyo"}
         ]
         self.assertEqual(unwanted, [])
+
+    def test_validation_workflow_is_complete_and_pinned(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "validate.yml").read_text()
+        expected_actions = {
+            "actions/checkout",
+            "actions/setup-python",
+            "hacs/action",
+            "home-assistant/actions/hassfest",
+        }
+        for action in expected_actions:
+            self.assertRegex(
+                workflow,
+                rf"(?m)uses:\s+{re.escape(action)}@[0-9a-f]{{40}}(?:\s+#.*)?$",
+            )
+
+        uses_revisions = re.findall(r"uses:\s+[^@\s]+@([^\s#]+)", workflow)
+        self.assertTrue(uses_revisions)
+        self.assertTrue(
+            all(re.fullmatch(r"[0-9a-f]{40}", item) for item in uses_revisions)
+        )
+
+        required_fragments = {
+            "permissions:\n  contents: read",
+            "homeassistant==2024.11.3",
+            "ruff check .",
+            "ruff format --check .",
+            "python -m unittest discover -v",
+            "bandit -q -r custom_components/my_wallet",
+            "json.loads",
+            "yaml.safe_load",
+            "python -m compileall -q custom_components tests",
+            "import custom_components.my_wallet.config_flow",
+            "import custom_components.my_wallet.coordinator",
+            "import custom_components.my_wallet.sensor",
+            "category: integration",
+        }
+        for fragment in required_fragments:
+            self.assertIn(fragment, workflow)
 
     def test_english_sources_are_identical(self) -> None:
         folder = ROOT / "custom_components" / "my_wallet"

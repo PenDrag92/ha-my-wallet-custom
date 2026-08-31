@@ -25,7 +25,8 @@
       "invalid_name": "Bitte einen Depotnamen eingeben.",
       "invalid_symbol": "Bitte ein gültiges Yahoo-Finance-Symbol eingeben.",
       "symbol_exists": "Dieses Symbol ist bereits im Depot vorhanden.",
-      "target_sum_exceeded": "Die Summe der Zielanteile würde 100 % überschreiten."
+      "target_sum_exceeded": "Die Summe der Zielanteile würde 100 % überschreiten.",
+      "invalid_number": "Bitte einen endlichen Wert innerhalb des zulässigen Bereichs eingeben."
     }
   },
   "options": {
@@ -249,7 +250,13 @@
       "historical_price_unavailable": "Yahoo hat für diesen Zeitraum keinen Schlusskurs. Bitte den effektiven Stückpreis manuell eintragen.",
       "historical_fx_unavailable": "Yahoo hat für diesen Kauf keinen historischen Wechselkurs. Bitte den effektiven Stückpreis in der Basiswährung manuell eintragen.",
       "valor_in_use": "Dieses Wertpapier wird von einer Kauftranche, Ausschüttung oder einem Sparplan verwendet. Diese Einträge zuerst entfernen oder bearbeiten.",
-      "included_units_exceeded": "Die als enthalten markierten Kauftranchen übersteigen den eingetragenen Anfangsbestand. Anfangsbestand erhöhen oder das Häkchen entfernen."
+      "included_units_exceeded": "Die als enthalten markierten Kauftranchen übersteigen den eingetragenen Anfangsbestand. Anfangsbestand erhöhen oder das Häkchen entfernen.",
+      "invalid_number": "Bitte einen endlichen Wert innerhalb des zulässigen Bereichs eingeben.",
+      "invalid_input": "Bitte die eingegebenen Werte prüfen.",
+      "contribution_date_after_lot": "Das Einzahlungsdatum darf nicht nach dem Datum einer zugeordneten Kauftranche liegen.",
+      "legacy_opening_required": "Eine Kauftranche des alten Anfangsbestands muss als bereits im Anfangsbestand enthalten markiert bleiben.",
+      "funding_contribution_invalid": "Die gewählte Einzahlung ist nicht verfügbar oder kann diesen Kaufzeitpunkt nicht finanzieren.",
+      "opening_cutoff_future": "Der Stichtag für den Anfangsbestand darf nicht in der Zukunft liegen."
     },
     "abort": {
       "no_valors": "Das Depot enthält noch keine Wertpapiere.",
@@ -258,7 +265,9 @@
       "no_dividends": "Das Depot enthält noch keine Ausschüttungen.",
       "no_plans": "Das Depot enthält noch keine Sparpläne.",
       "no_skipped_executions": "Das Depot enthält keine übersprungenen Sparplanausführungen.",
-      "invalid_plan": "Der Sparplan kann mit dieser Aufteilung nicht gespeichert werden."
+      "invalid_plan": "Der Sparplan kann mit dieser Aufteilung nicht gespeichert werden.",
+      "stale_selection": "Der ausgewählte Eintrag existiert nicht mehr. ‚Konfigurieren‘ erneut öffnen und den Vorgang wiederholen.",
+      "entry_changed": "Das Depot wurde geändert, während dieses Formular geöffnet war. ‚Konfigurieren‘ erneut öffnen und die Werte neu eingeben."
     }
   },
   "selector": {
