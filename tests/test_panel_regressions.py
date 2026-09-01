@@ -180,6 +180,14 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(wallet["target"]["start_date"], "2026-01-15")
         self.assertEqual(wallet["target"]["annual_return"], 7)
         self.assertIsNotNone(wallet["target"]["absolute_deviation"])
+        forecast = wallet["target"]["allocation_forecasts"]["1"]
+        self.assertGreater(forecast["positions"]["AAA"], 120)
+        self.assertGreater(forecast["cash"], 20)
+        self.assertAlmostEqual(
+            forecast["total"],
+            forecast["positions"]["AAA"] + forecast["cash"],
+            places=2,
+        )
         self.assertEqual(position["start_date"], "2026-01-15")
         self.assertAlmostEqual(position["share"], 120 / 140 * 100)
         self.assertEqual(position["lots"][0]["purchase_price"], 10)

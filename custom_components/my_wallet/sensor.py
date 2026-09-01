@@ -58,6 +58,8 @@ from .const import (
     ATTR_SHARE_DEVIATION,
     ATTR_SHORT_NAME,
     ATTR_SYMBOL,
+    ATTR_TARGET_CONTRIBUTIONS,
+    ATTR_TARGET_GROWTH,
     ATTR_TARGET_SHARE,
     ATTR_TOTAL,
     ATTR_TRACKED_INVESTED,
@@ -121,7 +123,7 @@ from .dividends import (
 )
 from .models import ValorData, WalletData
 from .plans import next_due_date, normalize_plan
-from .target import target_deviation, target_projection
+from .target import target_contributed_capital, target_deviation, target_projection
 
 _REFRESH_SCHEMA: dict[str, Any] = {}
 
@@ -668,6 +670,9 @@ class WalletTargetValueSensor(WalletBaseSensor):
         projection = self._projection
         actual = self.coordinator.data.total
         absolute, percentage = target_deviation(actual, projection.value)
+        contributions = target_contributed_capital(
+            projection, through=dt_util.now().date()
+        )
         return {
             ATTR_EXPECTED_ANNUAL_RETURN: projection.annual_return,
             ATTR_MONTHLY_RETURN: round(projection.monthly_return, 6),
@@ -682,6 +687,14 @@ class WalletTargetValueSensor(WalletBaseSensor):
                 round(percentage, 2) if percentage is not None else None
             ),
             ATTR_CALCULATION_BASIS: "planned_savings_rates",
+            ATTR_TARGET_CONTRIBUTIONS: (
+                round(contributions, 2) if contributions is not None else None
+            ),
+            ATTR_TARGET_GROWTH: (
+                round(projection.value - contributions, 2)
+                if projection.value is not None and contributions is not None
+                else None
+            ),
             "cash_flow_count": len(projection.cash_flows),
             "unavailable_reason": projection.unavailable_reason,
         }

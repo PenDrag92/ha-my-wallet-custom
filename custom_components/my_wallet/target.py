@@ -17,7 +17,13 @@ from .contributions import (
     contributions_from_data,
     opening_balance_conflicts,
 )
-from .plans import execution_rules, normalize_plan, rule_for_date, schedule_period
+from .plans import (
+    allocation_amounts,
+    execution_rules,
+    normalize_plan,
+    rule_for_date,
+    schedule_period,
+)
 
 _DAYS_PER_YEAR = 365.2425
 _UNIT_TOLERANCE = 1e-8
@@ -32,6 +38,7 @@ class TargetCashFlow:
     amount: float
     source: str
     plan_id: str | None = None
+    allocations: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -167,6 +174,7 @@ def _planned_flows(
     for plan in active_plans:
         skipped = set(plan[c.PLAN_SKIPPED_PERIODS])
         for rule in execution_rules(plan):
+            allocations = tuple(sorted(allocation_amounts(rule).items()))
             for scheduled in _dates_for_rule(rule, through):
                 period = schedule_period(scheduled)
                 if period in skipped:
@@ -176,6 +184,7 @@ def _planned_flows(
                     float(rule[c.PLAN_AMOUNT]),
                     "savings_plan",
                     plan[c.PLAN_ID],
+                    allocations,
                 )
 
     # Retired plans have no reliable retirement timestamp. Preserve only their
@@ -197,12 +206,15 @@ def _planned_flows(
         if key in result:
             continue
         amount = float(row[c.CONTRIBUTION_AMOUNT])
+        allocations: tuple[tuple[str, float], ...] = ()
         if plan is not None:
             with suppress(ValueError):
-                amount = float(rule_for_date(plan, scheduled)[c.PLAN_AMOUNT])
+                rule = rule_for_date(plan, scheduled)
+                amount = float(rule[c.PLAN_AMOUNT])
+                allocations = tuple(sorted(allocation_amounts(rule).items()))
         if amount > 0:
             result[key] = TargetCashFlow(
-                scheduled, amount, "savings_plan", str(plan_id)
+                scheduled, amount, "savings_plan", str(plan_id), allocations
             )
     return result
 
@@ -289,6 +301,92 @@ def target_series(
         value *= projection.daily_factor
         value += grouped.get(day, 0.0)
     return values
+
+
+def target_contribution_series(
+    projection: TargetProjection, *, start: date, through: date
+) -> dict[str, float]:
+    """Return cumulative target funding for each dashboard day."""
+    if projection.value is None or projection.start_date is None or start > through:
+        return {}
+    first = projection.start_date
+    grouped: dict[date, float] = defaultdict(float)
+    for flow in projection.cash_flows:
+        grouped[flow.date] += flow.amount
+
+    values: dict[str, float] = {}
+    contributed = 0.0
+    day = first - timedelta(days=1)
+    while day <= through:
+        if day >= start:
+            values[day.isoformat()] = round(contributed, 2)
+        day += timedelta(days=1)
+        if day > through:
+            break
+        contributed += grouped.get(day, 0.0)
+    return values
+
+
+def target_contributed_capital(
+    projection: TargetProjection, *, through: date
+) -> float | None:
+    """Return the external capital included in a target through one day."""
+    if projection.value is None or projection.start_date is None:
+        return None
+    return sum(
+        flow.amount
+        for flow in projection.cash_flows
+        if projection.start_date <= flow.date <= through
+    )
+
+
+def target_allocation_forecast(
+    projection: TargetProjection,
+    *,
+    current_date: date,
+    through: date,
+    positions: Mapping[str, float | None],
+    cash: float | None,
+) -> dict[str, Any] | None:
+    """Project today's allocation using the same return and future plan flows."""
+    values = list(positions.values())
+    if (
+        projection.value is None
+        or through < current_date
+        or cash is None
+        or not isfinite(cash)
+        or cash < 0
+        or any(value is None or not isfinite(value) or value < 0 for value in values)
+    ):
+        return None
+
+    horizon_factor = projection.daily_factor ** (through - current_date).days
+    projected = {
+        symbol: float(value) * horizon_factor
+        for symbol, value in positions.items()
+        if value is not None
+    }
+    projected_cash = cash * horizon_factor
+    for flow in projection.cash_flows:
+        if not current_date < flow.date <= through:
+            continue
+        flow_factor = projection.daily_factor ** (through - flow.date).days
+        allocated = 0.0
+        for symbol, amount in flow.allocations:
+            projected[symbol] = projected.get(symbol, 0.0) + amount * flow_factor
+            allocated += amount
+        projected_cash += max(0.0, flow.amount - allocated) * flow_factor
+
+    rounded_positions = {
+        symbol: round(value, 2) for symbol, value in sorted(projected.items())
+    }
+    rounded_cash = round(projected_cash, 2)
+    return {
+        "date": through.isoformat(),
+        "positions": rounded_positions,
+        "cash": rounded_cash,
+        "total": round(sum(projected.values()) + projected_cash, 2),
+    }
 
 
 def target_deviation(

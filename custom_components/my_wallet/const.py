@@ -171,6 +171,8 @@ ATTR_ACTUAL_VALUE: Final = "actual_value"
 ATTR_ABSOLUTE_DEVIATION: Final = "absolute_deviation"
 ATTR_PERCENTAGE_DEVIATION: Final = "percentage_deviation"
 ATTR_CALCULATION_BASIS: Final = "calculation_basis"
+ATTR_TARGET_CONTRIBUTIONS: Final = "target_contributions"
+ATTR_TARGET_GROWTH: Final = "target_growth"
 
 # Tolerance when validating the sum of target shares (floating point safety).
 TARGET_SHARE_SUM_TOLERANCE: Final = 0.005

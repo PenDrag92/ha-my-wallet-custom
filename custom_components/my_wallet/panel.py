@@ -47,7 +47,10 @@ from .followup_import import (
 from .history import async_history
 from .history_import import IMPORT_BATCH, async_prepare_import
 from .target import (
+    FORECAST_YEARS,
+    add_years,
     documented_wallet_start_date,
+    target_allocation_forecast,
     target_deviation,
     target_projection,
 )
@@ -131,7 +134,7 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.6.0",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.6.1",
         embed_iframe=False,
         require_admin=True,
     )
@@ -267,8 +270,26 @@ def ws_wallets(hass, connection, msg):
         profit = (
             total - invested if total is not None and invested is not None else None
         )
+        current_cash = cash_balance(entry.data, through=today)
         target = target_projection(entry.data, through=today)
         target_absolute, target_percentage = target_deviation(total, target.value)
+        forecast_projection = target_projection(
+            entry.data, through=add_years(today, max(FORECAST_YEARS))
+        )
+        allocation_forecasts = {
+            str(years): forecast
+            for years in FORECAST_YEARS
+            if (
+                forecast := target_allocation_forecast(
+                    forecast_projection,
+                    current_date=today,
+                    through=add_years(today, years),
+                    positions={item["symbol"]: item["value"] for item in positions},
+                    cash=current_cash,
+                )
+            )
+            is not None
+        }
         wallets.append(
             {
                 "entry_id": entry.entry_id,
@@ -276,7 +297,7 @@ def ws_wallets(hass, connection, msg):
                 "currency": entry.data[c.CONF_BASE_CURRENCY],
                 "start_date": start_date,
                 "invested": invested,
-                "cash": cash_balance(entry.data, through=today),
+                "cash": current_cash,
                 "dividends": dividend_total(entry.data, through=today),
                 "total": total,
                 "profit": profit,
@@ -304,6 +325,7 @@ def ws_wallets(hass, connection, msg):
                     "date": today.isoformat(),
                     "unavailable_reason": target.unavailable_reason,
                     "calculation_basis": "planned_savings_rates",
+                    "allocation_forecasts": allocation_forecasts,
                 },
                 "positions": positions,
                 "correction_choices": correction_choices(entry.data, today=today),

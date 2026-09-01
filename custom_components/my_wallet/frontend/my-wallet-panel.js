@@ -1,5 +1,5 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.6.0";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.6.1";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -31,15 +31,16 @@ const WORDS = {
     targetComparison: "Soll-Ist-Vergleich", expectedReturn: "Vorgaberendite p. a.", targetValue: "Zinseszins-Sollwert",
     targetDeviation: "Abweichung zum Soll", targetLine: "Sollkurve anzeigen", forecast: "Prognosehorizont",
     forecastToday: "heute", forecastYear: "Jahr", forecastYears: "Jahre", perYear: "p. a.", forecastValue: "Prognostizierter Sollwert", forecastDate: "Prognosedatum",
-    targetHint: "Der Sollwert verzinst das vorhandene Kapital und addiert die jeweils geplanten Sparraten sowie einmalige Einzahlungen.",
+    targetContributions: "Einzahlungen bis dahin", futureContributions: "Davon ab heute geplant", targetGrowth: "Erwarteter Wertzuwachs", currentTargetDeviation: "Aktuelle Abweichung zum Soll", portfolioForecast: "Depotprognose", forecastInvested: "Einzahlungen inkl. Planung",
+    targetHint: "Die Einzahlungen kombinieren gebuchte Einmalzahlungen mit den jeweils vorgesehenen Sparraten. Der erwartete Wertzuwachs ist der Sollwert abzüglich dieser Einzahlungen.",
     targetUnavailable: "Der Sollwert ist nicht verfügbar, weil Depotstart oder Anfangsbestand nicht vollständig dokumentiert sind.",
     positions: "Positionen", position: "Position", allPositions: "Gesamtes Depot", currentPrice: "Aktueller Kurs",
     analysis: "Kennzahlen und Verlauf", analysisFor: "Auswahl", analysisHint: "Kennzahlen, Wertentwicklung, Monats-/Jahresübersicht und Buchungen folgen dieser Auswahl.",
     editAliases: "Namen bearbeiten", positionNames: "Anzeigenamen", aliasHint: "Vergib kurze, verständliche Namen. Das technische Kürzel bleibt zur eindeutigen Zuordnung sichtbar.",
     aliasPlaceholder: "z. B. Welt-ETF", saveAliases: "Namen speichern", invalid_alias: "Der Anzeigename ist ungültig oder länger als 80 Zeichen.",
     currentValue: "Aktueller Wert", purchaseCost: "Kaufbetrag", share: "Depotanteil", target: "Zielanteil",
-    portfolioStart: "Depotstart", positionStart: "Positionsstart", allocation: "Depotaufteilung",
-    allocationHint: "Aktuelle Verteilung inklusive Verrechnungskonto; Zielanteile gelten nur für Wertpapiere.", actualShare: "Ist-Anteil", deviation: "Abweichung",
+    portfolioStart: "Depotstart", positionStart: "Positionsstart", allocation: "Depotaufteilung", forecastAllocation: "Prognostizierte Depotaufteilung", projectedValue: "Prognosewert",
+    allocationHint: "Aktuelle Verteilung inklusive Verrechnungskonto; Zielanteile gelten nur für Wertpapiere.", forecastAllocationHint: "Mathematische Hochrechnung aus den heutigen Werten, der Vorgaberendite und den bis dahin geplanten Sparplan-Zuteilungen – keine Prognose einzelner Wertpapierkurse.", actualShare: "Ist-Anteil", forecastShare: "Prognose-Anteil", deviation: "Abweichung",
     purchaseLots: "Kauftranchen", purchasePrice: "Einstandskurs", annualizedPerformance: "Rendite p. a.",
     includedOpening: "im Anfangsbestand", lotDetailsHint: "Dividenden werden den am Auszahlungstag gehaltenen Kauftranchen anteilig zugerechnet.",
     noLots: "Für diese Position sind keine vollständig dokumentierten Kauftranchen vorhanden.",
@@ -110,15 +111,16 @@ const WORDS = {
     targetComparison: "Target comparison", expectedReturn: "Expected return p.a.", targetValue: "Compound target",
     targetDeviation: "Difference from target", targetLine: "Show target curve", forecast: "Forecast horizon",
     forecastToday: "today", forecastYear: "year", forecastYears: "years", perYear: "p.a.", forecastValue: "Forecast target", forecastDate: "Forecast date",
-    targetHint: "The target compounds existing capital and adds the applicable planned savings rates and one-off deposits.",
+    targetContributions: "Contributions through this date", futureContributions: "Planned from today", targetGrowth: "Expected growth", currentTargetDeviation: "Current difference from target", portfolioForecast: "Portfolio forecast", forecastInvested: "Contributions including plan",
+    targetHint: "Contributions combine booked one-off deposits with the applicable planned savings rates. Expected growth is the target value minus those contributions.",
     targetUnavailable: "The target is unavailable because the portfolio start or opening holdings are not fully documented.",
     positions: "Positions", position: "Position", allPositions: "Whole wallet", currentPrice: "Current price",
     analysis: "Metrics and history", analysisFor: "Selection", analysisHint: "Metrics, value history, monthly/yearly summaries and transactions follow this selection.",
     editAliases: "Edit names", positionNames: "Display names", aliasHint: "Add short, recognizable names. The technical symbol remains visible for unambiguous identification.",
     aliasPlaceholder: "e.g. World ETF", saveAliases: "Save names", invalid_alias: "The display name is invalid or longer than 80 characters.",
     currentValue: "Current value", purchaseCost: "Purchase cost", share: "Wallet share", target: "Target share",
-    portfolioStart: "Portfolio start", positionStart: "Position start", allocation: "Portfolio allocation",
-    allocationHint: "Current allocation including settlement cash; target shares apply to securities only.", actualShare: "Actual share", deviation: "Deviation",
+    portfolioStart: "Portfolio start", positionStart: "Position start", allocation: "Portfolio allocation", forecastAllocation: "Projected portfolio allocation", projectedValue: "Projected value",
+    allocationHint: "Current allocation including settlement cash; target shares apply to securities only.", forecastAllocationHint: "Mathematical projection from today's values, the expected return and scheduled savings-plan allocations through the selected date; it is not a forecast of individual security prices.", actualShare: "Actual share", forecastShare: "Projected share", deviation: "Deviation",
     purchaseLots: "Purchase lots", purchasePrice: "Entry price", annualizedPerformance: "Return p.a.",
     includedOpening: "included in opening balance", lotDetailsHint: "Dividends are attributed proportionally to purchase lots held on the payment date.",
     noLots: "No fully documented purchase lots are available for this position.",
@@ -169,7 +171,7 @@ const CSS = `
   button,select,input{font:inherit;color:inherit} button,.button{cursor:pointer;background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#cad3dd);border-radius:8px;padding:9px 14px;text-decoration:none;color:inherit}
   button:disabled{opacity:.5;cursor:default}.primary,button.active{background:var(--primary-color,#1878b5);color:white;border-color:var(--primary-color,#1878b5)}button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #de9d30;outline-offset:2px}
   select,input[type=number]{padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}select{max-width:100%}label{display:inline-flex;align-items:center;gap:7px}input[type=checkbox]{width:18px;height:18px;accent-color:var(--primary-color,#1878b5)}
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:14px;margin:18px 0}.stat,.card{background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#dce3eb);border-radius:12px;padding:20px}.stat{display:flex;flex-direction:column}.stat strong{display:block;font-size:24px;letter-spacing:-.5px;margin-top:4px;font-variant-numeric:tabular-nums}.stat>span{display:block;min-height:3em;color:var(--secondary-text-color,#57667a);font-size:13px}.card{margin-bottom:18px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:14px;margin:18px 0}.target-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.overview-stats{grid-template-columns:repeat(8,minmax(0,1fr))}.overview-stats .stat{padding:16px}.overview-stats .stat strong{font-size:21px;white-space:nowrap}.stat,.card{background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#dce3eb);border-radius:12px;padding:20px}.stat{display:flex;flex-direction:column}.stat strong{display:block;font-size:24px;letter-spacing:-.5px;margin-top:4px;font-variant-numeric:tabular-nums}.stat>span{display:block;min-height:3em;color:var(--secondary-text-color,#57667a);font-size:13px}.card{margin-bottom:18px}
   .selection-card{display:flex;align-items:center;gap:24px}.selection-card h2{margin:0}.selection-copy{min-width:0}.selection-copy p{margin:4px 0 0}.selection-control{display:grid;gap:5px;min-width:min(100%,300px)}.selection-control span{font-size:13px;color:var(--secondary-text-color,#57667a)}
   .alias-editor{margin:0 0 18px;padding:14px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px;background:color-mix(in srgb,var(--primary-color,#1878b5) 4%,var(--card-background-color,#fff))}.alias-editor h3{margin:0}.alias-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px 18px;margin:12px 0}.alias-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(120px,1fr);align-items:center;gap:10px}.alias-row input{width:100%;padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}tr.selected td{background:color-mix(in srgb,var(--primary-color,#1878b5) 8%,transparent)}
   .allocation-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);align-items:center;gap:24px}.donut{width:min(100%,280px);margin:auto}.allocation-name{display:inline-flex;align-items:center;gap:8px}.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;flex:0 0 auto}.details-title{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}.details-title .hint{font-weight:400}
@@ -179,6 +181,7 @@ const CSS = `
   .loading:before{content:'';display:inline-block;width:14px;height:14px;border:2px solid #9daec0;border-top-color:#1878b5;border-radius:50%;animation:spin .8s linear infinite;margin-right:9px;vertical-align:middle}@keyframes spin{to{transform:rotate(360deg)}}
   .negative{color:var(--error-color,#c63c45)}.inline-action{padding:4px 8px;background:transparent}.field{display:grid;gap:5px;margin:12px 0;max-width:620px}.field label{font-size:13px;color:var(--secondary-text-color,#57667a)}.field input,.field select{width:100%}.decision{padding:12px 0;border-bottom:1px solid var(--divider-color,#e4e9ef)}.decision select{margin-top:7px;min-width:min(100%,360px)}
   input[type=file]{max-width:100%;margin:12px 0} .missing-row{display:flex;align-items:center;gap:12px;justify-content:space-between;border-bottom:1px solid var(--divider-color,#e4e9ef);padding:10px 0}.missing-row input{width:155px}
+  @media(max-width:1100px){.overview-stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
   @media(max-width:700px){header{padding:12px}main{padding:14px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stats>.stat:last-child:nth-child(odd){grid-column:1/-1}.stat,.card{padding:14px}.stat strong{font-size:20px}h1{font-size:20px}.toolbar{gap:8px}.toolbar label{width:100%}.toolbar select{flex:1}.selection-card{align-items:stretch;flex-direction:column;gap:12px}.selection-control{width:100%}.selection-control select{width:100%}.allocation-layout{grid-template-columns:1fr;gap:14px}.donut{max-width:240px}.alias-grid{grid-template-columns:1fr}.missing-row{align-items:flex-start;flex-direction:column}.controls{gap:8px}th,td{padding:10px 7px}}
   @media(prefers-reduced-motion:reduce){.loading:before{animation:none}}
 `;
@@ -333,6 +336,7 @@ class MyWalletPanel extends HTMLElement {
     this._renderPositionSelection(main, wallet);
     const stats = node("div", null, "stats");
     const position = wallet.positions.find(item => item.symbol === this._position);
+    if (!position) stats.classList.add("overview-stats");
     const values = position ? [
       ["currentValue", this.money(position.value)], ["purchaseCost", this.money(position.cost)],
       ["positionStart", position.start_date ? this.day(position.start_date) : this.t("emptyValue")],
@@ -405,35 +409,39 @@ class MyWalletPanel extends HTMLElement {
     if (target.value == null) {
       this._notice(section, this.t("targetUnavailable"), "warning"); parent.append(section); return;
     }
-    const forecastItem = this._forecastYears ? this._history?.target?.forecasts?.[String(this._forecastYears)] : { date: target.date, value: target.value };
-    const stats = node("div", null, "stats");
+    const historyTarget = this._history?.target || {};
+    const forecastItem = this._forecastYears ? historyTarget.forecasts?.[String(this._forecastYears)] : { date: target.date, value: target.value, contributions: historyTarget.contributions, growth: historyTarget.growth };
+    const stats = node("div", null, "stats target-stats");
     this._stat(stats, this.t("expectedReturn"), this.ratio(target.annual_return));
     this._stat(stats, this._forecastYears ? this.t("forecastValue") : this.t("targetValue"), this.money(forecastItem?.value));
     this._stat(stats, this.t("forecastDate"), this.day(forecastItem?.date));
-    if (!this._forecastYears) {
-      this._stat(stats, this.t("targetDeviation"), this.money(target.absolute_deviation));
-      this._stat(stats, `${this.t("targetDeviation")} (%)`, this.percent(target.percentage_deviation));
-    }
+    this._stat(stats, this.t("targetContributions"), this.money(forecastItem?.contributions));
+    if (this._forecastYears) this._stat(stats, this.t("futureContributions"), this.money(forecastItem?.additional_contributions));
+    this._stat(stats, this.t("targetGrowth"), this.money(forecastItem?.growth));
+    if (!this._forecastYears) this._stat(stats, this.t("currentTargetDeviation"), `${this.money(target.absolute_deviation)} · ${this.percent(target.percentage_deviation)}`);
     section.append(stats, node("p", this.t("targetHint"), "hint")); parent.append(section);
   }
   _renderAllocation(parent, wallet) {
     const section = node("section", null, "card");
-    section.append(node("h2", this.t("allocation")), node("p", this.t("allocationHint"), "hint"));
-    if (!Number.isFinite(wallet.total) || wallet.total <= 0 || !Number.isFinite(wallet.cash) || wallet.cash < 0 || wallet.positions.some(item => !Number.isFinite(item.value) || item.value < 0)) {
+    const forecast = this._forecastYears ? wallet.target?.allocation_forecasts?.[String(this._forecastYears)] : null;
+    const total = forecast?.total ?? wallet.total, cash = forecast?.cash ?? wallet.cash;
+    const positionValue = item => forecast?.positions?.[item.symbol] ?? item.value;
+    const title = forecast ? `${this.t("forecastAllocation")} · ${this.day(forecast.date)}` : this.t("allocation");
+    section.append(node("h2", title), node("p", this.t(forecast ? "forecastAllocationHint" : "allocationHint"), "hint"));
+    if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(cash) || cash < 0 || wallet.positions.some(item => !Number.isFinite(positionValue(item)) || positionValue(item) < 0)) {
       this._notice(section, this.t("emptyValue"));
       parent.append(section);
       return;
     }
     const palette = ["#157bc0", "#269e81", "#8b67c8", "#d9822b", "#d34f68", "#4d9ca8", "#8d7445", "#6c83d5"];
-    const segments = wallet.positions.filter(item => item.value > 0).map((item, index) => ({
+    const segments = wallet.positions.filter(item => positionValue(item) > 0).map((item, index) => ({
       symbol: item.symbol,
       label: this._positionLabel(item.symbol),
-      value: item.value,
+      value: positionValue(item),
       target: item.target,
       color: palette[index % palette.length],
     }));
-    if (wallet.cash > 0) segments.push({ symbol: null, label: this.t("cash"), value: wallet.cash, target: null, color: "#98a3af" });
-    const total = wallet.total;
+    if (cash > 0) segments.push({ symbol: null, label: this.t("cash"), value: cash, target: null, color: "#98a3af" });
     if (total <= 0) {
       this._notice(section, this.t("emptyValue"));
       parent.append(section);
@@ -454,14 +462,14 @@ class MyWalletPanel extends HTMLElement {
     centerLabel.textContent = this.t("all"); svg.append(centerValue, centerLabel);
 
     const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr");
-    for (const key of ["position", "currentValue", "actualShare", "target", "deviation"]) hr.append(node("th", this.t(key), key === "position" ? "" : "num"));
+    for (const key of ["position", forecast ? "projectedValue" : "currentValue", forecast ? "forecastShare" : "actualShare", "target", "deviation"]) hr.append(node("th", this.t(key), key === "position" ? "" : "num"));
     head.append(hr); table.append(head); const body = node("tbody");
     for (const item of segments) {
       const actual = item.value / total * 100, difference = item.target == null ? null : actual - item.target;
       const tr = node("tr"); if (item.symbol === this._position) tr.className = "selected";
       const first = node("td"), swatch = node("span", null, "swatch"); swatch.style.background = item.color;
       if (item.symbol) {
-        const choose = button(item.label, () => { this._position = item.symbol; this._cashLine = false; this._render(); }, "inline-action allocation-name");
+        const choose = button(item.label, () => { this._position = item.symbol; this._cashLine = false; this._forecastYears = 0; this._render(); }, "inline-action allocation-name");
         choose.prepend(swatch); first.append(choose);
       } else {
         const label = node("span", item.label, "allocation-name"); label.prepend(swatch); first.append(label);
@@ -503,6 +511,7 @@ class MyWalletPanel extends HTMLElement {
   }
   _renderPositions(parent, wallet) {
     const section = node("section", null, "card"), controls = node("div", null, "controls");
+    const forecast = this._forecastYears ? wallet.target?.allocation_forecasts?.[String(this._forecastYears)] : null;
     controls.append(node("h2", this.t("positions")), node("div", null, "grow"));
     controls.append(
       button(this.t("editAliases"), () => {
@@ -515,21 +524,25 @@ class MyWalletPanel extends HTMLElement {
     section.append(controls);
     if (this._aliasOpen) this._renderAliasEditor(section, wallet);
     const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr");
-    for (const key of ["position", "units", "currentPrice", "currentValue", "purchaseCost", "profit", "performance", "share", "target"]) hr.append(node("th", this.t(key), key === "position" ? "" : "num"));
+    const columns = ["position", "units", "currentPrice", "currentValue", "purchaseCost", "profit", "performance", "share", ...(forecast ? ["projectedValue", "forecastShare"] : []), "target"];
+    for (const key of columns) hr.append(node("th", this.t(key), key === "position" ? "" : "num"));
     head.append(hr); table.append(head); const body = node("tbody");
     for (const item of wallet.positions) {
       const tr = node("tr"), alias = item.alias?.trim() || "";
       if (item.symbol === this._position) tr.className = "selected";
-      const choose = button(alias || item.symbol, () => { this._position = item.symbol; this._cashLine = false; this._render(); }, "inline-action");
+      const choose = button(alias || item.symbol, () => { this._position = item.symbol; this._cashLine = false; this._forecastYears = 0; this._render(); }, "inline-action");
       choose.setAttribute("aria-label", this._positionLabel(item.symbol));
       const first = node("td"); first.append(choose);
       if (alias) first.append(node("span", item.symbol, "hint"));
       if (!item.cost_complete) first.append(node("span", this.t("incompleteCost"), "hint"));
       const cls = value => `num ${value > 0 ? "positive" : value < 0 ? "negative" : ""}`;
+      const forecastValue = forecast?.positions?.[item.symbol], forecastShare = forecastValue != null && forecast.total ? forecastValue / forecast.total * 100 : null;
       tr.append(first, node("td", this.units(item.units), "num"), node("td", this.money(item.price), "num"),
         node("td", this.money(item.value), "num"), node("td", this.money(item.cost), "num"),
         node("td", this.money(item.profit), cls(item.profit)), node("td", this.percent(item.performance), cls(item.performance)),
-        node("td", this.ratio(item.share), "num"), node("td", this.ratio(item.target), "num"));
+        node("td", this.ratio(item.share), "num"));
+      if (forecast) tr.append(node("td", this.money(forecastValue), "num"), node("td", this.ratio(forecastShare), "num"));
+      tr.append(node("td", this.ratio(item.target), "num"));
       body.append(tr);
     }
     table.append(body); wrap.append(table); section.append(wrap); parent.append(section);
@@ -690,9 +703,21 @@ class MyWalletPanel extends HTMLElement {
     section.append(controls);
     const limit = { year: 366, six: 184, three: 93 }[this._period];
     let source = limit ? this._history.points.slice(-limit) : this._history.points;
+    let showProjection = false;
     if (this._position === "all" && this._forecastYears && !limit && this._targetLine) {
       const cutoff = this._history.target?.forecasts?.[String(this._forecastYears)]?.date;
-      source = [...source, ...(this._history.target_forecast || []).filter(point => !cutoff || point.date <= cutoff).map(point => ({ ...point, value: null, invested: null, cash: null }))];
+      const target = this._history.target || {}, wallet = this._wallet();
+      const canProject = Number.isFinite(wallet?.total) && Number.isFinite(target.current_value) && Number.isFinite(target.annual_return) && target.date;
+      const project = point => {
+        const days = (Date.parse(`${point.date}T00:00:00Z`) - Date.parse(`${target.date}T00:00:00Z`)) / 86400000;
+        return point.target + (wallet.total - target.current_value) * Math.pow(1 + target.annual_return / 100, days / 365.2425);
+      };
+      const projectInvested = point => Number.isFinite(wallet?.invested) && Number.isFinite(target.contributions) && Number.isFinite(point.invested) ? wallet.invested + point.invested - target.contributions : point.invested;
+      if (canProject && source.length) {
+        source = source.map((point, index) => index === source.length - 1 ? { ...point, projected: wallet.total } : point);
+        showProjection = true;
+      }
+      source = [...source, ...(this._history.target_forecast || []).filter(point => !cutoff || point.date <= cutoff).map(point => ({ ...point, value: null, projected: canProject ? project(point) : null, invested: projectInvested(point), cash: null }))];
     }
     const points = this._position === "all" ? source : source.map(point => ({
       ...point,
@@ -702,18 +727,18 @@ class MyWalletPanel extends HTMLElement {
     }));
     const showCash = this._cashLine && this._position === "all";
     const showTarget = this._targetLine && this._position === "all" && source.some(point => Number.isFinite(point.target));
-    const keys = ["value", "invested", ...(showTarget ? ["target"] : []), ...(showCash ? ["cash"] : [])];
-    const keyLabel = key => key === "target" ? `${this.t("targetValue")} · ${this.ratio(this._history.target?.annual_return)} ${this.t("perYear")}` : this._position === "all" ? this.t(key) : this.t(key === "value" ? "positionValue" : "purchaseCost");
-    const colors = { value: "#157bc0", invested: "#269e81", target: "#8b67c8", cash: "#c48925" };
+    const keys = ["value", ...(showProjection ? ["projected"] : []), "invested", ...(showTarget ? ["target"] : []), ...(showCash ? ["cash"] : [])];
+    const keyLabel = key => key === "target" ? `${this.t("targetValue")} · ${this.ratio(this._history.target?.annual_return)} ${this.t("perYear")}` : key === "projected" ? this.t("portfolioForecast") : key === "invested" && showProjection ? this.t("forecastInvested") : this._position === "all" ? this.t(key) : this.t(key === "value" ? "positionValue" : "purchaseCost");
+    const colors = { value: "#157bc0", projected: "#55a2d9", invested: "#269e81", target: "#8b67c8", cash: "#c48925" };
     const legend = node("div", null, "legend");
-    for (const key of ["value", "invested", ...(showTarget ? ["target"] : [])]) { const item = node("span", keyLabel(key), key === "target" ? "target" : ""); item.style.setProperty("--line", colors[key]); legend.append(item); }
+    for (const key of ["value", ...(showProjection ? ["projected"] : []), "invested", ...(showTarget ? ["target"] : [])]) { const item = node("span", keyLabel(key), ["projected", "target"].includes(key) ? "target" : ""); item.style.setProperty("--line", colors[key]); legend.append(item); }
     section.append(legend);
     if (!points.length) { this._notice(section, this.t("noRows")); parent.append(section); return; }
     parent.append(section);
     const padding = parseFloat(getComputedStyle(section).paddingLeft) * 2;
     const width = Math.max(240, Math.min(1000, section.clientWidth - padding));
     const currency = this._wallet().currency;
-    const groups = [{ keys: ["value", "invested", ...(showTarget ? ["target"] : [])], height: width < 500 ? 260 : 310 }];
+    const groups = [{ keys: ["value", ...(showProjection ? ["projected"] : []), "invested", ...(showTarget ? ["target"] : [])], height: width < 500 ? 260 : 310 }];
     if (showCash) groups.push({ keys: ["cash"], height: width < 500 ? 155 : 175 });
     for (const group of groups) {
       group.scale = currencyScale(points.flatMap(point => group.keys.map(key => point[key])), currency);
@@ -750,13 +775,13 @@ class MyWalletPanel extends HTMLElement {
         let path = "", active = false;
         points.forEach((point, index) => {
           if (!Number.isFinite(point[key])) { active = false; return; }
-          path += !active ? `M${x(index)} ${y(point[key])}` : ["value", "target"].includes(key) ? `L${x(index)} ${y(point[key])}` : `H${x(index)}V${y(point[key])}`;
+          path += !active ? `M${x(index)} ${y(point[key])}` : ["value", "projected", "target"].includes(key) ? `L${x(index)} ${y(point[key])}` : `H${x(index)}V${y(point[key])}`;
           active = true;
           if (!Number.isFinite(points[index - 1]?.[key]) && !Number.isFinite(points[index + 1]?.[key])) {
             svg.append(svgNode("circle", { cx: x(index), cy: y(point[key]), r: 3, fill: colors[key] }));
           }
         });
-        svg.append(svgNode("path", { d: path, fill: "none", stroke: colors[key], "stroke-width": 2.5, "stroke-linejoin": "round", "vector-effect": "non-scaling-stroke", ...(key === "target" ? { "stroke-dasharray": "7 5" } : {}) }));
+        svg.append(svgNode("path", { d: path, fill: "none", stroke: colors[key], "stroke-width": 2.5, "stroke-linejoin": "round", "vector-effect": "non-scaling-stroke", ...(key === "target" ? { "stroke-dasharray": "7 5" } : key === "projected" ? { "stroke-dasharray": "3 4" } : {}) }));
       }
       const cursor = svgNode("line", { x1: right, x2: right, y1: top, y2: bottom, stroke: "var(--secondary-text-color,#66788a)", "stroke-dasharray": "4 5" });
       svg.append(cursor); cursors.push(cursor); svgs.push(svg); section.append(svg);
@@ -768,7 +793,7 @@ class MyWalletPanel extends HTMLElement {
     const show = index => {
       const point = points[index];
       this._chartDate = point.date;
-      output.textContent = `${this.day(point.date)} · ${keys.map(key => `${keyLabel(key)}: ${this.money(point[key])}`).join(" · ")}`;
+      output.textContent = `${this.day(point.date)} · ${keys.filter(key => Number.isFinite(point[key])).map(key => `${keyLabel(key)}: ${this.money(point[key])}`).join(" · ")}`;
       for (const cursor of cursors) { cursor.setAttribute("x1", x(index)); cursor.setAttribute("x2", x(index)); }
       scrub.value = String(index); scrub.setAttribute("aria-valuetext", output.textContent);
     };

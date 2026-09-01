@@ -15,7 +15,13 @@ from .contributions import (
     opening_balance_conflicts,
 )
 from .dividends import dividends_from_data
-from .target import FORECAST_YEARS, add_years, target_projection, target_series
+from .target import (
+    FORECAST_YEARS,
+    add_years,
+    target_contribution_series,
+    target_projection,
+    target_series,
+)
 from .yahoo import HistoricalQuote, fetch_histories, fx_symbol
 
 MAX_HISTORY_DAYS = 3653
@@ -147,6 +153,9 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
     forecast_through = add_years(today, max(FORECAST_YEARS))
     projection = target_projection(data, through=forecast_through)
     target_values = target_series(projection, start=start, through=forecast_through)
+    target_contributions = target_contribution_series(
+        projection, start=start, through=forecast_through
+    )
     base = data[c.CONF_BASE_CURRENCY]
     day = start
     missing = set()
@@ -203,6 +212,37 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
             }
         )
         day += timedelta(days=1)
+
+    def target_snapshot(through: date) -> dict[str, Any]:
+        value = target_values.get(through.isoformat())
+        contributions = target_contributions.get(through.isoformat())
+        if value is None:
+            contributions = None
+        return {
+            "date": through.isoformat(),
+            "value": value,
+            "contributions": (
+                round(contributions, 2) if contributions is not None else None
+            ),
+            "growth": (
+                round(value - contributions, 2)
+                if value is not None and contributions is not None
+                else None
+            ),
+        }
+
+    current_target = target_snapshot(today)
+    forecasts = {
+        str(years): target_snapshot(add_years(today, years)) for years in FORECAST_YEARS
+    }
+    for forecast in forecasts.values():
+        forecast["additional_contributions"] = (
+            round(forecast["contributions"] - current_target["contributions"], 2)
+            if forecast["contributions"] is not None
+            and current_target["contributions"] is not None
+            else None
+        )
+
     result = {
         "points": points,
         "ledger": events,
@@ -218,19 +258,19 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
                 projection.start_date.isoformat() if projection.start_date else None
             ),
             "date": today.isoformat(),
-            "current_value": target_values.get(today.isoformat()),
+            "current_value": current_target["value"],
+            "contributions": current_target["contributions"],
+            "growth": current_target["growth"],
             "unavailable_reason": projection.unavailable_reason,
             "calculation_basis": "planned_savings_rates",
-            "forecasts": {
-                str(years): {
-                    "date": add_years(today, years).isoformat(),
-                    "value": target_values.get(add_years(today, years).isoformat()),
-                }
-                for years in FORECAST_YEARS
-            },
+            "forecasts": forecasts,
         },
         "target_forecast": [
-            {"date": forecast_day, "target": value}
+            {
+                "date": forecast_day,
+                "target": value,
+                "invested": target_contributions.get(forecast_day),
+            }
             for forecast_day, value in target_values.items()
             if forecast_day > today.isoformat()
         ],
