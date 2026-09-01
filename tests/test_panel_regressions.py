@@ -62,6 +62,7 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         hass = hass_with()
         for command in (
             panel.ws_wallets,
+            panel.ws_position_aliases,
             panel.ws_history,
             panel.ws_import_preview,
             panel.ws_import_commit,
@@ -85,7 +86,7 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
             data={
                 "wallet_name": "Old wallet name",
                 "base_currency": "EUR",
-                "valors": [{"symbol": "AAA", "amount": 0}],
+                "valors": [{"symbol": "AAA", "amount": 0, "alias": "Amundi"}],
                 "contributions": [],
                 "dividends": [],
                 "savings_plans": [],
@@ -98,6 +99,79 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             connection.results[0][1]["wallets"][0]["name"], "Renamed wallet"
         )
+        self.assertEqual(
+            connection.results[0][1]["wallets"][0]["positions"][0]["alias"],
+            "Amundi",
+        )
+
+    def test_position_aliases_are_trimmed_and_persisted_without_a_reload(self):
+        data = {
+            "wallet_name": "Wallet",
+            "base_currency": "EUR",
+            "valors": [
+                {"symbol": "AAA", "amount": 1, "target_share": 60},
+                {"symbol": "BBB", "amount": 2, "alias": "Old name"},
+            ],
+            "contributions": [],
+            "dividends": [],
+            "savings_plans": [],
+            "retired_savings_plans": [],
+        }
+        entry = types.SimpleNamespace(entry_id="wallet", title="Wallet", data=data)
+        hass = hass_with([entry])
+        connection = Connection()
+
+        panel.ws_position_aliases(
+            hass,
+            connection,
+            {
+                "id": 1,
+                "entry_id": "wallet",
+                "aliases": {"AAA": "  Amundi   Prime  ", "BBB": ""},
+            },
+        )
+
+        saved = hass.config_entries.async_update_entry.call_args.kwargs["data"]
+        self.assertEqual(
+            saved["valors"],
+            [
+                {
+                    "symbol": "AAA",
+                    "amount": 1,
+                    "target_share": 60,
+                    "alias": "Amundi Prime",
+                },
+                {"symbol": "BBB", "amount": 2},
+            ],
+        )
+        self.assertIs(saved["contributions"], data["contributions"])
+        hass.config_entries.async_schedule_reload.assert_not_called()
+        self.assertEqual(
+            connection.results[0][1]["aliases"],
+            {"AAA": "Amundi Prime", "BBB": ""},
+        )
+
+    def test_position_aliases_reject_unknown_symbols_and_long_values(self):
+        entry = types.SimpleNamespace(
+            entry_id="wallet",
+            title="Wallet",
+            data={
+                "wallet_name": "Wallet",
+                "base_currency": "EUR",
+                "valors": [{"symbol": "AAA", "amount": 1}],
+            },
+        )
+        for aliases in ({"BBB": "Unknown"}, {"AAA": "x" * 81}, {"AAA": 12}):
+            with self.subTest(aliases=aliases):
+                hass = hass_with([entry])
+                connection = Connection()
+                panel.ws_position_aliases(
+                    hass,
+                    connection,
+                    {"id": 1, "entry_id": "wallet", "aliases": aliases},
+                )
+                self.assertEqual(connection.errors[0][1], "invalid_alias")
+                hass.config_entries.async_update_entry.assert_not_called()
 
     async def test_panel_registers_once_and_is_admin_only(self):
         hass = hass_with()

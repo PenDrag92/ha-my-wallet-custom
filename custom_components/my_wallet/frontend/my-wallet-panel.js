@@ -1,5 +1,5 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.4.0";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.4.1";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -29,6 +29,9 @@ const WORDS = {
     hideHint: "Hinweis ausblenden", showHint: "Hinweis zu geschätzten Anteilen anzeigen",
     performance: "Performance", profit: "Gewinn / Verlust", annualReturn: "Geldgewichtete Rendite p. a.",
     positions: "Positionen", position: "Position", allPositions: "Gesamtes Depot", currentPrice: "Aktueller Kurs",
+    analysis: "Kennzahlen und Verlauf", analysisFor: "Auswahl", analysisHint: "Kennzahlen, Wertentwicklung, Monats-/Jahresübersicht und Buchungen folgen dieser Auswahl.",
+    editAliases: "Namen bearbeiten", positionNames: "Anzeigenamen", aliasHint: "Vergib kurze, verständliche Namen. Das technische Kürzel bleibt zur eindeutigen Zuordnung sichtbar.",
+    aliasPlaceholder: "z. B. Amundi", saveAliases: "Namen speichern", invalid_alias: "Der Anzeigename ist ungültig oder länger als 80 Zeichen.",
     currentValue: "Aktueller Wert", purchaseCost: "Kaufbetrag", share: "Depotanteil", target: "Zielanteil",
     incompleteCost: "Kaufdaten unvollständig", correctUnits: "Anteile korrigieren", correction: "Anteilskorrektur",
     correctionHint: "Wähle den Anfangsbestand oder einen konkreten Kauf als Ursache der Abweichung. Zahlungsbetrag, Cash-Bestand und Einzahlungen ändern sich nicht.",
@@ -90,6 +93,9 @@ const WORDS = {
     hideHint: "Hide notice", showHint: "Show notice about estimated units",
     performance: "Performance", profit: "Gain / loss", annualReturn: "Money-weighted return p.a.",
     positions: "Positions", position: "Position", allPositions: "Whole wallet", currentPrice: "Current price",
+    analysis: "Metrics and history", analysisFor: "Selection", analysisHint: "Metrics, value history, monthly/yearly summaries and transactions follow this selection.",
+    editAliases: "Edit names", positionNames: "Display names", aliasHint: "Add short, recognizable names. The technical symbol remains visible for unambiguous identification.",
+    aliasPlaceholder: "e.g. Amundi", saveAliases: "Save names", invalid_alias: "The display name is invalid or longer than 80 characters.",
     currentValue: "Current value", purchaseCost: "Purchase cost", share: "Wallet share", target: "Target share",
     incompleteCost: "Incomplete purchase data", correctUnits: "Correct units", correction: "Unit correction",
     correctionHint: "Choose the opening holding or a specific purchase that explains the difference. Payment amount, cash and deposits do not change.",
@@ -134,13 +140,15 @@ const CSS = `
   button:disabled{opacity:.5;cursor:default}.primary,button.active{background:var(--primary-color,#1878b5);color:white;border-color:var(--primary-color,#1878b5)}button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #de9d30;outline-offset:2px}
   select,input[type=number]{padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}select{max-width:100%}label{display:inline-flex;align-items:center;gap:7px}input[type=checkbox]{width:18px;height:18px;accent-color:var(--primary-color,#1878b5)}
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:18px 0}.stat,.card{background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#dce3eb);border-radius:12px;padding:20px}.stat strong{display:block;font-size:24px;letter-spacing:-.5px;margin-top:4px;font-variant-numeric:tabular-nums}.stat span{color:var(--secondary-text-color,#57667a);font-size:13px}.card{margin-bottom:18px}
+  .selection-card{display:flex;align-items:center;gap:24px}.selection-card h2{margin:0}.selection-copy{min-width:0}.selection-copy p{margin:4px 0 0}.selection-control{display:grid;gap:5px;min-width:min(100%,300px)}.selection-control span{font-size:13px;color:var(--secondary-text-color,#57667a)}
+  .alias-editor{margin:0 0 18px;padding:14px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px;background:color-mix(in srgb,var(--primary-color,#1878b5) 4%,var(--card-background-color,#fff))}.alias-editor h3{margin:0}.alias-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px 18px;margin:12px 0}.alias-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(120px,1fr);align-items:center;gap:10px}.alias-row input{width:100%;padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}tr.selected td{background:color-mix(in srgb,var(--primary-color,#1878b5) 8%,transparent)}
   .notice{padding:12px 16px;background:color-mix(in srgb,var(--primary-color,#1878b5) 9%,var(--card-background-color,#fff));border-left:3px solid var(--primary-color,#1878b5);border-radius:5px;margin:12px 0}.warning{border-color:#c4851b;background:color-mix(in srgb,#e6ac37 12%,var(--card-background-color,#fff))}.error{border-color:#c63c45;background:color-mix(in srgb,#c63c45 9%,var(--card-background-color,#fff))}
   svg{display:block;width:100%;height:auto;touch-action:pan-y;overflow:visible}.chart{min-width:260px}.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px}.legend span:before{content:'';display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:6px;background:var(--line)}.tip{font-variant-numeric:tabular-nums;min-height:30px;margin:10px 0}.scrub{width:100%;accent-color:#157bc0}
   .tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--divider-color,#e4e9ef);white-space:nowrap}th{font-size:12px;color:var(--secondary-text-color,#57667a)}th.num,td.num{text-align:right}td .hint{display:block;font-size:12px;max-width:500px;overflow:hidden;text-overflow:ellipsis}.badge{font-size:11px;border-radius:4px;padding:2px 5px;background:color-mix(in srgb,#dfaa34 17%,transparent);margin-left:6px}.positive{color:var(--success-color,#208461)}.planlist{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.plan{padding:12px;border:1px solid var(--divider-color,#dce3eb);border-radius:8px}.plan h3{margin-top:0}
   .loading:before{content:'';display:inline-block;width:14px;height:14px;border:2px solid #9daec0;border-top-color:#1878b5;border-radius:50%;animation:spin .8s linear infinite;margin-right:9px;vertical-align:middle}@keyframes spin{to{transform:rotate(360deg)}}
   .negative{color:var(--error-color,#c63c45)}.inline-action{padding:4px 8px;background:transparent}.field{display:grid;gap:5px;margin:12px 0;max-width:620px}.field label{font-size:13px;color:var(--secondary-text-color,#57667a)}.field input,.field select{width:100%}.decision{padding:12px 0;border-bottom:1px solid var(--divider-color,#e4e9ef)}.decision select{margin-top:7px;min-width:min(100%,360px)}
   input[type=file]{max-width:100%;margin:12px 0} .missing-row{display:flex;align-items:center;gap:12px;justify-content:space-between;border-bottom:1px solid var(--divider-color,#e4e9ef);padding:10px 0}.missing-row input{width:155px}
-  @media(max-width:700px){header{padding:12px}main{padding:14px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stats>.stat:last-child:nth-child(odd){grid-column:1/-1}.stat,.card{padding:14px}.stat strong{font-size:20px}h1{font-size:20px}.toolbar{gap:8px}.toolbar label{width:100%}.toolbar select{flex:1}.missing-row{align-items:flex-start;flex-direction:column}.controls{gap:8px}th,td{padding:10px 7px}}
+  @media(max-width:700px){header{padding:12px}main{padding:14px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stats>.stat:last-child:nth-child(odd){grid-column:1/-1}.stat,.card{padding:14px}.stat strong{font-size:20px}h1{font-size:20px}.toolbar{gap:8px}.toolbar label{width:100%}.toolbar select{flex:1}.selection-card{align-items:stretch;flex-direction:column;gap:12px}.selection-control{width:100%}.selection-control select{width:100%}.alias-grid{grid-template-columns:1fr}.missing-row{align-items:flex-start;flex-direction:column}.controls{gap:8px}th,td{padding:10px 7px}}
   @media(prefers-reduced-motion:reduce){.loading:before{animation:none}}
 `;
 
@@ -174,6 +182,8 @@ class MyWalletPanel extends HTMLElement {
     this._summaryPeriod = "monthly";
     this._busy = false;
     this._importOpen = false;
+    this._aliasOpen = false;
+    this._aliasDraft = null;
   }
   set hass(value) {
     this._hass = value;
@@ -198,6 +208,12 @@ class MyWalletPanel extends HTMLElement {
   }
   day(value) { return value ? new Intl.DateTimeFormat(this._lang, { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${value}T12:00:00`)) : this.t("dateUnknown"); }
   _wallet() { return this._wallets.find(wallet => wallet.entry_id === this._selected); }
+  _positionItem(symbol) { return this._wallet()?.positions.find(item => item.symbol === symbol); }
+  _positionAlias(symbol) { return this._positionItem(symbol)?.alias?.trim() || ""; }
+  _positionLabel(symbol) {
+    const alias = this._positionAlias(symbol);
+    return alias ? `${alias} (${symbol})` : symbol;
+  }
   _call(type, data = {}) { return this._hass.callWS({ type: `my_wallet/${type}`, ...data }); }
   _errorText(err) {
     const code = err?.code || "error";
@@ -247,7 +263,14 @@ class MyWalletPanel extends HTMLElement {
       select.append(option);
     }
     select.disabled = this._busy || !this._wallets.length;
-    select.addEventListener("change", () => { this._selected = select.value; this._history = null; this._refresh(); });
+    select.addEventListener("change", () => {
+      this._selected = select.value;
+      this._position = "all";
+      this._aliasOpen = false;
+      this._aliasDraft = null;
+      this._history = null;
+      this._refresh();
+    });
     selectLabel.append(select);
     const refresh = button(this.t("refresh"), () => this._refresh());
     refresh.disabled = this._busy;
@@ -263,17 +286,17 @@ class MyWalletPanel extends HTMLElement {
     const wallet = this._wallet();
     if (!wallet) { this._notice(main, this.t("noWallet")); return; }
     if (this._position !== "all" && !wallet.positions.some(item => item.symbol === this._position)) this._position = "all";
-    if (this._correctionOpen) this._renderCorrection(main, wallet);
     if (wallet.opening_conflicts?.length) {
       const warning = node("div", null, "notice warning");
       warning.setAttribute("role", "alert");
       warning.append(node("p", this.t("openingConflict")));
       const list = node("ul");
       const number = new Intl.NumberFormat(this._lang, { maximumFractionDigits: 12 });
-      for (const item of wallet.opening_conflicts) list.append(node("li", `${item.symbol}: ${this.t("configuredUnits")} ${number.format(item.configured_units)}; ${this.t("includedUnits")} ${number.format(item.included_units)}`));
+      for (const item of wallet.opening_conflicts) list.append(node("li", `${this._positionLabel(item.symbol)}: ${this.t("configuredUnits")} ${number.format(item.configured_units)}; ${this.t("includedUnits")} ${number.format(item.included_units)}`));
       warning.append(list);
       main.append(warning);
     }
+    this._renderPositionSelection(main, wallet);
     const stats = node("div", null, "stats");
     const position = wallet.positions.find(item => item.symbol === this._position);
     const values = position ? [
@@ -289,6 +312,7 @@ class MyWalletPanel extends HTMLElement {
     for (const [key, value] of values) this._stat(stats, this.t(key), value);
     main.append(stats);
     this._renderPositions(main, wallet);
+    if (this._correctionOpen) this._renderCorrection(main, wallet);
     if (wallet.pending?.length) this._notice(main, this.t("pending"), "warning");
     if (this._history) {
       if (this._history.estimated) this._renderEstimateNotice(main);
@@ -301,24 +325,51 @@ class MyWalletPanel extends HTMLElement {
       this._renderLedger(main);
     }
   }
+  _renderPositionSelection(parent, wallet) {
+    const section = node("section", null, "card selection-card");
+    const copy = node("div", null, "selection-copy");
+    copy.append(node("h2", this.t("analysis")), node("p", this.t("analysisHint"), "hint"));
+    const label = node("label", null, "selection-control");
+    const select = node("select");
+    select.setAttribute("aria-label", this.t("analysisFor"));
+    for (const item of [{ symbol: "all" }, ...wallet.positions]) {
+      const option = node("option", item.symbol === "all" ? this.t("allPositions") : this._positionLabel(item.symbol));
+      option.value = item.symbol;
+      option.selected = item.symbol === this._position;
+      select.append(option);
+    }
+    select.addEventListener("change", () => {
+      this._position = select.value;
+      if (this._position !== "all") this._cashLine = false;
+      this._render();
+    });
+    label.append(node("span", this.t("analysisFor")), select);
+    section.append(copy, node("div", null, "grow"), label);
+    parent.append(section);
+  }
   _renderPositions(parent, wallet) {
     const section = node("section", null, "card"), controls = node("div", null, "controls");
     controls.append(node("h2", this.t("positions")), node("div", null, "grow"));
-    const select = node("select");
-    select.setAttribute("aria-label", this.t("position"));
-    for (const item of [{ symbol: "all" }, ...wallet.positions]) {
-      const option = node("option", item.symbol === "all" ? this.t("allPositions") : item.symbol);
-      option.value = item.symbol; option.selected = item.symbol === this._position; select.append(option);
-    }
-    select.addEventListener("change", () => { this._position = select.value; if (this._position !== "all") this._cashLine = false; this._render(); });
-    controls.append(select, button(this.t("correctUnits"), () => { this._correctionOpen = !this._correctionOpen; this._correctionPreview = null; this._render(); }));
+    controls.append(
+      button(this.t("editAliases"), () => {
+        this._aliasOpen = !this._aliasOpen;
+        this._aliasDraft = this._aliasOpen ? Object.fromEntries(wallet.positions.map(item => [item.symbol, item.alias || ""])) : null;
+        this._render();
+      }, this._aliasOpen ? "active" : ""),
+      button(this.t("correctUnits"), () => { this._correctionOpen = !this._correctionOpen; this._correctionPreview = null; this._render(); }),
+    );
     section.append(controls);
+    if (this._aliasOpen) this._renderAliasEditor(section, wallet);
     const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr");
     for (const key of ["position", "units", "currentPrice", "currentValue", "purchaseCost", "profit", "performance", "share", "target"]) hr.append(node("th", this.t(key), key === "position" ? "" : "num"));
     head.append(hr); table.append(head); const body = node("tbody");
     for (const item of wallet.positions) {
-      const tr = node("tr"), choose = button(item.symbol, () => { this._position = item.symbol; this._cashLine = false; this._render(); }, "inline-action");
+      const tr = node("tr"), alias = item.alias?.trim() || "";
+      if (item.symbol === this._position) tr.className = "selected";
+      const choose = button(alias || item.symbol, () => { this._position = item.symbol; this._cashLine = false; this._render(); }, "inline-action");
+      choose.setAttribute("aria-label", this._positionLabel(item.symbol));
       const first = node("td"); first.append(choose);
+      if (alias) first.append(node("span", item.symbol, "hint"));
       if (!item.cost_complete) first.append(node("span", this.t("incompleteCost"), "hint"));
       const cls = value => `num ${value > 0 ? "positive" : value < 0 ? "negative" : ""}`;
       tr.append(first, node("td", this.units(item.units), "num"), node("td", this.money(item.price), "num"),
@@ -328,6 +379,43 @@ class MyWalletPanel extends HTMLElement {
       body.append(tr);
     }
     table.append(body); wrap.append(table); section.append(wrap); parent.append(section);
+  }
+  _renderAliasEditor(parent, wallet) {
+    const editor = node("div", null, "alias-editor");
+    editor.append(node("h3", this.t("positionNames")), node("p", this.t("aliasHint"), "hint"));
+    const grid = node("div", null, "alias-grid");
+    for (const item of wallet.positions) {
+      const row = node("label", null, "alias-row"), symbol = node("strong", item.symbol), input = node("input");
+      input.type = "text";
+      input.maxLength = 80;
+      input.placeholder = this.t("aliasPlaceholder");
+      input.value = this._aliasDraft?.[item.symbol] || "";
+      input.setAttribute("aria-label", `${this.t("positionNames")}: ${item.symbol}`);
+      input.addEventListener("input", () => { this._aliasDraft = { ...this._aliasDraft, [item.symbol]: input.value }; });
+      row.append(symbol, input);
+      grid.append(row);
+    }
+    const actions = node("div", null, "controls"), save = button(this.t("saveAliases"), () => this._saveAliases(), "primary");
+    save.disabled = this._busy;
+    actions.append(save, button(this.t("cancel"), () => { this._aliasOpen = false; this._aliasDraft = null; this._render(); }));
+    editor.append(grid, actions);
+    parent.append(editor);
+  }
+  async _saveAliases() {
+    if (this._busy || !this._aliasDraft) return;
+    this._busy = true;
+    this._error = null;
+    this._render();
+    let saved = false;
+    try {
+      await this._call("position_aliases", { entry_id: this._selected, aliases: this._aliasDraft });
+      this._aliasOpen = false;
+      this._aliasDraft = null;
+      saved = true;
+    } catch (err) { this._error = this._errorText(err); }
+    finally { this._busy = false; }
+    if (saved) await this._refresh();
+    else this._render();
   }
   _renderCorrection(parent, wallet) {
     const section = node("section", null, "card");
@@ -343,7 +431,7 @@ class MyWalletPanel extends HTMLElement {
     if (this._correction.units == null) this._correction.units = this._correction.mode === "position" ? selected().units : targetUnits();
     const field = (label, control) => { const wrapper = node("div", null, "field"); wrapper.append(node("label", label), control); section.append(wrapper); return control; };
     const symbol = field(this.t("position"), node("select"));
-    for (const item of choices) { const option = node("option", item.symbol); option.value = item.symbol; option.selected = item.symbol === this._correction.symbol; symbol.append(option); }
+    for (const item of choices) { const option = node("option", this._positionLabel(item.symbol)); option.value = item.symbol; option.selected = item.symbol === this._correction.symbol; symbol.append(option); }
     symbol.addEventListener("change", () => { const next = choices.find(item => item.symbol === symbol.value); this._correction = { symbol: symbol.value, target: next.lots.at(-1)?.id || "opening", mode: "position", units: next.units, note: this._correction.note }; this._correctionPreview = null; this._render(); });
     const target = field(this.t("correctionTarget"), node("select"));
     const opening = node("option", `${this.t("openingUnits")}: ${this.units(selected().opening_units)}`); opening.value = "opening"; target.append(opening);
@@ -366,7 +454,7 @@ class MyWalletPanel extends HTMLElement {
     preview.disabled = this._busy; actions.append(preview, button(this.t("cancel"), () => { this._correctionOpen = false; this._correctionPreview = null; this._render(); })); section.append(actions);
     if (this._correctionPreview?.summary) {
       const summary = this._correctionPreview.summary, result = node("div", null, "notice");
-      result.append(node("strong", `${summary.symbol}: ${this.t("before")} ${this.units(summary.before_total)} → ${this.t("after")} ${this.units(summary.after_total)}`));
+      result.append(node("strong", `${this._positionLabel(summary.symbol)}: ${this.t("before")} ${this.units(summary.before_total)} → ${this.t("after")} ${this.units(summary.after_total)}`));
       result.append(node("p", `${this.t(summary.target === "opening" ? "openingUnits" : "chosenLot")}: ${this.units(summary.before_units)} → ${this.units(summary.after_units)}`));
       section.append(result);
       const label = node("label", this.t("correctionCheck")), check = node("input"); check.type = "checkbox"; label.prepend(check); section.append(label);
@@ -422,7 +510,7 @@ class MyWalletPanel extends HTMLElement {
       const status = !plan.enabled ? "disabled" : plan.end_date && plan.end_date < today ? "ended" : "enabled";
       item.append(node("div", `${this.money(plan.amount, currency)} ${this.t("monthly")} · ${this.t(status)}`));
       item.append(node("div", `${this.t("from")} ${this.day(plan.first_date)}${plan.end_date ? ` · ${this.t("until")} ${this.day(plan.end_date)}` : ""}`, "hint"));
-      for (const row of plan.allocations) item.append(node("div", `${row.symbol}: ${plan.allocation_mode === "percentage" ? `${row.value} %` : this.money(row.value, currency)}`, "hint"));
+      for (const row of plan.allocations) item.append(node("div", `${this._positionLabel(row.symbol)}: ${plan.allocation_mode === "percentage" ? `${row.value} %` : this.money(row.value, currency)}`, "hint"));
       list.append(item);
     }
     card.append(list);
@@ -430,7 +518,7 @@ class MyWalletPanel extends HTMLElement {
   }
   _renderChart(parent) {
     const section = node("section", null, "card chart");
-    section.append(node("h2", this.t("history")));
+    section.append(node("h2", this._position === "all" ? this.t("history") : `${this.t("history")} · ${this._positionLabel(this._position)}`));
     const controls = node("div", null, "controls");
     for (const key of ["all", "year", "six", "three"]) controls.append(button(this.t(key), () => { this._period = key; this._render(); }, this._period === key ? "active" : ""));
     if (this._position === "all") {
@@ -573,7 +661,9 @@ class MyWalletPanel extends HTMLElement {
     for (const row of rows) {
       const tr = node("tr"), dateCell = node("td", this.day(row.date));
       if (row.booking_date && row.booking_date !== row.date) dateCell.append(node("span", `${this.t("booked")}: ${this.day(row.booking_date)}`, "hint"));
-      const asset = node("td", row.symbol || row.plan || "—");
+      const alias = row.symbol ? this._positionAlias(row.symbol) : "";
+      const asset = node("td", alias || row.symbol || row.plan || "—");
+      if (alias) asset.append(node("span", row.symbol, "hint"));
       if (row.symbol && row.plan) asset.append(node("span", row.plan, "hint"));
       if (row.note) asset.append(node("span", row.note, "hint"));
       const units = node("td", this.units(row.units), "num");
@@ -661,7 +751,7 @@ class MyWalletPanel extends HTMLElement {
         this._notice(section, this.t("missing"), "warning");
         for (const row of summary.missing) {
           const wrapper = node("label", null, "missing-row");
-          wrapper.append(node("span", `${this.day(row.date)} · ${row.symbol} · ${this.money(row.amount, summary.currency)}`));
+          wrapper.append(node("span", `${this.day(row.date)} · ${this._positionLabel(row.symbol)} · ${this.money(row.amount, summary.currency)}`));
           const input = node("input");
           input.type = "number"; input.min = "0.000000001"; input.step = "any"; input.placeholder = this.t("unitsInput");
           input.setAttribute("aria-label", `${row.symbol} ${this.day(row.date)}: ${this.t("unitsInput")}`);

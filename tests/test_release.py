@@ -87,8 +87,8 @@ class ReleaseTests(unittest.TestCase):
         project = tomllib.loads((ROOT / "pyproject.toml").read_text())
         hacs = json.loads((ROOT / "hacs.json").read_text())
 
-        self.assertEqual(manifest["version"], "1.4.0")
-        self.assertEqual(project["project"]["version"], "1.4.0")
+        self.assertEqual(manifest["version"], "1.4.1")
+        self.assertEqual(project["project"]["version"], "1.4.1")
         self.assertEqual(hacs["homeassistant"], "2026.8.0")
         self.assertEqual(project["project"]["requires-python"], ">=3.14.2")
         self.assertEqual(manifest["codeowners"], ["@PenDrag92"])
@@ -112,6 +112,21 @@ class ReleaseTests(unittest.TestCase):
             self.assertIn("cash", text.lower())
         self.assertIn("not an independent", audit)
         self.assertIn("security certification", audit)
+
+    def test_position_selection_precedes_its_metrics_and_alias_keeps_symbol(self) -> None:
+        source = (
+            ROOT
+            / "custom_components"
+            / "my_wallet"
+            / "frontend"
+            / "my-wallet-panel.js"
+        ).read_text(encoding="utf-8")
+        self.assertLess(
+            source.index("this._renderPositionSelection(main, wallet);"),
+            source.index('const stats = node("div", null, "stats");'),
+        )
+        self.assertIn('first.append(node("span", item.symbol, "hint"))', source)
+        self.assertIn('this._call("position_aliases"', source)
 
     def test_no_generated_files_are_tracked(self) -> None:
         if not (ROOT / ".git").exists():

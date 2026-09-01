@@ -36,6 +36,7 @@ from .history_import import IMPORT_BATCH, async_prepare_import
 _LOGGER = logging.getLogger(__name__)
 _STATE = "my_wallet_panel"
 _MAX_DOCUMENT_BYTES = 2_000_000
+_MAX_ALIAS_LENGTH = 80
 
 
 def _state(hass):
@@ -95,6 +96,7 @@ async def async_setup_panel(hass):
     )
     for command in (
         ws_wallets,
+        ws_position_aliases,
         ws_history,
         ws_import_preview,
         ws_import_commit,
@@ -108,7 +110,7 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.4.0",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.4.1",
         embed_iframe=False,
         require_admin=True,
     )
@@ -159,6 +161,7 @@ def ws_wallets(hass, connection, msg):
             positions.append(
                 {
                     "symbol": symbol,
+                    "alias": valor.get(c.VALOR_ALIAS),
                     "units": item.amount if item is not None else None,
                     "price": item.quote.price * item.fx_rate
                     if item is not None and item.available
@@ -204,6 +207,75 @@ def ws_wallets(hass, connection, msg):
             }
         )
     connection.send_result(msg["id"], {"wallets": wallets})
+
+
+def _normalize_alias(value) -> str:
+    if not isinstance(value, str):
+        raise ValueError("invalid_alias")
+    alias = " ".join(value.split())
+    if len(alias) > _MAX_ALIAS_LENGTH:
+        raise ValueError("invalid_alias")
+    return alias
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "my_wallet/position_aliases",
+        vol.Required("entry_id"): str,
+        vol.Required("aliases"): dict,
+    }
+)
+@callback
+def ws_position_aliases(hass, connection, msg):
+    """Persist optional display names without changing financial identifiers."""
+    if not _admin(connection, msg):
+        return
+    entry = next(
+        (item for item in _entries(hass) if item.entry_id == msg["entry_id"]), None
+    )
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", "Wallet not found")
+        return
+    symbols = {item[c.VALOR_SYMBOL] for item in entry.data[c.CONF_VALORS]}
+    raw_aliases = msg["aliases"]
+    if any(
+        not isinstance(symbol, str) or symbol not in symbols
+        for symbol in raw_aliases
+    ):
+        connection.send_error(msg["id"], "invalid_alias", "Unknown position")
+        return
+    try:
+        aliases = {
+            symbol: _normalize_alias(value) for symbol, value in raw_aliases.items()
+        }
+    except ValueError:
+        connection.send_error(
+            msg["id"], "invalid_alias", "Aliases must be at most 80 characters"
+        )
+        return
+
+    valors = []
+    for current in entry.data[c.CONF_VALORS]:
+        item = dict(current)
+        symbol = item[c.VALOR_SYMBOL]
+        if symbol in aliases:
+            if aliases[symbol]:
+                item[c.VALOR_ALIAS] = aliases[symbol]
+            else:
+                item.pop(c.VALOR_ALIAS, None)
+        valors.append(item)
+    data = {**entry.data, c.CONF_VALORS: valors}
+    if data != entry.data:
+        hass.config_entries.async_update_entry(entry, data=data)
+    connection.send_result(
+        msg["id"],
+        {
+            "entry_id": entry.entry_id,
+            "aliases": {
+                item[c.VALOR_SYMBOL]: item.get(c.VALOR_ALIAS, "") for item in valors
+            },
+        },
+    )
 
 
 @websocket_api.websocket_command(

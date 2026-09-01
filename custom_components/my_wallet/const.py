@@ -31,6 +31,7 @@ CONF_INVESTED_AMOUNT: Final = "invested_amount"  # optional, in base currency
 # Valor keys
 VALOR_SYMBOL: Final = "symbol"
 VALOR_AMOUNT: Final = "amount"
+VALOR_ALIAS: Final = "alias"  # optional dashboard display name
 VALOR_TARGET_SHARE: Final = "target_share"  # optional, percent of the wallet
 
 # Contribution keys

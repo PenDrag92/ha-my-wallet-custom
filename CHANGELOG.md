@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.1
+
+- Move the position selector directly above the metrics it controls and make
+  the active table row visible. Position selection continues to filter value
+  history, monthly/yearly summaries and transactions together.
+- Add optional, persistent display names for positions. Edit them in the
+  administrator dashboard and show the friendly name alongside the unchanged
+  technical symbol in tables, selectors, charts, plans and corrections.
+
 ## 1.4.0
 
 - Expand the administrator dashboard with wallet profit, simple performance,

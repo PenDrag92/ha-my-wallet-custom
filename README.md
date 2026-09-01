@@ -5,10 +5,21 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.4.0 requires **Home Assistant 2026.8 or newer**.
+Version 1.4.1 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.4.1: clearer position selection and display names
+
+The position selector now sits directly above the metrics it controls. The
+same selection filters the value curve, monthly/yearly summaries and transaction
+history, while the selected row is highlighted in the position table.
+
+Use **Edit names** in the position table to add optional, persistent display
+names such as `Amundi`. The dashboard shows that name together with the original
+Yahoo symbol, which remains the stable identifier for quotes, imports and CSV
+exports. Changing a display name does not alter units, payments or history.
 
 ## 1.4.0: dashboard, reconciliation and exact-unit corrections
 
@@ -84,7 +95,8 @@ prepared import files are never part of the public source package.
   money-weighted return (XIRR) for the whole wallet.
 - **Administrator dashboard** — select the complete wallet or one position,
   inspect performance and allocation, compare monthly/yearly results, reconcile
-  follow-up JSON statements, and correct exact units with a review step.
+  follow-up JSON statements, correct exact units with a review step, and assign
+  readable position display names without changing their Yahoo symbols.
 - **Target allocation** — optionally set a target share (in %) for each valor
   to see how far its actual share deviates from the target, plus a rebalancing
   hint in the base currency.
