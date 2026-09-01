@@ -945,7 +945,7 @@ class MyWalletOptionsFlow(
         return self.async_show_form(
             step_id="settings",
             data_schema=_settings_schema(
-                data.get(CONF_WALLET_NAME, self.config_entry.title),
+                self.config_entry.title or data.get(CONF_WALLET_NAME, "Wallet"),
                 data.get(CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY),
                 data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
             ),

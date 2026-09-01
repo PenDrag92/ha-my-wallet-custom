@@ -1,3 +1,18 @@
+# My Wallet 1.4.0 verification note
+
+Version 1.4.0 keeps the schema-6 recovery behavior below and extends the same
+administrator-only WebSocket boundary to follow-up previews and unit corrections.
+Prepared candidates are stored server-side, bound to the requesting user, expire
+after ten minutes and commit only if the config-entry data object is still the
+one used for the preview. The browser never supplies a prepared wallet payload.
+Confirmed/manual quantities require a reviewed choice; correction previews name
+one existing lot or opening holding and cannot change cash amounts. Import files,
+notes and financial records are never written to logs or static frontend files.
+
+The validation workflow now imports the integration on Home Assistant 2026.8.3
+with Python 3.14. Release tags are checked against the manifest version and
+publish only repository files together with the matching changelog section.
+
 # My Wallet 1.3.4 verification note
 
 This is not an independent security certification. The migration recovery

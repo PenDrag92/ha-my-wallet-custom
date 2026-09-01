@@ -5,8 +5,35 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
+Version 1.4.0 requires **Home Assistant 2026.8 or newer**.
+
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.4.0: dashboard, reconciliation and exact-unit corrections
+
+The administrator sidebar now includes wallet and position performance,
+selectable per-position curves and bookings, and monthly/yearly summaries.
+Settlement cash uses a separate rounded currency scale. A complete history with
+no opening holding starts at zero on the day before its first deposit.
+
+**Import history** can still create a separate wallet or reconcile another
+My-Wallet JSON statement with the selected wallet. The preview distinguishes new,
+updated and existing records. Stable IDs and scheduled plan months prevent
+duplicate bookings; confirmed or manually corrected differences need an explicit
+choice. This is a local statement import, not a bank connection or PDF parser.
+
+**Correct units** in the dashboard accepts an exact total or exact units for one
+chosen purchase/opening holding. Its before/after preview keeps every deposit,
+purchase amount and cash movement unchanged. Corrections are recorded and block
+later automatic recalculation of the corrected purchase.
+
+The explanation for estimated units is dismissible per wallet and browser. The
+wallet selector follows later Home Assistant config-entry renames. Config-entry
+schema remains version 6; existing entity IDs are unchanged.
+
+Release tags now create the GitHub release automatically, including the matching
+changelog section, an installation ZIP and its SHA-256 checksum.
 
 ## 1.3.4: keep legacy wallets recoverable
 
@@ -55,6 +82,9 @@ prepared import files are never part of the public source package.
   valor with invested amount, price and units. The integration reports profit,
   simple performance and annualized performance per valor and per lot, plus a
   money-weighted return (XIRR) for the whole wallet.
+- **Administrator dashboard** — select the complete wallet or one position,
+  inspect performance and allocation, compare monthly/yearly results, reconcile
+  follow-up JSON statements, and correct exact units with a review step.
 - **Target allocation** — optionally set a target share (in %) for each valor
   to see how far its actual share deviates from the target, plus a rebalancing
   hint in the base currency.

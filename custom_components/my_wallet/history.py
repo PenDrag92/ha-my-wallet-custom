@@ -8,6 +8,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from . import const as c
+from .analytics import period_summaries
 from .contributions import (
     all_lots,
     contributions_from_data,
@@ -116,6 +117,7 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
     days = [date.fromisoformat(row["date"]) for row in eligible if row["date"]]
     first = min(days, default=today)
     start = max(first, today - timedelta(days=MAX_HISTORY_DAYS))
+    range_limited = start != first
     included = defaultdict(float)
     for lot in all_lots(data):
         if lot[c.LOT_INCLUDED_IN_OPENING]:
@@ -126,7 +128,18 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
         if valor[c.VALOR_AMOUNT] - included[valor[c.VALOR_SYMBOL]] > 1e-8
     ]
     conflicts = opening_balance_conflicts(data)
+    can_start_at_zero = (
+        bool(days)
+        and start == first
+        and not unknown_opening
+        and not conflicts
+        and all(float(valor[c.VALOR_AMOUNT]) <= 1e-10 for valor in data[c.CONF_VALORS])
+    )
+    if can_start_at_zero:
+        start -= timedelta(days=1)
     positions = defaultdict(float)
+    position_costs = defaultdict(float)
+    position_dividends = defaultdict(float)
     cash = invested = 0.0
     pointer = 0
     points = []
@@ -144,9 +157,13 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
                 invested += row["amount"]
             if row["type"] == "purchase":
                 positions[row["symbol"]] += row["units"]
+                position_costs[row["symbol"]] += -row["amount"]
+            if row["type"] == "dividend" and row.get("symbol"):
+                position_dividends[row["symbol"]] += row["amount"]
             pointer += 1
         value = cash
         complete = not unknown_opening and not conflicts
+        position_values = {}
         for symbol, units in positions.items():
             if units <= 1e-10:
                 continue
@@ -156,7 +173,11 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
                 complete = False
                 missing.add(symbol)
             else:
-                value += units * quote.close * fx
+                position_values[symbol] = round(units * quote.close * fx, 2)
+                value += position_values[symbol]
+        for symbol in {valor[c.VALOR_SYMBOL] for valor in data[c.CONF_VALORS]}:
+            if positions[symbol] > 1e-10 and symbol not in position_values:
+                position_values[symbol] = None
         points.append(
             {
                 "date": day.isoformat(),
@@ -164,18 +185,38 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
                 "cash": round(cash, 2),
                 "value": round(value, 2) if complete else None,
                 "profit": round(value - invested, 2) if complete else None,
+                "positions": position_values,
+                "position_costs": {
+                    symbol: round(position_costs[symbol], 2)
+                    for symbol in position_values
+                },
+                "position_dividends": {
+                    symbol: round(position_dividends[symbol], 2)
+                    for symbol in position_values
+                },
+                "baseline": can_start_at_zero and day == start,
             }
         )
         day += timedelta(days=1)
-    return {
+    result = {
         "points": points,
         "ledger": events,
         "estimated": any(row.get("estimated") for row in events),
         "unknown_opening": unknown_opening,
         "opening_conflicts": conflicts,
         "missing_history": sorted(missing),
-        "range_limited": start != first,
+        "range_limited": range_limited,
     }
+    result["summaries"] = {
+        "wallet": period_summaries(points, events),
+        "positions": {
+            valor[c.VALOR_SYMBOL]: period_summaries(
+                points, events, symbol=valor[c.VALOR_SYMBOL]
+            )
+            for valor in data[c.CONF_VALORS]
+        },
+    }
+    return result
 
 
 async def async_history(data, *, session, today: date) -> dict[str, Any]:

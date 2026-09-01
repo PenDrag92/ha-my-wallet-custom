@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.4.0
+
+- Expand the administrator dashboard with wallet profit, simple performance,
+  money-weighted return, position values, exact units, cost basis, allocation
+  and selectable per-position history and ledger views.
+- Add monthly and yearly tables that keep deposits and purchases separate from
+  market gain and dividends. Leave returns unavailable when a boundary value or
+  required historical quote is unknown.
+- Add previewed follow-up imports into an existing wallet. Reuse stable source
+  IDs, plan months and exact financial matches, append only new records, and
+  require a visible decision before confirmed or manually corrected data can be
+  replaced. Preview commits reject concurrent wallet changes.
+- Add a dashboard unit-correction workflow with an explicit source lot/opening
+  holding, before/after preview and audit record. It does not alter deposits,
+  purchase amounts or cash history.
+- Give settlement cash its own compact chart and rounded currency scale, share
+  the date cursor between both charts, and start complete zero-opening histories
+  one day before the first deposit.
+- Make the estimated-unit explanation dismissible per browser and wallet, and
+  show a config entry's current Home Assistant title after it is renamed.
+- Require Home Assistant 2026.8 or newer, validate against Home Assistant
+  2026.8.3 and add chart-scale boundary tests.
+- Add a tag-driven GitHub release workflow that publishes the matching changelog
+  section, an installation ZIP and its SHA-256 checksum.
+
 ## 1.3.4
 
 - Let legacy wallets with conflicting opening quantities migrate without

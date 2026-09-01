@@ -87,9 +87,10 @@ class ReleaseTests(unittest.TestCase):
         project = tomllib.loads((ROOT / "pyproject.toml").read_text())
         hacs = json.loads((ROOT / "hacs.json").read_text())
 
-        self.assertEqual(manifest["version"], "1.3.4")
-        self.assertEqual(project["project"]["version"], "1.3.4")
-        self.assertEqual(hacs["homeassistant"], "2024.11.3")
+        self.assertEqual(manifest["version"], "1.4.0")
+        self.assertEqual(project["project"]["version"], "1.4.0")
+        self.assertEqual(hacs["homeassistant"], "2026.8.0")
+        self.assertEqual(project["project"]["requires-python"], ">=3.14.2")
         self.assertEqual(manifest["codeowners"], ["@PenDrag92"])
         self.assertEqual(
             manifest["documentation"],
@@ -148,10 +149,12 @@ class ReleaseTests(unittest.TestCase):
 
         required_fragments = {
             "permissions:\n  contents: read",
-            "homeassistant==2024.11.3",
+            'python-version: "3.14"',
+            "homeassistant==2026.8.3",
             "ruff check .",
             "ruff format --check .",
             "python -m unittest discover -v",
+            "node --test tests/chart-scales.test.mjs",
             "bandit -q -r custom_components/my_wallet",
             "json.loads",
             "yaml.safe_load",
@@ -162,6 +165,21 @@ class ReleaseTests(unittest.TestCase):
             "category: integration",
         }
         for fragment in required_fragments:
+            self.assertIn(fragment, workflow)
+
+    def test_release_workflow_is_tag_driven_and_pinned(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+        self.assertRegex(
+            workflow,
+            r"uses:\s+actions/checkout@[0-9a-f]{40}(?:\s+#.*)?",
+        )
+        for fragment in (
+            'tags: ["v*"]',
+            "contents: write",
+            "CHANGELOG.md",
+            "gh release create",
+            "sha256",
+        ):
             self.assertIn(fragment, workflow)
 
     def test_english_sources_are_identical(self) -> None:

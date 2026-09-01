@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import inspect
 import sys
 import types
 import unittest
 from time import monotonic
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 from tests.test_options_regressions import config_flow as config_flow  # Test stubs.
 
@@ -43,12 +44,15 @@ class Connection:
 
 
 def hass_with(entries=()):
+    manager = types.SimpleNamespace(
+        async_entries=lambda domain: list(entries),
+        flow=types.SimpleNamespace(async_init=AsyncMock()),
+        async_update_entry=Mock(),
+        async_schedule_reload=Mock(),
+    )
     return types.SimpleNamespace(
         data={},
-        config_entries=types.SimpleNamespace(
-            async_entries=lambda domain: list(entries),
-            flow=types.SimpleNamespace(async_init=AsyncMock()),
-        ),
+        config_entries=manager,
         http=types.SimpleNamespace(async_register_static_paths=AsyncMock()),
     )
 
@@ -61,16 +65,39 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
             panel.ws_history,
             panel.ws_import_preview,
             panel.ws_import_commit,
+            panel.ws_correction_preview,
+            panel.ws_correction_commit,
         ):
             with self.subTest(command=command.__name__):
                 connection = Connection(admin=False)
                 result = command(hass, connection, {"id": 1})
-                if command is not panel.ws_wallets:
+                if inspect.isawaitable(result):
                     await result
                 self.assertEqual(connection.errors[0][1], "unauthorized")
                 self.assertEqual(connection.results, [])
         self.assertEqual(hass.data, {})
         hass.config_entries.flow.async_init.assert_not_awaited()
+
+    def test_wallet_selector_uses_current_entry_title(self):
+        entry = types.SimpleNamespace(
+            entry_id="wallet",
+            title="Renamed wallet",
+            data={
+                "wallet_name": "Old wallet name",
+                "base_currency": "EUR",
+                "valors": [{"symbol": "AAA", "amount": 0}],
+                "contributions": [],
+                "dividends": [],
+                "savings_plans": [],
+                "retired_savings_plans": [],
+            },
+            runtime_data=None,
+        )
+        connection = Connection()
+        panel.ws_wallets(hass_with([entry]), connection, {"id": 1})
+        self.assertEqual(
+            connection.results[0][1]["wallets"][0]["name"], "Renamed wallet"
+        )
 
     async def test_panel_registers_once_and_is_admin_only(self):
         hass = hass_with()
@@ -129,6 +156,90 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(connection.errors[0][1], "confirmation_required")
         hass.config_entries.flow.async_init.assert_not_awaited()
+
+    def test_correction_commit_is_user_bound_and_rejects_a_stale_wallet(self):
+        from custom_components.my_wallet.contributions import (
+            make_contribution,
+            make_lot,
+        )
+
+        data = {
+            "wallet_name": "Synthetic wallet",
+            "base_currency": "EUR",
+            "valors": [{"symbol": "AAA", "amount": 0}],
+            "contributions": [
+                make_contribution(
+                    100,
+                    "2026-01-20",
+                    contribution_id="deposit",
+                    source="import",
+                    lots=[
+                        make_lot(
+                            symbol="AAA",
+                            execution_date="2026-01-20",
+                            amount=100,
+                            unit_price=10,
+                            quote_currency="EUR",
+                            lot_id="lot",
+                        )
+                    ],
+                )
+            ],
+            "dividends": [],
+            "savings_plans": [],
+            "retired_savings_plans": [],
+        }
+        entry = types.SimpleNamespace(entry_id="wallet", title="Wallet", data=data)
+        hass = hass_with([entry])
+        connection = Connection()
+        panel.ws_correction_preview(
+            hass,
+            connection,
+            {
+                "id": 1,
+                "entry_id": "wallet",
+                "correction": {
+                    "symbol": "AAA",
+                    "target": "lot",
+                    "mode": "position",
+                    "units": 10.5,
+                },
+            },
+        )
+        token = connection.results[0][1]["token"]
+        other = Connection(user_id="user-b")
+        panel.ws_correction_commit(
+            hass, other, {"id": 2, "token": token, "confirm": True}
+        )
+        self.assertEqual(other.errors[0][1], "import_expired")
+        entry.data = dict(entry.data)
+        panel.ws_correction_commit(
+            hass, connection, {"id": 3, "token": token, "confirm": True}
+        )
+        self.assertEqual(connection.errors[0][1], "entry_changed")
+        hass.config_entries.async_update_entry.assert_not_called()
+
+        connection.results.clear()
+        panel.ws_correction_preview(
+            hass,
+            connection,
+            {
+                "id": 4,
+                "entry_id": "wallet",
+                "correction": {
+                    "symbol": "AAA",
+                    "target": "lot",
+                    "mode": "position",
+                    "units": 10.5,
+                },
+            },
+        )
+        fresh = connection.results[0][1]["token"]
+        panel.ws_correction_commit(
+            hass, connection, {"id": 5, "token": fresh, "confirm": True}
+        )
+        hass.config_entries.async_update_entry.assert_called_once()
+        hass.config_entries.async_schedule_reload.assert_called_once_with("wallet")
 
 
 if __name__ == "__main__":

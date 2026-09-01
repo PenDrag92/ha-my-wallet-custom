@@ -2,22 +2,83 @@ name: Validate
 
 on:
   push:
-    branches:
-      - master
   pull_request:
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  unit-tests:
+    name: Tests and static checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Install validation dependencies
+        run: >-
+          python -m pip install
+          bandit==1.9.4
+          homeassistant==2026.8.3
+          PyYAML==6.0.3
+          ruff==0.16.5
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format
+        run: ruff format --check .
+      - name: Unit tests
+        run: python -m unittest discover -v
+      - name: Required date defaults
+        run: python -m tests.schema_defaults
+      - name: Frontend syntax
+        run: node --check custom_components/my_wallet/frontend/my-wallet-panel.js
+      - name: Chart scale tests
+        run: node --test tests/chart-scales.test.mjs
+      - name: Bandit security scan
+        run: bandit -q -r custom_components/my_wallet
+      - name: Validate JSON and YAML
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          import yaml
+
+          root = Path(".")
+          for path in root.rglob("*.json"):
+              if ".git" not in path.parts:
+                  json.loads(path.read_text(encoding="utf-8"))
+          for pattern in ("*.yaml", "*.yml"):
+              for path in root.rglob(pattern):
+                  if ".git" not in path.parts:
+                      yaml.safe_load(path.read_text(encoding="utf-8"))
+          PY
+      - name: Compile Python sources
+        run: python -m compileall -q custom_components tests
+      - name: Import integration on current Home Assistant
+        run: |
+          python - <<'PY'
+          import custom_components.my_wallet.config_flow
+          import custom_components.my_wallet.coordinator
+          import custom_components.my_wallet.sensor
+          import custom_components.my_wallet.panel
+          import custom_components.my_wallet.history_import
+          PY
+
   hacs:
     name: HACS validation
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: HACS Action
-        uses: hacs/action@main
+        uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main 2026-08-31
         with:
           category: integration
 
@@ -26,6 +87,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Hassfest validation
-        uses: home-assistant/actions/hassfest@master
+        uses: home-assistant/actions/hassfest@a7c616ce81ccda50150bf1595786c71b1883fabb # master 2026-08-31

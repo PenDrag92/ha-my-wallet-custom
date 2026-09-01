@@ -351,7 +351,7 @@ class WalletBaseSensor(CoordinatorEntity[WalletCoordinator], SensorEntity):
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.entry_id)},
-            name=self._entry.data.get(CONF_WALLET_NAME, self._entry.title),
+            name=self._entry.title or self._entry.data.get(CONF_WALLET_NAME, "Wallet"),
             manufacturer="My Wallet",
             model="Investment wallet",
         )
@@ -832,7 +832,7 @@ class WalletNextExecutionSensor(CoordinatorEntity[WalletCoordinator], SensorEnti
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.entry_id)},
-            name=self._entry.data.get(CONF_WALLET_NAME, self._entry.title),
+            name=self._entry.title or self._entry.data.get(CONF_WALLET_NAME, "Wallet"),
             manufacturer="My Wallet",
             model="Investment wallet",
         )
