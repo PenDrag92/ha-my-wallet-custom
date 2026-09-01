@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.5.0
+
+- Add a portfolio-allocation card with a current-value donut, actual shares,
+  optional targets and deviations. Settlement cash is included in the same
+  wallet denominator used by the total and sensor allocation.
+- Show the documented wallet start date in the overview and the documented
+  start date for a selected position. Leave either date unavailable for legacy
+  opening holdings whose actual acquisition date is unknown.
+- Add per-position purchase-lot details with dates, units, entry prices,
+  current values, attributed dividends, profit, simple performance and
+  annualized return.
+- Add a complete versioned JSON backup alongside the transaction CSV export.
+  Backups are validated, previewed and restored as a separate wallet without
+  changing existing entries.
+- Align dashboard summary values across one-line and wrapped labels, use a
+  neutral position-name example, and keep wide detail tables contained on
+  smaller screens.
+- Document the bundled local Home Assistant brand assets. Home Assistant can
+  use them on integration pages; HACS update cards still depend on an upstream
+  HACS fix before they can replace their current placeholder.
+
 ## 1.4.1
 
 - Move the position selector directly above the metrics it controls and make

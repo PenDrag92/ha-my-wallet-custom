@@ -553,6 +553,7 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_import(self, user_input):
         """Create a separate wallet from a confirmed server-side preview."""
+        from .backup import BACKUP_RESTORE_ID
         from .history_import import IMPORT_BATCH
         from .panel import consume_import
 
@@ -562,7 +563,11 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(
                 reason=str(err) if isinstance(err, ValueError) else "import_expired"
             )
-        await self.async_set_unique_id(f"import:{data[IMPORT_BATCH]}")
+        restore_id = data.pop(BACKUP_RESTORE_ID, None)
+        import_id = restore_id or data.get(IMPORT_BATCH)
+        if not import_id:
+            return self.async_abort(reason="invalid_import")
+        await self.async_set_unique_id(f"import:{import_id}")
         self._abort_if_unique_id_configured()
         return self.async_create_entry(title=data[CONF_WALLET_NAME], data=data)
 

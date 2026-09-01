@@ -5,10 +5,36 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.4.1 requires **Home Assistant 2026.8 or newer**.
+Version 1.5.0 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.5.0: allocation, purchase details and complete backups
+
+The administrator dashboard now shows the current allocation as a donut and a
+table with actual shares, optional targets and deviations. Settlement cash is
+part of the same total used throughout My Wallet. Select a position to inspect
+its individual purchase lots, including dates, exact units, entry prices,
+current values, attributed dividends, profit and simple or annualized returns.
+
+The overview shows the earliest documented **wallet start**, and a selected
+position shows its earliest documented **position start**. My Wallet does not
+guess dates for old opening holdings: when their acquisition history is
+incomplete, the corresponding start date remains unavailable.
+
+The new **Data export** section offers the transaction CSV and a complete,
+versioned JSON backup. Importing such a backup validates and previews it, then
+restores it as a separate wallet so an existing entry is never overwritten.
+The JSON backup contains financial configuration data and should be stored as
+carefully as a broker statement.
+
+Summary cards keep their values aligned even when labels wrap, wide detail
+tables stay inside the dashboard on small screens, and the display-name editor
+uses a neutral example. Local icon and logo files follow Home Assistant's current
+brand format. Home Assistant can use them on integration pages; HACS currently
+shows a placeholder on update cards because its frontend does not yet read local
+custom-integration brand assets.
 
 ## 1.4.1: clearer position selection and display names
 
@@ -94,9 +120,11 @@ prepared import files are never part of the public source package.
   simple performance and annualized performance per valor and per lot, plus a
   money-weighted return (XIRR) for the whole wallet.
 - **Administrator dashboard** — select the complete wallet or one position,
-  inspect performance and allocation, compare monthly/yearly results, reconcile
-  follow-up JSON statements, correct exact units with a review step, and assign
-  readable position display names without changing their Yahoo symbols.
+  inspect performance, start dates, allocation and individual purchase lots,
+  compare monthly/yearly results, reconcile follow-up JSON statements, correct
+  exact units with a review step, export CSV or a complete restorable JSON
+  backup, and assign readable position display names without changing their
+  Yahoo symbols.
 - **Target allocation** — optionally set a target share (in %) for each valor
   to see how far its actual share deviates from the target, plus a rebalancing
   hint in the base currency.
@@ -170,6 +198,10 @@ README/changelog/version files does not update the integration.
 2. Add this repository with category **Integration**.
 3. Find **My Wallet** in HACS and download it.
 4. Restart Home Assistant.
+
+My Wallet includes local Home Assistant brand assets. If HACS itself still shows
+**Icon not available** in its update list, this is a known HACS frontend
+limitation and does not mean that the integration files are incomplete.
 
 ### Manual
 

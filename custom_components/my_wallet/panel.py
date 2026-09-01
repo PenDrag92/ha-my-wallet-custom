@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import date
 from pathlib import Path
 from time import monotonic
 from uuid import uuid4
@@ -17,20 +18,33 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
 from . import const as c
+from .backup import (
+    create_backup,
+    is_backup,
+    prepare_backup,
+)
 from .contributions import (
     all_lots,
     invested_total,
+    lot_metrics,
+    lots_for_symbol,
     money_weighted_return,
     opening_balance_conflicts,
+    xirr,
 )
 from .corrections import correction_choices, prepare_correction
-from .dividends import cash_balance, dividend_total, dividends_from_data
+from .dividends import (
+    attributed_dividend_flows,
+    cash_balance,
+    dividend_total,
+    dividends_from_data,
+)
 from .followup_import import (
     add_initial_import_metadata,
     async_prepare_followup,
     has_import,
 )
-from .history import async_history
+from .history import async_history, ledger_rows
 from .history_import import IMPORT_BATCH, async_prepare_import
 
 _LOGGER = logging.getLogger(__name__)
@@ -77,7 +91,8 @@ def consume_import(hass, token: str, user_id: str):
         or monotonic() > preview["expires"]
     ):
         raise ValueError("import_expired")
-    if _batch_exists(hass, preview["data"][IMPORT_BATCH]):
+    batch = preview["data"].get(IMPORT_BATCH)
+    if batch is not None and _batch_exists(hass, batch):
         raise ValueError("already_imported")
     previews.pop(token)
     return preview["data"]
@@ -97,6 +112,7 @@ async def async_setup_panel(hass):
     for command in (
         ws_wallets,
         ws_position_aliases,
+        ws_backup,
         ws_history,
         ws_import_preview,
         ws_import_commit,
@@ -110,7 +126,7 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.4.1",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.5.0",
         embed_iframe=False,
         require_admin=True,
     )
@@ -141,23 +157,96 @@ def ws_wallets(hass, connection, msg):
             costs[symbol] = costs.get(symbol, 0.0) + lot[c.LOT_AMOUNT]
             if lot[c.LOT_INCLUDED_IN_OPENING]:
                 included[symbol] = included.get(symbol, 0.0) + lot[c.LOT_UNITS]
+        events = ledger_rows(entry.data)
+        has_unknown_opening = any(
+            abs(included.get(valor[c.VALOR_SYMBOL], 0.0) - float(valor[c.VALOR_AMOUNT]))
+            > 1e-8
+            for valor in entry.data[c.CONF_VALORS]
+        ) or any(row["type"] == "opening" and row["date"] is None for row in events)
+        dated_events = [
+            row["date"]
+            for row in events
+            if row["date"] and row["date"] <= today.isoformat()
+        ]
+        start_date = (
+            min(dated_events) if dated_events and not has_unknown_opening else None
+        )
         income = {}
         for dividend in dividends_from_data(entry.data):
             symbol = dividend.get(c.DIVIDEND_SYMBOL)
             if symbol:
                 income[symbol] = income.get(symbol, 0.0) + dividend[c.DIVIDEND_AMOUNT]
-        securities = current.securities_total if current is not None else None
         for valor in entry.data[c.CONF_VALORS]:
             symbol = valor[c.VALOR_SYMBOL]
             item = current.valors.get(symbol) if current is not None else None
             value = item.value if item is not None else None
             opening = float(valor[c.VALOR_AMOUNT])
             cost_complete = abs(included.get(symbol, 0.0) - opening) <= 1e-8
+            symbol_lots = lots_for_symbol(entry.data, symbol, through=today)
+            position_start = (
+                min(lot[c.LOT_DATE] for lot in symbol_lots)
+                if symbol_lots and cost_complete
+                else None
+            )
             profit = (
                 value + income.get(symbol, 0.0) - costs.get(symbol, 0.0)
                 if value is not None and cost_complete
                 else None
             )
+            details = []
+            dividend_flows = attributed_dividend_flows(
+                entry.data, symbol=symbol, opening_units=opening, through=today
+            )
+            current_base_price = (
+                item.quote.price * item.fx_rate
+                if item is not None and item.available
+                else None
+            )
+            for lot in symbol_lots:
+                income_flows = dividend_flows.get(lot[c.LOT_ID], [])
+                lot_income = sum(amount for _, amount in income_flows)
+                metrics = (
+                    lot_metrics(lot, current_base_price, today, lot_income)
+                    if current_base_price is not None
+                    else None
+                )
+                annualized = (
+                    xirr(
+                        [
+                            (
+                                date.fromisoformat(lot[c.LOT_DATE]),
+                                -float(lot[c.LOT_AMOUNT]),
+                            ),
+                            *income_flows,
+                            (today, float(metrics["current_value"])),
+                        ]
+                    )
+                    if metrics is not None
+                    else None
+                )
+                details.append(
+                    {
+                        "id": lot[c.LOT_ID],
+                        "date": lot[c.LOT_DATE],
+                        "price_date": lot.get("price_date", lot[c.LOT_DATE]),
+                        "amount": lot[c.LOT_AMOUNT],
+                        "units": lot[c.LOT_UNITS],
+                        "purchase_price": lot[c.LOT_AMOUNT] / lot[c.LOT_UNITS],
+                        "current_value": metrics["current_value"]
+                        if metrics is not None
+                        else None,
+                        "dividends": lot_income,
+                        "profit": metrics["profit"] if metrics is not None else None,
+                        "performance": metrics["performance_pct"]
+                        if metrics is not None
+                        else None,
+                        "annualized_performance": annualized * 100
+                        if annualized is not None
+                        else None,
+                        "included_in_opening": lot[c.LOT_INCLUDED_IN_OPENING],
+                        "estimated": lot[c.LOT_ESTIMATED],
+                    }
+                )
             positions.append(
                 {
                     "symbol": symbol,
@@ -173,11 +262,13 @@ def ws_wallets(hass, connection, msg):
                     "performance": profit / costs[symbol] * 100
                     if profit is not None and costs.get(symbol, 0.0) > 0
                     else None,
-                    "share": value / securities * 100
-                    if value is not None and securities and securities > 0
+                    "share": value / total * 100
+                    if value is not None and total and total > 0
                     else None,
                     "target": valor.get(c.VALOR_TARGET_SHARE),
                     "cost_complete": cost_complete,
+                    "start_date": position_start,
+                    "lots": details,
                 }
             )
         profit = (
@@ -188,6 +279,7 @@ def ws_wallets(hass, connection, msg):
                 "entry_id": entry.entry_id,
                 "name": entry.title or entry.data.get(c.CONF_WALLET_NAME, "My Wallet"),
                 "currency": entry.data[c.CONF_BASE_CURRENCY],
+                "start_date": start_date,
                 "invested": invested,
                 "cash": cash_balance(entry.data, through=today),
                 "dividends": dividend_total(entry.data, through=today),
@@ -278,6 +370,35 @@ def ws_position_aliases(hass, connection, msg):
 
 
 @websocket_api.websocket_command(
+    {
+        vol.Required("type"): "my_wallet/backup",
+        vol.Required("entry_id"): str,
+    }
+)
+@callback
+def ws_backup(hass, connection, msg):
+    """Return a portable backup only to an authenticated administrator."""
+    if not _admin(connection, msg):
+        return
+    entry = next(
+        (item for item in _entries(hass) if item.entry_id == msg["entry_id"]), None
+    )
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", "Wallet not found")
+        return
+    document = create_backup(
+        entry.data,
+        title=entry.title or entry.data.get(c.CONF_WALLET_NAME, "My Wallet"),
+        created_at=dt_util.now(),
+    )
+    encoded = json.dumps(document, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    if len(encoded) > _MAX_DOCUMENT_BYTES:
+        connection.send_error(msg["id"], "backup_too_large", "Backup exceeds 2 MB")
+        return
+    connection.send_result(msg["id"], {"document": document})
+
+
+@websocket_api.websocket_command(
     {vol.Required("type"): "my_wallet/history", vol.Required("entry_id"): str}
 )
 @websocket_api.async_response
@@ -363,7 +484,11 @@ async def ws_import_preview(hass, connection, msg):
         async with asyncio.timeout(90):
             today = dt_util.now().date()
             snapshot = target.data if target is not None else None
-            if target is None:
+            if is_backup(document):
+                if target is not None:
+                    raise ValueError("backup_new_only")
+                data, summary = prepare_backup(document, today=today)
+            elif target is None:
                 data, summary = await async_prepare_import(
                     document, session=async_get_clientsession(hass), today=today
                 )

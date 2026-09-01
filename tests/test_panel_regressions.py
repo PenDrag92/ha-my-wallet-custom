@@ -63,6 +63,7 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         for command in (
             panel.ws_wallets,
             panel.ws_position_aliases,
+            panel.ws_backup,
             panel.ws_history,
             panel.ws_import_preview,
             panel.ws_import_commit,
@@ -103,6 +104,139 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
             connection.results[0][1]["wallets"][0]["positions"][0]["alias"],
             "Amundi",
         )
+
+    def test_wallet_and_position_start_dates_and_lot_details_are_documented(self):
+        from custom_components.my_wallet.contributions import (
+            make_contribution,
+            make_lot,
+        )
+        from custom_components.my_wallet.dividends import make_dividend
+        from custom_components.my_wallet.models import ValorData, WalletData
+        from custom_components.my_wallet.yahoo import Quote
+
+        data = {
+            "wallet_name": "Wallet",
+            "base_currency": "EUR",
+            "scan_interval": 30,
+            "valors": [{"symbol": "AAA", "amount": 0, "alias": "World ETF"}],
+            "contributions": [
+                make_contribution(
+                    110,
+                    "2026-01-15",
+                    contribution_id="deposit",
+                    lots=[
+                        make_lot(
+                            symbol="AAA",
+                            execution_date="2026-01-15",
+                            amount=100,
+                            unit_price=10,
+                            quote_currency="EUR",
+                            units=10,
+                            estimated=False,
+                            lot_id="lot",
+                        )
+                    ],
+                )
+            ],
+            "dividends": [
+                make_dividend(
+                    booking_date="2026-02-01",
+                    amount=10,
+                    symbol="AAA",
+                    dividend_id="income",
+                )
+            ],
+            "savings_plans": [],
+            "retired_savings_plans": [],
+        }
+        current = WalletData(
+            valors={
+                "AAA": ValorData(
+                    symbol="AAA",
+                    amount=10,
+                    opening_amount=0,
+                    quote=Quote("AAA", 12, "EUR"),
+                    fx_rate=1,
+                )
+            },
+            cash_balance=20,
+        )
+        entry = types.SimpleNamespace(
+            entry_id="wallet",
+            title="Wallet",
+            data=data,
+            runtime_data=types.SimpleNamespace(
+                data=current,
+                last_update_success=True,
+            ),
+        )
+        connection = Connection()
+
+        panel.ws_wallets(hass_with([entry]), connection, {"id": 1})
+
+        wallet = connection.results[0][1]["wallets"][0]
+        position = wallet["positions"][0]
+        self.assertEqual(wallet["start_date"], "2026-01-15")
+        self.assertEqual(position["start_date"], "2026-01-15")
+        self.assertAlmostEqual(position["share"], 120 / 140 * 100)
+        self.assertEqual(position["lots"][0]["purchase_price"], 10)
+        self.assertEqual(position["lots"][0]["current_value"], 120)
+        self.assertEqual(position["lots"][0]["dividends"], 10)
+        self.assertEqual(position["lots"][0]["profit"], 30)
+
+    def test_unknown_opening_holding_does_not_invent_a_later_wallet_start(self):
+        from custom_components.my_wallet.contributions import make_contribution
+
+        entry = types.SimpleNamespace(
+            entry_id="wallet",
+            title="Wallet",
+            data={
+                "wallet_name": "Wallet",
+                "base_currency": "EUR",
+                "scan_interval": 30,
+                "valors": [{"symbol": "AAA", "amount": 1}],
+                "contributions": [
+                    make_contribution(100, "2026-01-15", contribution_id="deposit")
+                ],
+                "dividends": [],
+                "savings_plans": [],
+                "retired_savings_plans": [],
+            },
+            runtime_data=None,
+        )
+        connection = Connection()
+
+        panel.ws_wallets(hass_with([entry]), connection, {"id": 1})
+
+        wallet = connection.results[0][1]["wallets"][0]
+        self.assertIsNone(wallet["start_date"])
+        self.assertIsNone(wallet["positions"][0]["start_date"])
+
+    def test_backup_endpoint_returns_a_versioned_detached_document(self):
+        data = {
+            "wallet_name": "Wallet",
+            "base_currency": "EUR",
+            "scan_interval": 30,
+            "valors": [{"symbol": "AAA", "amount": 0, "alias": "World ETF"}],
+            "contributions": [],
+            "dividends": [],
+            "savings_plans": [],
+            "retired_savings_plans": [],
+        }
+        entry = types.SimpleNamespace(
+            entry_id="wallet", title="Renamed wallet", data=data
+        )
+        connection = Connection()
+
+        panel.ws_backup(hass_with([entry]), connection, {"id": 1, "entry_id": "wallet"})
+
+        document = connection.results[0][1]["document"]
+        self.assertEqual(
+            (document["format"], document["version"]), ("my_wallet_backup", 1)
+        )
+        self.assertEqual(document["wallet"]["title"], "Renamed wallet")
+        self.assertEqual(document["wallet"]["data"]["valors"][0]["alias"], "World ETF")
+        self.assertIsNot(document["wallet"]["data"], data)
 
     def test_position_aliases_are_trimmed_and_persisted_without_a_reload(self):
         data = {
@@ -230,6 +364,37 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(connection.errors[0][1], "confirmation_required")
         hass.config_entries.flow.async_init.assert_not_awaited()
+
+    async def test_backup_restore_uses_a_one_time_unique_id_not_config_data(self):
+        from custom_components.my_wallet.backup import BACKUP_RESTORE_ID
+
+        hass = hass_with()
+        data = {
+            "wallet_name": "Restored wallet",
+            "base_currency": "EUR",
+            "scan_interval": 30,
+            "valors": [{"symbol": "AAA", "amount": 0}],
+            "contributions": [],
+            "dividends": [],
+            "savings_plans": [],
+            "retired_savings_plans": [],
+            BACKUP_RESTORE_ID: "backup-id",
+        }
+        panel._state(hass)["previews"]["token"] = {
+            "data": data,
+            "user_id": "user-a",
+            "expires": monotonic() + 60,
+        }
+        flow = config_flow.MyWalletConfigFlow()
+        flow.hass = hass
+        flow.async_set_unique_id = AsyncMock()
+        flow._abort_if_unique_id_configured = Mock()
+
+        result = await flow.async_step_import({"token": "token", "user_id": "user-a"})
+
+        flow.async_set_unique_id.assert_awaited_once_with("import:backup-id")
+        self.assertEqual(result["type"], "create_entry")
+        self.assertNotIn(BACKUP_RESTORE_ID, result["data"])
 
     def test_correction_commit_is_user_bound_and_rejects_a_stale_wallet(self):
         from custom_components.my_wallet.contributions import (

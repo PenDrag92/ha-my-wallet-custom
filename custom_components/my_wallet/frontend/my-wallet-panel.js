@@ -1,5 +1,5 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.4.1";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.5.0";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -31,8 +31,13 @@ const WORDS = {
     positions: "Positionen", position: "Position", allPositions: "Gesamtes Depot", currentPrice: "Aktueller Kurs",
     analysis: "Kennzahlen und Verlauf", analysisFor: "Auswahl", analysisHint: "Kennzahlen, Wertentwicklung, Monats-/Jahresübersicht und Buchungen folgen dieser Auswahl.",
     editAliases: "Namen bearbeiten", positionNames: "Anzeigenamen", aliasHint: "Vergib kurze, verständliche Namen. Das technische Kürzel bleibt zur eindeutigen Zuordnung sichtbar.",
-    aliasPlaceholder: "z. B. Amundi", saveAliases: "Namen speichern", invalid_alias: "Der Anzeigename ist ungültig oder länger als 80 Zeichen.",
+    aliasPlaceholder: "z. B. Welt-ETF", saveAliases: "Namen speichern", invalid_alias: "Der Anzeigename ist ungültig oder länger als 80 Zeichen.",
     currentValue: "Aktueller Wert", purchaseCost: "Kaufbetrag", share: "Depotanteil", target: "Zielanteil",
+    portfolioStart: "Depotstart", positionStart: "Positionsstart", allocation: "Depotaufteilung",
+    allocationHint: "Aktuelle Verteilung inklusive Verrechnungskonto; Zielanteile gelten nur für Wertpapiere.", actualShare: "Ist-Anteil", deviation: "Abweichung",
+    purchaseLots: "Kauftranchen", purchasePrice: "Einstandskurs", annualizedPerformance: "Rendite p. a.",
+    includedOpening: "im Anfangsbestand", lotDetailsHint: "Dividenden werden den am Auszahlungstag gehaltenen Kauftranchen anteilig zugerechnet.",
+    noLots: "Für diese Position sind keine vollständig dokumentierten Kauftranchen vorhanden.",
     incompleteCost: "Kaufdaten unvollständig", correctUnits: "Anteile korrigieren", correction: "Anteilskorrektur",
     correctionHint: "Wähle den Anfangsbestand oder einen konkreten Kauf als Ursache der Abweichung. Zahlungsbetrag, Cash-Bestand und Einzahlungen ändern sich nicht.",
     correctionTarget: "Zu korrigierender Bestand", openingUnits: "Anfangsbestand", chosenLot: "Ausgewählter Kauf",
@@ -52,6 +57,11 @@ const WORDS = {
     added: "Neu", updated: "Aktualisiert", unchanged: "Bereits vorhanden", protected: "Geschützt",
     depositsPlural: "Einzahlungen", purchasesPlural: "Käufe",
     assets: "Wertpapiere", decisions: "Abweichungen entscheiden", keepExisting: "Vorhandene Buchung behalten",
+    dataExport: "Datenexport", dataExportHint: "CSV enthält die Buchungen zur Auswertung. Die JSON-Sicherung enthält die vollständige Depotkonfiguration und kann über „Verlauf importieren“ als neues Depot wiederhergestellt werden.",
+    exportCsv: "Buchungen als CSV", exportBackup: "Vollständige JSON-Sicherung", backupRestore: "Sicherung als neues Depot wiederherstellen",
+    backupImportHint: "Die Sicherung wird geprüft und anschließend als eigenständiges neues Depot wiederhergestellt. Das bestehende Depot bleibt unverändert.",
+    backupCheck: "Ich habe die Sicherung geprüft und möchte daraus ein neues Depot anlegen.", backup_new_only: "Eine Sicherung kann nur als neues Depot wiederhergestellt werden.",
+    invalid_backup: "Die Datei ist keine gültige My-Wallet-Sicherung. Es wurde nichts gespeichert.", backup_too_large: "Die Sicherung überschreitet 2 MB.",
     mergeIncoming: "Neue Angaben ausdrücklich übernehmen", addSeparate: "Als eigene Buchung hinzufügen",
     chooseMatch: "Passende vorhandene Buchung", import_currency_mismatch: "Die Währung der Datei passt nicht zu diesem Depot.",
     ambiguous_import_plan: "Ein Sparplan der Datei lässt sich nicht eindeutig zuordnen.",
@@ -95,8 +105,13 @@ const WORDS = {
     positions: "Positions", position: "Position", allPositions: "Whole wallet", currentPrice: "Current price",
     analysis: "Metrics and history", analysisFor: "Selection", analysisHint: "Metrics, value history, monthly/yearly summaries and transactions follow this selection.",
     editAliases: "Edit names", positionNames: "Display names", aliasHint: "Add short, recognizable names. The technical symbol remains visible for unambiguous identification.",
-    aliasPlaceholder: "e.g. Amundi", saveAliases: "Save names", invalid_alias: "The display name is invalid or longer than 80 characters.",
+    aliasPlaceholder: "e.g. World ETF", saveAliases: "Save names", invalid_alias: "The display name is invalid or longer than 80 characters.",
     currentValue: "Current value", purchaseCost: "Purchase cost", share: "Wallet share", target: "Target share",
+    portfolioStart: "Portfolio start", positionStart: "Position start", allocation: "Portfolio allocation",
+    allocationHint: "Current allocation including settlement cash; target shares apply to securities only.", actualShare: "Actual share", deviation: "Deviation",
+    purchaseLots: "Purchase lots", purchasePrice: "Entry price", annualizedPerformance: "Return p.a.",
+    includedOpening: "included in opening balance", lotDetailsHint: "Dividends are attributed proportionally to purchase lots held on the payment date.",
+    noLots: "No fully documented purchase lots are available for this position.",
     incompleteCost: "Incomplete purchase data", correctUnits: "Correct units", correction: "Unit correction",
     correctionHint: "Choose the opening holding or a specific purchase that explains the difference. Payment amount, cash and deposits do not change.",
     correctionTarget: "Holding to correct", openingUnits: "Opening holding", chosenLot: "Selected purchase",
@@ -116,6 +131,11 @@ const WORDS = {
     added: "New", updated: "Updated", unchanged: "Already present", protected: "Protected",
     depositsPlural: "Deposits", purchasesPlural: "Purchases",
     assets: "Assets", decisions: "Resolve differences", keepExisting: "Keep existing transaction",
+    dataExport: "Data export", dataExportHint: "CSV contains transactions for analysis. The JSON backup contains the complete wallet configuration and can be restored as a new wallet through Import history.",
+    exportCsv: "Export transactions as CSV", exportBackup: "Complete JSON backup", backupRestore: "Restore backup as a new wallet",
+    backupImportHint: "The backup is validated and then restored as a separate new wallet. The existing wallet remains unchanged.",
+    backupCheck: "I have reviewed the backup and want to create a new wallet from it.", backup_new_only: "A backup can only be restored as a new wallet.",
+    invalid_backup: "This is not a valid My Wallet backup. Nothing was saved.", backup_too_large: "The backup exceeds 2 MB.",
     mergeIncoming: "Explicitly apply incoming details", addSeparate: "Add as a separate transaction",
     chooseMatch: "Matching existing transaction", import_currency_mismatch: "The file currency does not match this wallet.",
     ambiguous_import_plan: "A savings plan in the file cannot be matched unambiguously.",
@@ -139,16 +159,17 @@ const CSS = `
   button,select,input{font:inherit;color:inherit} button,.button{cursor:pointer;background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#cad3dd);border-radius:8px;padding:9px 14px;text-decoration:none;color:inherit}
   button:disabled{opacity:.5;cursor:default}.primary,button.active{background:var(--primary-color,#1878b5);color:white;border-color:var(--primary-color,#1878b5)}button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #de9d30;outline-offset:2px}
   select,input[type=number]{padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}select{max-width:100%}label{display:inline-flex;align-items:center;gap:7px}input[type=checkbox]{width:18px;height:18px;accent-color:var(--primary-color,#1878b5)}
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:18px 0}.stat,.card{background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#dce3eb);border-radius:12px;padding:20px}.stat strong{display:block;font-size:24px;letter-spacing:-.5px;margin-top:4px;font-variant-numeric:tabular-nums}.stat span{color:var(--secondary-text-color,#57667a);font-size:13px}.card{margin-bottom:18px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:14px;margin:18px 0}.stat,.card{background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#dce3eb);border-radius:12px;padding:20px}.stat{display:flex;flex-direction:column}.stat strong{display:block;font-size:24px;letter-spacing:-.5px;margin-top:4px;font-variant-numeric:tabular-nums}.stat>span{display:block;min-height:3em;color:var(--secondary-text-color,#57667a);font-size:13px}.card{margin-bottom:18px}
   .selection-card{display:flex;align-items:center;gap:24px}.selection-card h2{margin:0}.selection-copy{min-width:0}.selection-copy p{margin:4px 0 0}.selection-control{display:grid;gap:5px;min-width:min(100%,300px)}.selection-control span{font-size:13px;color:var(--secondary-text-color,#57667a)}
   .alias-editor{margin:0 0 18px;padding:14px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px;background:color-mix(in srgb,var(--primary-color,#1878b5) 4%,var(--card-background-color,#fff))}.alias-editor h3{margin:0}.alias-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px 18px;margin:12px 0}.alias-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(120px,1fr);align-items:center;gap:10px}.alias-row input{width:100%;padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}tr.selected td{background:color-mix(in srgb,var(--primary-color,#1878b5) 8%,transparent)}
+  .allocation-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);align-items:center;gap:24px}.donut{width:min(100%,280px);margin:auto}.allocation-name{display:inline-flex;align-items:center;gap:8px}.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;flex:0 0 auto}.details-title{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}.details-title .hint{font-weight:400}
   .notice{padding:12px 16px;background:color-mix(in srgb,var(--primary-color,#1878b5) 9%,var(--card-background-color,#fff));border-left:3px solid var(--primary-color,#1878b5);border-radius:5px;margin:12px 0}.warning{border-color:#c4851b;background:color-mix(in srgb,#e6ac37 12%,var(--card-background-color,#fff))}.error{border-color:#c63c45;background:color-mix(in srgb,#c63c45 9%,var(--card-background-color,#fff))}
   svg{display:block;width:100%;height:auto;touch-action:pan-y;overflow:visible}.chart{min-width:260px}.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px}.legend span:before{content:'';display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:6px;background:var(--line)}.tip{font-variant-numeric:tabular-nums;min-height:30px;margin:10px 0}.scrub{width:100%;accent-color:#157bc0}
   .tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--divider-color,#e4e9ef);white-space:nowrap}th{font-size:12px;color:var(--secondary-text-color,#57667a)}th.num,td.num{text-align:right}td .hint{display:block;font-size:12px;max-width:500px;overflow:hidden;text-overflow:ellipsis}.badge{font-size:11px;border-radius:4px;padding:2px 5px;background:color-mix(in srgb,#dfaa34 17%,transparent);margin-left:6px}.positive{color:var(--success-color,#208461)}.planlist{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.plan{padding:12px;border:1px solid var(--divider-color,#dce3eb);border-radius:8px}.plan h3{margin-top:0}
   .loading:before{content:'';display:inline-block;width:14px;height:14px;border:2px solid #9daec0;border-top-color:#1878b5;border-radius:50%;animation:spin .8s linear infinite;margin-right:9px;vertical-align:middle}@keyframes spin{to{transform:rotate(360deg)}}
   .negative{color:var(--error-color,#c63c45)}.inline-action{padding:4px 8px;background:transparent}.field{display:grid;gap:5px;margin:12px 0;max-width:620px}.field label{font-size:13px;color:var(--secondary-text-color,#57667a)}.field input,.field select{width:100%}.decision{padding:12px 0;border-bottom:1px solid var(--divider-color,#e4e9ef)}.decision select{margin-top:7px;min-width:min(100%,360px)}
   input[type=file]{max-width:100%;margin:12px 0} .missing-row{display:flex;align-items:center;gap:12px;justify-content:space-between;border-bottom:1px solid var(--divider-color,#e4e9ef);padding:10px 0}.missing-row input{width:155px}
-  @media(max-width:700px){header{padding:12px}main{padding:14px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stats>.stat:last-child:nth-child(odd){grid-column:1/-1}.stat,.card{padding:14px}.stat strong{font-size:20px}h1{font-size:20px}.toolbar{gap:8px}.toolbar label{width:100%}.toolbar select{flex:1}.selection-card{align-items:stretch;flex-direction:column;gap:12px}.selection-control{width:100%}.selection-control select{width:100%}.alias-grid{grid-template-columns:1fr}.missing-row{align-items:flex-start;flex-direction:column}.controls{gap:8px}th,td{padding:10px 7px}}
+  @media(max-width:700px){header{padding:12px}main{padding:14px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stats>.stat:last-child:nth-child(odd){grid-column:1/-1}.stat,.card{padding:14px}.stat strong{font-size:20px}h1{font-size:20px}.toolbar{gap:8px}.toolbar label{width:100%}.toolbar select{flex:1}.selection-card{align-items:stretch;flex-direction:column;gap:12px}.selection-control{width:100%}.selection-control select{width:100%}.allocation-layout{grid-template-columns:1fr;gap:14px}.donut{max-width:240px}.alias-grid{grid-template-columns:1fr}.missing-row{align-items:flex-start;flex-direction:column}.controls{gap:8px}th,td{padding:10px 7px}}
   @media(prefers-reduced-motion:reduce){.loading:before{animation:none}}
 `;
 
@@ -301,17 +322,21 @@ class MyWalletPanel extends HTMLElement {
     const position = wallet.positions.find(item => item.symbol === this._position);
     const values = position ? [
       ["currentValue", this.money(position.value)], ["purchaseCost", this.money(position.cost)],
+      ["positionStart", position.start_date ? this.day(position.start_date) : this.t("emptyValue")],
       ["units", this.units(position.units)], ["profit", this.money(position.profit)],
       ["performance", this.percent(position.performance)], ["dividends", this.money(position.dividends)],
     ] : [
       ["value", this.money(wallet.total)], ["invested", this.money(wallet.invested)],
+      ["portfolioStart", wallet.start_date ? this.day(wallet.start_date) : this.t("emptyValue")],
       ["profit", this.money(wallet.profit)], ["performance", this.percent(wallet.performance)],
       ["annualReturn", this.percent(wallet.money_weighted_return)], ["cash", this.money(wallet.cash)],
       ["dividends", this.money(wallet.dividends)],
     ];
     for (const [key, value] of values) this._stat(stats, this.t(key), value);
     main.append(stats);
+    this._renderAllocation(main, wallet);
     this._renderPositions(main, wallet);
+    if (position) this._renderPositionDetails(main, position, wallet.currency);
     if (this._correctionOpen) this._renderCorrection(main, wallet);
     if (wallet.pending?.length) this._notice(main, this.t("pending"), "warning");
     if (this._history) {
@@ -324,6 +349,7 @@ class MyWalletPanel extends HTMLElement {
       this._renderPlans(main, wallet.plans, wallet.currency);
       this._renderLedger(main);
     }
+    this._renderExport(main);
   }
   _renderPositionSelection(parent, wallet) {
     const section = node("section", null, "card selection-card");
@@ -346,6 +372,91 @@ class MyWalletPanel extends HTMLElement {
     label.append(node("span", this.t("analysisFor")), select);
     section.append(copy, node("div", null, "grow"), label);
     parent.append(section);
+  }
+  _renderAllocation(parent, wallet) {
+    const section = node("section", null, "card");
+    section.append(node("h2", this.t("allocation")), node("p", this.t("allocationHint"), "hint"));
+    if (!Number.isFinite(wallet.total) || wallet.total <= 0 || !Number.isFinite(wallet.cash) || wallet.cash < 0 || wallet.positions.some(item => !Number.isFinite(item.value) || item.value < 0)) {
+      this._notice(section, this.t("emptyValue"));
+      parent.append(section);
+      return;
+    }
+    const palette = ["#157bc0", "#269e81", "#8b67c8", "#d9822b", "#d34f68", "#4d9ca8", "#8d7445", "#6c83d5"];
+    const segments = wallet.positions.filter(item => item.value > 0).map((item, index) => ({
+      symbol: item.symbol,
+      label: this._positionLabel(item.symbol),
+      value: item.value,
+      target: item.target,
+      color: palette[index % palette.length],
+    }));
+    if (wallet.cash > 0) segments.push({ symbol: null, label: this.t("cash"), value: wallet.cash, target: null, color: "#98a3af" });
+    const total = wallet.total;
+    if (total <= 0) {
+      this._notice(section, this.t("emptyValue"));
+      parent.append(section);
+      return;
+    }
+    const layout = node("div", null, "allocation-layout"), svg = svgNode("svg", { viewBox: "0 0 240 240", role: "img", "aria-label": this.t("allocation"), class: "donut" });
+    const radius = 82, circumference = 2 * Math.PI * radius;
+    svg.append(svgNode("circle", { cx: 120, cy: 120, r: radius, fill: "none", stroke: "var(--divider-color,#e4e9ef)", "stroke-width": 32 }));
+    let offset = 0;
+    for (const item of segments) {
+      const length = item.value / total * circumference;
+      const circle = svgNode("circle", { cx: 120, cy: 120, r: radius, fill: "none", stroke: item.color, "stroke-width": 32, "stroke-dasharray": `${length} ${circumference - length}`, "stroke-dashoffset": -offset, transform: "rotate(-90 120 120)" });
+      const title = svgNode("title", {}); title.textContent = `${item.label}: ${this.money(item.value, wallet.currency)}`; circle.append(title); svg.append(circle); offset += length;
+    }
+    const centerValue = svgNode("text", { x: 120, y: 116, "text-anchor": "middle", fill: "var(--primary-text-color,#182b42)", "font-size": 17, "font-weight": 700 });
+    centerValue.textContent = this.money(total, wallet.currency);
+    const centerLabel = svgNode("text", { x: 120, y: 139, "text-anchor": "middle", fill: "var(--secondary-text-color,#57667a)", "font-size": 12 });
+    centerLabel.textContent = this.t("all"); svg.append(centerValue, centerLabel);
+
+    const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr");
+    for (const key of ["position", "currentValue", "actualShare", "target", "deviation"]) hr.append(node("th", this.t(key), key === "position" ? "" : "num"));
+    head.append(hr); table.append(head); const body = node("tbody");
+    for (const item of segments) {
+      const actual = item.value / total * 100, difference = item.target == null ? null : actual - item.target;
+      const tr = node("tr"); if (item.symbol === this._position) tr.className = "selected";
+      const first = node("td"), swatch = node("span", null, "swatch"); swatch.style.background = item.color;
+      if (item.symbol) {
+        const choose = button(item.label, () => { this._position = item.symbol; this._cashLine = false; this._render(); }, "inline-action allocation-name");
+        choose.prepend(swatch); first.append(choose);
+      } else {
+        const label = node("span", item.label, "allocation-name"); label.prepend(swatch); first.append(label);
+      }
+      const cls = value => `num ${value > 0 ? "positive" : value < 0 ? "negative" : ""}`;
+      tr.append(first, node("td", this.money(item.value, wallet.currency), "num"), node("td", this.ratio(actual), "num"), node("td", this.ratio(item.target), "num"), node("td", this.percent(difference), cls(difference)));
+      body.append(tr);
+    }
+    table.append(body); wrap.append(table); layout.append(svg, wrap); section.append(layout); parent.append(section);
+  }
+  _renderPositionDetails(parent, position, currency) {
+    const section = node("section", null, "card"), heading = node("h2", null, "details-title");
+    heading.append(node("span", `${this.t("purchaseLots")} · ${this._positionAlias(position.symbol) || position.symbol}`));
+    if (this._positionAlias(position.symbol)) heading.append(node("span", position.symbol, "hint"));
+    section.append(heading);
+    const rows = position.lots || [];
+    if (!rows.length) {
+      this._notice(section, this.t("noLots"));
+      parent.append(section);
+      return;
+    }
+    const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr");
+    for (const key of ["date", "purchaseCost", "units", "purchasePrice", "currentValue", "dividends", "profit", "performance", "annualizedPerformance"]) hr.append(node("th", this.t(key), key === "date" ? "" : "num"));
+    head.append(hr); table.append(head); const body = node("tbody");
+    for (const row of rows) {
+      const tr = node("tr"), dateCell = node("td", this.day(row.date));
+      if (row.included_in_opening) dateCell.append(node("span", this.t("includedOpening"), "badge"));
+      if (row.price_date && row.price_date !== row.date) dateCell.append(node("span", `${this.t("priceDate")}: ${this.day(row.price_date)}`, "hint"));
+      const units = node("td", this.units(row.units), "num");
+      if (row.estimated) units.append(node("span", this.t("estimate"), "badge"));
+      const cls = value => `num ${value > 0 ? "positive" : value < 0 ? "negative" : ""}`;
+      tr.append(dateCell, node("td", this.money(row.amount, currency), "num"), units, node("td", this.money(row.purchase_price, currency), "num"),
+        node("td", this.money(row.current_value, currency), "num"), node("td", this.money(row.dividends, currency), "num"),
+        node("td", this.money(row.profit, currency), cls(row.profit)), node("td", this.percent(row.performance), cls(row.performance)),
+        node("td", this.percent(row.annualized_performance), cls(row.annualized_performance)));
+      body.append(tr);
+    }
+    table.append(body); wrap.append(table); section.append(wrap, node("p", this.t("lotDetailsHint"), "hint")); parent.append(section);
   }
   _renderPositions(parent, wallet) {
     const section = node("section", null, "card"), controls = node("div", null, "controls");
@@ -651,7 +762,7 @@ class MyWalletPanel extends HTMLElement {
       option.value = key; option.selected = this._type === key; filter.append(option);
     }
     filter.addEventListener("change", () => { this._type = filter.value; this._render(); });
-    controls.append(filter, button(this.t("export"), () => this._export()));
+    controls.append(filter);
     section.append(controls);
     const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr");
     for (const key of ["date", "type", "symbol", "amount", "units"]) hr.append(node("th", this.t(key), ["amount", "units"].includes(key) ? "num" : ""));
@@ -676,30 +787,54 @@ class MyWalletPanel extends HTMLElement {
     if (!rows.length) this._notice(section, this.t("noRows"));
     parent.append(section);
   }
-  _export() {
+  _renderExport(parent) {
+    const section = node("section", null, "card");
+    section.append(node("h2", this.t("dataExport")), node("p", this.t("dataExportHint"), "hint"));
+    const actions = node("div", null, "controls");
+    const csv = button(this.t("exportCsv"), () => this._exportCsv());
+    csv.disabled = !this._history || this._busy;
+    const backup = button(this.t("exportBackup"), () => this._exportBackup(), "primary");
+    backup.disabled = this._busy;
+    actions.append(csv, backup); section.append(actions); parent.append(section);
+  }
+  _safeFileName(suffix) {
+    const wallet = (this._wallet()?.name || "my-wallet").normalize("NFKD").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "my-wallet";
+    return `${wallet}-${new Date().toLocaleDateString("sv-SE")}.${suffix}`;
+  }
+  _download(content, type, name) {
+    const blob = new Blob([content], { type }), url = URL.createObjectURL(blob), anchor = node("a");
+    anchor.href = url; anchor.download = name; anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  _exportCsv() {
     const cell = value => {
       let text = String(value ?? "");
       if (typeof value === "string" && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
       return `"${text.replaceAll('"', '""')}"`;
     };
-    const visible = this._history.ledger.filter(row => this._position === "all" || row.symbol === this._position);
-    const rows = [["date", "type", "symbol", "plan", "amount", "currency", "units", "estimated", "price_date", "note"], ...visible.map(row => [row.date, row.type, row.symbol, row.plan, row.amount, this._wallet().currency, row.units, row.estimated ?? false, row.price_date, row.note])];
-    const blob = new Blob(["\uFEFF" + rows.map(row => row.map(cell).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob), anchor = node("a");
-    anchor.href = url; anchor.download = "my-wallet-history.csv"; anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const rows = [["date", "type", "symbol", "alias", "plan", "amount", "currency", "units", "estimated", "price_date", "note"], ...this._history.ledger.map(row => [row.date, row.type, row.symbol, row.symbol ? this._positionAlias(row.symbol) : "", row.plan, row.amount, this._wallet().currency, row.units, row.estimated ?? false, row.price_date, row.note])];
+    this._download("\uFEFF" + rows.map(row => row.map(cell).join(";")).join("\r\n"), "text/csv;charset=utf-8", this._safeFileName("csv"));
+  }
+  async _exportBackup() {
+    if (this._busy || !this._selected) return;
+    this._busy = true; this._error = null; this._render();
+    try {
+      const result = await this._call("backup", { entry_id: this._selected });
+      this._download(JSON.stringify(result.document, null, 2), "application/json;charset=utf-8", this._safeFileName("json"));
+    } catch (err) { this._error = this._errorText(err); }
+    finally { this._busy = false; this._render(); }
   }
   _renderImport(parent) {
     const section = node("section", null, "card");
     section.append(node("h2", this.t("import")));
     const mode = node("select");
     for (const [value, key] of [["followup", "followup"], ["new", "createNew"]]) {
-      if (value === "followup" && !this._wallet()) continue;
+      if (value === "followup" && (!this._wallet() || this._document?.format === "my_wallet_backup")) continue;
       const option = node("option", this.t(key)); option.value = value; option.selected = value === this._importMode; mode.append(option);
     }
     mode.addEventListener("change", () => { this._importMode = mode.value; this._preview = null; this._importDecisions = {}; this._render(); });
     const field = node("div", null, "field"); field.append(node("label", this.t("importMode")), mode); section.append(field);
-    section.append(node("p", this.t(this._importMode === "followup" ? "followupHint" : "importHint"), "hint"));
+    section.append(node("p", this.t(this._document?.format === "my_wallet_backup" ? "backupImportHint" : this._importMode === "followup" ? "followupHint" : "importHint"), "hint"));
     const file = node("input");
     file.type = "file"; file.accept = ".json,application/json"; file.disabled = this._busy;
     file.setAttribute("aria-label", this.t("import"));
@@ -709,6 +844,7 @@ class MyWalletPanel extends HTMLElement {
       try {
         if (selected.size > 2000000) throw new Error("size");
         this._document = JSON.parse(await selected.text());
+        if (this._document?.format === "my_wallet_backup") this._importMode = "new";
         this._preview = null;
         this._importDecisions = {};
         await this._prepareImport();
@@ -717,7 +853,7 @@ class MyWalletPanel extends HTMLElement {
     section.append(file);
     if (this._preview) {
       const summary = this._preview.summary;
-      section.append(node("h3", this._importMode === "followup" ? `${this.t("followup")}: ${this._wallet().name}` : `${this.t("newWallet")}: ${summary.wallet_name}`));
+      section.append(node("h3", summary.backup ? `${this.t("backupRestore")}: ${summary.wallet_name}` : this._importMode === "followup" ? `${this.t("followup")}: ${this._wallet().name}` : `${this.t("newWallet")}: ${summary.wallet_name}`));
       section.append(node("p", `${this.t("counts")}: ${summary.deposits} / ${summary.purchases} / ${summary.dividends}`));
       const stats = node("div", null, "stats");
       for (const [key, value] of [["invested", summary.capital], ["spending", summary.spending], ["dividends", summary.dividend_total], ["cash", summary.cash]]) this._stat(stats, this.t(key), this.money(value, summary.currency));
@@ -762,10 +898,10 @@ class MyWalletPanel extends HTMLElement {
         }
       } else {
         section.append(node("p", this.t("previewExpires"), "hint"));
-        const label = node("label", this.t(this._importMode === "followup" ? "followupCheck" : "confirmCheck")), check = node("input");
+        const label = node("label", this.t(summary.backup ? "backupCheck" : this._importMode === "followup" ? "followupCheck" : "confirmCheck")), check = node("input");
         check.type = "checkbox";
         label.prepend(check); section.append(label);
-        const confirm = button(this.t(this._importMode === "followup" ? "followupConfirm" : "confirm"), () => this._commitImport(), "primary");
+        const confirm = button(this.t(summary.backup ? "backupRestore" : this._importMode === "followup" ? "followupConfirm" : "confirm"), () => this._commitImport(), "primary");
         confirm.disabled = true;
         check.addEventListener("change", () => { confirm.disabled = !check.checked || this._busy; });
         const actions = node("div", null, "controls");
