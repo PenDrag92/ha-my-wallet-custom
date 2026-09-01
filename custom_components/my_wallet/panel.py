@@ -44,8 +44,13 @@ from .followup_import import (
     async_prepare_followup,
     has_import,
 )
-from .history import async_history, ledger_rows
+from .history import async_history
 from .history_import import IMPORT_BATCH, async_prepare_import
+from .target import (
+    documented_wallet_start_date,
+    target_deviation,
+    target_projection,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _STATE = "my_wallet_panel"
@@ -126,7 +131,7 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.5.0",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.6.0",
         embed_iframe=False,
         require_admin=True,
     )
@@ -157,20 +162,8 @@ def ws_wallets(hass, connection, msg):
             costs[symbol] = costs.get(symbol, 0.0) + lot[c.LOT_AMOUNT]
             if lot[c.LOT_INCLUDED_IN_OPENING]:
                 included[symbol] = included.get(symbol, 0.0) + lot[c.LOT_UNITS]
-        events = ledger_rows(entry.data)
-        has_unknown_opening = any(
-            abs(included.get(valor[c.VALOR_SYMBOL], 0.0) - float(valor[c.VALOR_AMOUNT]))
-            > 1e-8
-            for valor in entry.data[c.CONF_VALORS]
-        ) or any(row["type"] == "opening" and row["date"] is None for row in events)
-        dated_events = [
-            row["date"]
-            for row in events
-            if row["date"] and row["date"] <= today.isoformat()
-        ]
-        start_date = (
-            min(dated_events) if dated_events and not has_unknown_opening else None
-        )
+        start = documented_wallet_start_date(entry.data, through=today)
+        start_date = start.isoformat() if start else None
         income = {}
         for dividend in dividends_from_data(entry.data):
             symbol = dividend.get(c.DIVIDEND_SYMBOL)
@@ -274,6 +267,8 @@ def ws_wallets(hass, connection, msg):
         profit = (
             total - invested if total is not None and invested is not None else None
         )
+        target = target_projection(entry.data, through=today)
+        target_absolute, target_percentage = target_deviation(total, target.value)
         wallets.append(
             {
                 "entry_id": entry.entry_id,
@@ -291,6 +286,25 @@ def ws_wallets(hass, connection, msg):
                 "money_weighted_return": money_weighted_return(entry.data, total, today)
                 if total is not None
                 else None,
+                "target": {
+                    "value": round(target.value, 2)
+                    if target.value is not None
+                    else None,
+                    "annual_return": target.annual_return,
+                    "monthly_return": target.monthly_return,
+                    "absolute_deviation": round(target_absolute, 2)
+                    if target_absolute is not None
+                    else None,
+                    "percentage_deviation": round(target_percentage, 2)
+                    if target_percentage is not None
+                    else None,
+                    "start_date": target.start_date.isoformat()
+                    if target.start_date
+                    else None,
+                    "date": today.isoformat(),
+                    "unavailable_reason": target.unavailable_reason,
+                    "calculation_basis": "planned_savings_rates",
+                },
                 "positions": positions,
                 "correction_choices": correction_choices(entry.data, today=today),
                 "pending": current.pending_executions if current is not None else [],

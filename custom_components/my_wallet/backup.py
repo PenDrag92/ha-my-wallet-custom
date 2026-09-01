@@ -148,6 +148,14 @@ def prepare_backup(
     )
     if not interval_value.is_integer():
         raise ValueError("invalid_backup")
+    expected_return = _number(
+        raw.get(
+            c.CONF_EXPECTED_ANNUAL_RETURN,
+            c.DEFAULT_EXPECTED_ANNUAL_RETURN,
+        ),
+        minimum=c.MIN_EXPECTED_ANNUAL_RETURN,
+        maximum=c.MAX_EXPECTED_ANNUAL_RETURN,
+    )
 
     raw_valors = raw.get(c.CONF_VALORS)
     if not isinstance(raw_valors, list) or not 1 <= len(raw_valors) <= 100:
@@ -235,6 +243,7 @@ def prepare_backup(
         c.CONF_WALLET_NAME: name,
         c.CONF_BASE_CURRENCY: currency,
         c.CONF_SCAN_INTERVAL: int(interval_value),
+        c.CONF_EXPECTED_ANNUAL_RETURN: expected_return,
         c.CONF_VALORS: valors,
         c.CONF_CONTRIBUTIONS: contributions,
         c.CONF_DIVIDENDS: dividends,

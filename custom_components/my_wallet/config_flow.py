@@ -23,6 +23,7 @@ from .const import (
     CONF_BASE_CURRENCY,
     CONF_CONTRIBUTIONS,
     CONF_DIVIDENDS,
+    CONF_EXPECTED_ANNUAL_RETURN,
     CONF_INVESTED_AMOUNT,
     CONF_RETIRED_SAVINGS_PLANS,
     CONF_SAVINGS_PLANS,
@@ -42,6 +43,7 @@ from .const import (
     CONTRIBUTION_SOURCE_LEGACY,
     CONTRIBUTION_SOURCE_PURCHASE,
     DEFAULT_BASE_CURRENCY,
+    DEFAULT_EXPECTED_ANNUAL_RETURN,
     DEFAULT_SCAN_INTERVAL,
     DIVIDEND_AMOUNT,
     DIVIDEND_BOOKING_DATE,
@@ -59,7 +61,9 @@ from .const import (
     LOT_SYMBOL,
     LOT_UNIT_PRICE,
     LOT_UNITS,
+    MAX_EXPECTED_ANNUAL_RETURN,
     MAX_SCAN_INTERVAL,
+    MIN_EXPECTED_ANNUAL_RETURN,
     MIN_SCAN_INTERVAL,
     PLAN_ALLOCATION_MODE,
     PLAN_ALLOCATIONS,
@@ -160,6 +164,16 @@ _INTERVAL_SELECTOR = selector.NumberSelector(
         max=MAX_SCAN_INTERVAL,
         step=1,
         unit_of_measurement="min",
+        mode=selector.NumberSelectorMode.BOX,
+    )
+)
+
+_EXPECTED_RETURN_SELECTOR = selector.NumberSelector(
+    selector.NumberSelectorConfig(
+        min=MIN_EXPECTED_ANNUAL_RETURN,
+        max=MAX_EXPECTED_ANNUAL_RETURN,
+        step=0.1,
+        unit_of_measurement="%",
         mode=selector.NumberSelectorMode.BOX,
     )
 )
@@ -326,9 +340,15 @@ def _settings_schema(
     name: str | None = None,
     currency: str = DEFAULT_BASE_CURRENCY,
     interval: Any = DEFAULT_SCAN_INTERVAL,
+    expected_return: Any = DEFAULT_EXPECTED_ANNUAL_RETURN,
 ) -> vol.Schema:
     safe_interval = _finite_number(
         interval, minimum=MIN_SCAN_INTERVAL, maximum=MAX_SCAN_INTERVAL
+    )
+    safe_return = _finite_number(
+        expected_return,
+        minimum=MIN_EXPECTED_ANNUAL_RETURN,
+        maximum=MAX_EXPECTED_ANNUAL_RETURN,
     )
     return vol.Schema(
         {
@@ -340,6 +360,14 @@ def _settings_schema(
                 if safe_interval is not None
                 else DEFAULT_SCAN_INTERVAL,
             ): _INTERVAL_SELECTOR,
+            vol.Required(
+                CONF_EXPECTED_ANNUAL_RETURN,
+                default=(
+                    safe_return
+                    if safe_return is not None
+                    else DEFAULT_EXPECTED_ANNUAL_RETURN
+                ),
+            ): _EXPECTED_RETURN_SELECTOR,
         }
     )
 
@@ -550,6 +578,7 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._name: str | None = None
         self._currency: str = DEFAULT_BASE_CURRENCY
         self._interval: int = DEFAULT_SCAN_INTERVAL
+        self._expected_return: float = DEFAULT_EXPECTED_ANNUAL_RETURN
 
     async def async_step_import(self, user_input):
         """Create a separate wallet from a confirmed server-side preview."""
@@ -583,18 +612,33 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 minimum=MIN_SCAN_INTERVAL,
                 maximum=MAX_SCAN_INTERVAL,
             )
+            expected_return = _finite_number(
+                user_input.get(
+                    CONF_EXPECTED_ANNUAL_RETURN, DEFAULT_EXPECTED_ANNUAL_RETURN
+                ),
+                minimum=MIN_EXPECTED_ANNUAL_RETURN,
+                maximum=MAX_EXPECTED_ANNUAL_RETURN,
+            )
             if not name:
                 errors[CONF_WALLET_NAME] = "invalid_name"
             elif interval is None or not interval.is_integer():
                 errors[CONF_SCAN_INTERVAL] = "invalid_number"
+            elif expected_return is None:
+                errors[CONF_EXPECTED_ANNUAL_RETURN] = "invalid_number"
             else:
                 self._name = name
                 self._currency = user_input[CONF_BASE_CURRENCY]
                 self._interval = int(interval)
+                self._expected_return = expected_return
                 return await self.async_step_valor()
         return self.async_show_form(
             step_id="user",
-            data_schema=_settings_schema(self._name, self._currency, self._interval),
+            data_schema=_settings_schema(
+                self._name,
+                self._currency,
+                self._interval,
+                self._expected_return,
+            ),
             errors=errors,
         )
 
@@ -653,6 +697,7 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_WALLET_NAME: self._name,
             CONF_BASE_CURRENCY: self._currency,
             CONF_SCAN_INTERVAL: self._interval,
+            CONF_EXPECTED_ANNUAL_RETURN: self._expected_return,
             CONF_VALORS: self._valors,
             CONF_CONTRIBUTIONS: [],
             CONF_SAVINGS_PLANS: [],
@@ -928,10 +973,23 @@ class MyWalletOptionsFlow(
                 minimum=MIN_SCAN_INTERVAL,
                 maximum=MAX_SCAN_INTERVAL,
             )
+            expected_return = _finite_number(
+                user_input.get(
+                    CONF_EXPECTED_ANNUAL_RETURN,
+                    self.config_entry.data.get(
+                        CONF_EXPECTED_ANNUAL_RETURN,
+                        DEFAULT_EXPECTED_ANNUAL_RETURN,
+                    ),
+                ),
+                minimum=MIN_EXPECTED_ANNUAL_RETURN,
+                maximum=MAX_EXPECTED_ANNUAL_RETURN,
+            )
             if not name:
                 errors[CONF_WALLET_NAME] = "invalid_name"
             elif interval is None or not interval.is_integer():
                 errors[CONF_SCAN_INTERVAL] = "invalid_number"
+            elif expected_return is None:
+                errors[CONF_EXPECTED_ANNUAL_RETURN] = "invalid_number"
             elif user_input[CONF_BASE_CURRENCY] != self.config_entry.data.get(
                 CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY
             ) and (self._contributions() or self._plans() or self._dividends()):
@@ -944,6 +1002,7 @@ class MyWalletOptionsFlow(
                         CONF_WALLET_NAME: name,
                         CONF_BASE_CURRENCY: user_input[CONF_BASE_CURRENCY],
                         CONF_SCAN_INTERVAL: int(interval),
+                        CONF_EXPECTED_ANNUAL_RETURN: expected_return,
                     },
                 )
         data = self.config_entry.data
@@ -953,6 +1012,10 @@ class MyWalletOptionsFlow(
                 self.config_entry.title or data.get(CONF_WALLET_NAME, "Wallet"),
                 data.get(CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY),
                 data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                data.get(
+                    CONF_EXPECTED_ANNUAL_RETURN,
+                    DEFAULT_EXPECTED_ANNUAL_RETURN,
+                ),
             ),
             errors=errors,
         )

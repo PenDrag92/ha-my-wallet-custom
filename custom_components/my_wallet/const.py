@@ -15,6 +15,7 @@ PLATFORMS: Final = [Platform.SENSOR]
 CONF_WALLET_NAME: Final = "wallet_name"
 CONF_BASE_CURRENCY: Final = "base_currency"
 CONF_SCAN_INTERVAL: Final = "scan_interval"  # minutes
+CONF_EXPECTED_ANNUAL_RETURN: Final = "expected_annual_return"
 CONF_VALORS: Final = "valors"
 # Dated executions and recurring savings plans. ``CONF_INVESTED_AMOUNT`` is
 # retained only for migrating config entries created by version 1.
@@ -97,6 +98,9 @@ DEFAULT_BASE_CURRENCY: Final = "EUR"
 DEFAULT_SCAN_INTERVAL: Final = 30
 MIN_SCAN_INTERVAL: Final = 5
 MAX_SCAN_INTERVAL: Final = 1440
+DEFAULT_EXPECTED_ANNUAL_RETURN: Final = 7.0
+MIN_EXPECTED_ANNUAL_RETURN: Final = -99.0
+MAX_EXPECTED_ANNUAL_RETURN: Final = 100.0
 
 # Service names
 SERVICE_REFRESH: Final = "refresh"
@@ -160,6 +164,13 @@ ATTR_NEXT_EXECUTION_DATE: Final = "next_execution_date"
 ATTR_DIVIDENDS: Final = "dividends"
 ATTR_DIVIDEND_COUNT: Final = "dividend_count"
 ATTR_DIVIDEND_TOTAL: Final = "dividend_total"
+ATTR_EXPECTED_ANNUAL_RETURN: Final = "expected_annual_return"
+ATTR_MONTHLY_RETURN: Final = "monthly_return"
+ATTR_WALLET_START_DATE: Final = "wallet_start_date"
+ATTR_ACTUAL_VALUE: Final = "actual_value"
+ATTR_ABSOLUTE_DEVIATION: Final = "absolute_deviation"
+ATTR_PERCENTAGE_DEVIATION: Final = "percentage_deviation"
+ATTR_CALCULATION_BASIS: Final = "calculation_basis"
 
 # Tolerance when validating the sum of target shares (floating point safety).
 TARGET_SHARE_SUM_TOLERANCE: Final = 0.005

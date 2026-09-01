@@ -1,5 +1,5 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.5.0";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.6.0";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -16,7 +16,7 @@ const WORDS = {
     configuredUnits: "Anfangsbestand", includedUnits: "als enthalten markierte Anteile",
     quotesWarning: "Bei fehlenden historischen Kursen oder Wechselkursen bleibt die Wertkurve an den betroffenen Tagen unterbrochen.",
     limited: "Die Kurve zeigt höchstens die letzten zehn Jahre. Der Buchungsverlauf enthält weiterhin alle Einträge.",
-    closeHint: "Tageswerte anhand bestätigter Schlusskurse; heutiger Depotwert oben nach dem letzten Sensor-Update.",
+    closeHint: "Reale Tageswerte beruhen auf bestätigten Schlusskursen; der heutige Depotwert oben stammt vom letzten Sensor-Update. Die gestrichelte Sollkurve verwendet die eingestellte Rendite und geplanten Sparraten.",
     import: "Verlauf importieren", importHint: "Wähle eine My-Wallet-JSON-Datei. Der Import erstellt nach deiner Bestätigung ein eigenes Depot. Bestehende Depots bleiben unverändert. Die Datei bleibt in deiner Home-Assistant-Installation; an Yahoo gehen nur Symbol- und Kursanfragen.",
     preview: "Import prüfen", preparing: "Buchungen werden geprüft und fehlende Stückzahlen aus historischen Kursen geschätzt …",
     confirm: "Als neues Depot importieren", cancel: "Abbrechen", confirmCheck: "Ich habe die Vorschau geprüft und möchte dieses neue Depot anlegen.",
@@ -28,6 +28,11 @@ const WORDS = {
     cashChart: "Verrechnungskonto separat anzeigen", cashScale: "Eigene Skala; derselbe Zeitraum wie oben",
     hideHint: "Hinweis ausblenden", showHint: "Hinweis zu geschätzten Anteilen anzeigen",
     performance: "Performance", profit: "Gewinn / Verlust", annualReturn: "Geldgewichtete Rendite p. a.",
+    targetComparison: "Soll-Ist-Vergleich", expectedReturn: "Vorgaberendite p. a.", targetValue: "Zinseszins-Sollwert",
+    targetDeviation: "Abweichung zum Soll", targetLine: "Sollkurve anzeigen", forecast: "Prognosehorizont",
+    forecastToday: "heute", forecastYear: "Jahr", forecastYears: "Jahre", perYear: "p. a.", forecastValue: "Prognostizierter Sollwert", forecastDate: "Prognosedatum",
+    targetHint: "Der Sollwert verzinst das vorhandene Kapital und addiert die jeweils geplanten Sparraten sowie einmalige Einzahlungen.",
+    targetUnavailable: "Der Sollwert ist nicht verfügbar, weil Depotstart oder Anfangsbestand nicht vollständig dokumentiert sind.",
     positions: "Positionen", position: "Position", allPositions: "Gesamtes Depot", currentPrice: "Aktueller Kurs",
     analysis: "Kennzahlen und Verlauf", analysisFor: "Auswahl", analysisHint: "Kennzahlen, Wertentwicklung, Monats-/Jahresübersicht und Buchungen folgen dieser Auswahl.",
     editAliases: "Namen bearbeiten", positionNames: "Anzeigenamen", aliasHint: "Vergib kurze, verständliche Namen. Das technische Kürzel bleibt zur eindeutigen Zuordnung sichtbar.",
@@ -90,7 +95,7 @@ const WORDS = {
     configuredUnits: "opening units", includedUnits: "units marked included",
     quotesWarning: "Missing historical prices or exchange rates leave gaps in the value curve.",
     limited: "The chart shows up to ten years. The ledger still includes every transaction.",
-    closeHint: "Daily values use confirmed closing prices. The current value above comes from the latest sensor update.",
+    closeHint: "Actual daily values use confirmed closes; the current value above comes from the latest sensor update. The dashed target uses the configured return and planned savings rates.",
     import: "Import history", importHint: "Choose a My Wallet JSON file. After confirmation, the import creates a separate wallet and leaves existing wallets untouched. The file stays in your Home Assistant installation; only symbol and price requests go to Yahoo.",
     preview: "Preview import", preparing: "Checking transactions and estimating missing units from historical prices …",
     confirm: "Import as a new wallet", cancel: "Cancel", confirmCheck: "I have reviewed the preview and want to create this new wallet.",
@@ -102,6 +107,11 @@ const WORDS = {
     cashChart: "Show settlement cash separately", cashScale: "Independent scale; the same dates as above",
     hideHint: "Hide notice", showHint: "Show notice about estimated units",
     performance: "Performance", profit: "Gain / loss", annualReturn: "Money-weighted return p.a.",
+    targetComparison: "Target comparison", expectedReturn: "Expected return p.a.", targetValue: "Compound target",
+    targetDeviation: "Difference from target", targetLine: "Show target curve", forecast: "Forecast horizon",
+    forecastToday: "today", forecastYear: "year", forecastYears: "years", perYear: "p.a.", forecastValue: "Forecast target", forecastDate: "Forecast date",
+    targetHint: "The target compounds existing capital and adds the applicable planned savings rates and one-off deposits.",
+    targetUnavailable: "The target is unavailable because the portfolio start or opening holdings are not fully documented.",
     positions: "Positions", position: "Position", allPositions: "Whole wallet", currentPrice: "Current price",
     analysis: "Metrics and history", analysisFor: "Selection", analysisHint: "Metrics, value history, monthly/yearly summaries and transactions follow this selection.",
     editAliases: "Edit names", positionNames: "Display names", aliasHint: "Add short, recognizable names. The technical symbol remains visible for unambiguous identification.",
@@ -164,7 +174,7 @@ const CSS = `
   .alias-editor{margin:0 0 18px;padding:14px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px;background:color-mix(in srgb,var(--primary-color,#1878b5) 4%,var(--card-background-color,#fff))}.alias-editor h3{margin:0}.alias-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px 18px;margin:12px 0}.alias-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(120px,1fr);align-items:center;gap:10px}.alias-row input{width:100%;padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}tr.selected td{background:color-mix(in srgb,var(--primary-color,#1878b5) 8%,transparent)}
   .allocation-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);align-items:center;gap:24px}.donut{width:min(100%,280px);margin:auto}.allocation-name{display:inline-flex;align-items:center;gap:8px}.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;flex:0 0 auto}.details-title{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}.details-title .hint{font-weight:400}
   .notice{padding:12px 16px;background:color-mix(in srgb,var(--primary-color,#1878b5) 9%,var(--card-background-color,#fff));border-left:3px solid var(--primary-color,#1878b5);border-radius:5px;margin:12px 0}.warning{border-color:#c4851b;background:color-mix(in srgb,#e6ac37 12%,var(--card-background-color,#fff))}.error{border-color:#c63c45;background:color-mix(in srgb,#c63c45 9%,var(--card-background-color,#fff))}
-  svg{display:block;width:100%;height:auto;touch-action:pan-y;overflow:visible}.chart{min-width:260px}.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px}.legend span:before{content:'';display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:6px;background:var(--line)}.tip{font-variant-numeric:tabular-nums;min-height:30px;margin:10px 0}.scrub{width:100%;accent-color:#157bc0}
+  svg{display:block;width:100%;height:auto;touch-action:pan-y;overflow:visible}.chart{min-width:260px}.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px}.legend span:before{content:'';display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:6px;background:var(--line)}.legend span.target:before{background:repeating-linear-gradient(90deg,var(--line) 0 7px,transparent 7px 11px)}.tip{font-variant-numeric:tabular-nums;min-height:30px;margin:10px 0}.scrub{width:100%;accent-color:#157bc0}
   .tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--divider-color,#e4e9ef);white-space:nowrap}th{font-size:12px;color:var(--secondary-text-color,#57667a)}th.num,td.num{text-align:right}td .hint{display:block;font-size:12px;max-width:500px;overflow:hidden;text-overflow:ellipsis}.badge{font-size:11px;border-radius:4px;padding:2px 5px;background:color-mix(in srgb,#dfaa34 17%,transparent);margin-left:6px}.positive{color:var(--success-color,#208461)}.planlist{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.plan{padding:12px;border:1px solid var(--divider-color,#dce3eb);border-radius:8px}.plan h3{margin-top:0}
   .loading:before{content:'';display:inline-block;width:14px;height:14px;border:2px solid #9daec0;border-top-color:#1878b5;border-radius:50%;animation:spin .8s linear infinite;margin-right:9px;vertical-align:middle}@keyframes spin{to{transform:rotate(360deg)}}
   .negative{color:var(--error-color,#c63c45)}.inline-action{padding:4px 8px;background:transparent}.field{display:grid;gap:5px;margin:12px 0;max-width:620px}.field label{font-size:13px;color:var(--secondary-text-color,#57667a)}.field input,.field select{width:100%}.decision{padding:12px 0;border-bottom:1px solid var(--divider-color,#e4e9ef)}.decision select{margin-top:7px;min-width:min(100%,360px)}
@@ -199,6 +209,8 @@ class MyWalletPanel extends HTMLElement {
     this._period = "all";
     this._type = "all";
     this._cashLine = false;
+    this._targetLine = true;
+    this._forecastYears = 0;
     this._position = "all";
     this._summaryPeriod = "monthly";
     this._busy = false;
@@ -287,6 +299,7 @@ class MyWalletPanel extends HTMLElement {
     select.addEventListener("change", () => {
       this._selected = select.value;
       this._position = "all";
+      this._forecastYears = 0;
       this._aliasOpen = false;
       this._aliasDraft = null;
       this._history = null;
@@ -334,6 +347,7 @@ class MyWalletPanel extends HTMLElement {
     ];
     for (const [key, value] of values) this._stat(stats, this.t(key), value);
     main.append(stats);
+    if (!position) this._renderTargetSummary(main, wallet);
     this._renderAllocation(main, wallet);
     this._renderPositions(main, wallet);
     if (position) this._renderPositionDetails(main, position, wallet.currency);
@@ -366,12 +380,41 @@ class MyWalletPanel extends HTMLElement {
     }
     select.addEventListener("change", () => {
       this._position = select.value;
-      if (this._position !== "all") this._cashLine = false;
+      if (this._position !== "all") { this._cashLine = false; this._forecastYears = 0; }
       this._render();
     });
     label.append(node("span", this.t("analysisFor")), select);
     section.append(copy, node("div", null, "grow"), label);
     parent.append(section);
+  }
+  _renderTargetSummary(parent, wallet) {
+    const section = node("section", null, "card");
+    const controls = node("div", null, "controls");
+    controls.append(node("h2", this.t("targetComparison")), node("div", null, "grow"));
+    const forecast = node("label", this.t("forecast"));
+    const select = node("select");
+    for (const years of [0, 1, 3, 5, 10, 20]) {
+      const text = years ? `${years} ${this.t(years === 1 ? "forecastYear" : "forecastYears")}` : this.t("forecastToday");
+      const option = node("option", text);
+      option.value = String(years); option.selected = years === this._forecastYears; select.append(option);
+    }
+    select.disabled = wallet.target?.value == null;
+    select.addEventListener("change", () => { this._forecastYears = Number(select.value); if (this._forecastYears) this._period = "all"; this._render(); });
+    forecast.append(select); controls.append(forecast); section.append(controls);
+    const target = wallet.target || {};
+    if (target.value == null) {
+      this._notice(section, this.t("targetUnavailable"), "warning"); parent.append(section); return;
+    }
+    const forecastItem = this._forecastYears ? this._history?.target?.forecasts?.[String(this._forecastYears)] : { date: target.date, value: target.value };
+    const stats = node("div", null, "stats");
+    this._stat(stats, this.t("expectedReturn"), this.ratio(target.annual_return));
+    this._stat(stats, this._forecastYears ? this.t("forecastValue") : this.t("targetValue"), this.money(forecastItem?.value));
+    this._stat(stats, this.t("forecastDate"), this.day(forecastItem?.date));
+    if (!this._forecastYears) {
+      this._stat(stats, this.t("targetDeviation"), this.money(target.absolute_deviation));
+      this._stat(stats, `${this.t("targetDeviation")} (%)`, this.percent(target.percentage_deviation));
+    }
+    section.append(stats, node("p", this.t("targetHint"), "hint")); parent.append(section);
   }
   _renderAllocation(parent, wallet) {
     const section = node("section", null, "card");
@@ -631,16 +674,26 @@ class MyWalletPanel extends HTMLElement {
     const section = node("section", null, "card chart");
     section.append(node("h2", this._position === "all" ? this.t("history") : `${this.t("history")} · ${this._positionLabel(this._position)}`));
     const controls = node("div", null, "controls");
-    for (const key of ["all", "year", "six", "three"]) controls.append(button(this.t(key), () => { this._period = key; this._render(); }, this._period === key ? "active" : ""));
+    for (const key of ["all", "year", "six", "three"]) controls.append(button(this.t(key), () => { this._period = key; if (key !== "all") this._forecastYears = 0; this._render(); }, this._period === key ? "active" : ""));
     if (this._position === "all") {
       const cashLabel = node("label", this.t("cashChart")), cashCheck = node("input");
       cashCheck.type = "checkbox"; cashCheck.checked = this._cashLine;
       cashCheck.addEventListener("change", () => { this._cashLine = cashCheck.checked; this._render(); });
       cashLabel.prepend(cashCheck); controls.append(cashLabel);
+      if (this._history.target?.current_value != null) {
+        const targetLabel = node("label", this.t("targetLine")), targetCheck = node("input");
+        targetCheck.type = "checkbox"; targetCheck.checked = this._targetLine;
+        targetCheck.addEventListener("change", () => { this._targetLine = targetCheck.checked; this._render(); });
+        targetLabel.prepend(targetCheck); controls.append(targetLabel);
+      }
     }
     section.append(controls);
     const limit = { year: 366, six: 184, three: 93 }[this._period];
-    const source = limit ? this._history.points.slice(-limit) : this._history.points;
+    let source = limit ? this._history.points.slice(-limit) : this._history.points;
+    if (this._position === "all" && this._forecastYears && !limit && this._targetLine) {
+      const cutoff = this._history.target?.forecasts?.[String(this._forecastYears)]?.date;
+      source = [...source, ...(this._history.target_forecast || []).filter(point => !cutoff || point.date <= cutoff).map(point => ({ ...point, value: null, invested: null, cash: null }))];
+    }
     const points = this._position === "all" ? source : source.map(point => ({
       ...point,
       value: Object.hasOwn(point.positions || {}, this._position) ? point.positions[this._position] : 0,
@@ -648,18 +701,19 @@ class MyWalletPanel extends HTMLElement {
       cash: null,
     }));
     const showCash = this._cashLine && this._position === "all";
-    const keys = ["value", "invested", ...(showCash ? ["cash"] : [])];
-    const keyLabel = key => this._position === "all" ? this.t(key) : this.t(key === "value" ? "positionValue" : "purchaseCost");
-    const colors = { value: "#157bc0", invested: "#269e81", cash: "#c48925" };
+    const showTarget = this._targetLine && this._position === "all" && source.some(point => Number.isFinite(point.target));
+    const keys = ["value", "invested", ...(showTarget ? ["target"] : []), ...(showCash ? ["cash"] : [])];
+    const keyLabel = key => key === "target" ? `${this.t("targetValue")} · ${this.ratio(this._history.target?.annual_return)} ${this.t("perYear")}` : this._position === "all" ? this.t(key) : this.t(key === "value" ? "positionValue" : "purchaseCost");
+    const colors = { value: "#157bc0", invested: "#269e81", target: "#8b67c8", cash: "#c48925" };
     const legend = node("div", null, "legend");
-    for (const key of ["value", "invested"]) { const item = node("span", keyLabel(key)); item.style.setProperty("--line", colors[key]); legend.append(item); }
+    for (const key of ["value", "invested", ...(showTarget ? ["target"] : [])]) { const item = node("span", keyLabel(key), key === "target" ? "target" : ""); item.style.setProperty("--line", colors[key]); legend.append(item); }
     section.append(legend);
     if (!points.length) { this._notice(section, this.t("noRows")); parent.append(section); return; }
     parent.append(section);
     const padding = parseFloat(getComputedStyle(section).paddingLeft) * 2;
     const width = Math.max(240, Math.min(1000, section.clientWidth - padding));
     const currency = this._wallet().currency;
-    const groups = [{ keys: ["value", "invested"], height: width < 500 ? 260 : 310 }];
+    const groups = [{ keys: ["value", "invested", ...(showTarget ? ["target"] : [])], height: width < 500 ? 260 : 310 }];
     if (showCash) groups.push({ keys: ["cash"], height: width < 500 ? 155 : 175 });
     for (const group of groups) {
       group.scale = currencyScale(points.flatMap(point => group.keys.map(key => point[key])), currency);
@@ -669,7 +723,9 @@ class MyWalletPanel extends HTMLElement {
     canvas.font = "12px system-ui";
     const labelWidth = Math.max(...groups.flatMap(group => group.labels.map(label => canvas.measureText(label).width)));
     const left = Math.min(width * .43, Math.max(60, labelWidth + 14)), right = width - 12;
-    const x = index => left + index / Math.max(1, points.length - 1) * (right - left);
+    const times = points.map(point => Date.parse(`${point.date}T00:00:00Z`));
+    const firstTime = times[0], lastTime = times[times.length - 1];
+    const x = index => left + (times[index] - firstTime) / Math.max(1, lastTime - firstTime) * (right - left);
     const cursors = [], svgs = [];
     groups.forEach((group, groupIndex) => {
       const { scale, height } = group, top = 14, bottom = height - 36;
@@ -694,13 +750,13 @@ class MyWalletPanel extends HTMLElement {
         let path = "", active = false;
         points.forEach((point, index) => {
           if (!Number.isFinite(point[key])) { active = false; return; }
-          path += !active ? `M${x(index)} ${y(point[key])}` : key === "value" ? `L${x(index)} ${y(point[key])}` : `H${x(index)}V${y(point[key])}`;
+          path += !active ? `M${x(index)} ${y(point[key])}` : ["value", "target"].includes(key) ? `L${x(index)} ${y(point[key])}` : `H${x(index)}V${y(point[key])}`;
           active = true;
           if (!Number.isFinite(points[index - 1]?.[key]) && !Number.isFinite(points[index + 1]?.[key])) {
             svg.append(svgNode("circle", { cx: x(index), cy: y(point[key]), r: 3, fill: colors[key] }));
           }
         });
-        svg.append(svgNode("path", { d: path, fill: "none", stroke: colors[key], "stroke-width": 2.5, "stroke-linejoin": "round", "vector-effect": "non-scaling-stroke" }));
+        svg.append(svgNode("path", { d: path, fill: "none", stroke: colors[key], "stroke-width": 2.5, "stroke-linejoin": "round", "vector-effect": "non-scaling-stroke", ...(key === "target" ? { "stroke-dasharray": "7 5" } : {}) }));
       }
       const cursor = svgNode("line", { x1: right, x2: right, y1: top, y2: bottom, stroke: "var(--secondary-text-color,#66788a)", "stroke-dasharray": "4 5" });
       svg.append(cursor); cursors.push(cursor); svgs.push(svg); section.append(svg);
@@ -720,7 +776,11 @@ class MyWalletPanel extends HTMLElement {
     for (const svg of svgs) svg.addEventListener("pointermove", event => {
       const rectangle = svg.getBoundingClientRect();
       const fraction = ((event.clientX - rectangle.left) / rectangle.width * width - left) / (right - left);
-      show(Math.max(0, Math.min(points.length - 1, Math.round(fraction * (points.length - 1)))));
+      const targetTime = firstTime + Math.max(0, Math.min(1, fraction)) * (lastTime - firstTime);
+      let low = 0, high = times.length - 1;
+      while (low < high) { const middle = Math.floor((low + high) / 2); if (times[middle] < targetTime) low = middle + 1; else high = middle; }
+      const previous = Math.max(0, low - 1), nearest = Math.abs(times[low] - targetTime) < Math.abs(times[previous] - targetTime) ? low : previous;
+      show(nearest);
     });
     const selected = points.findIndex(point => point.date === this._chartDate);
     show(selected < 0 ? points.length - 1 : selected);

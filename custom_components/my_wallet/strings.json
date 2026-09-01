@@ -7,7 +7,8 @@
         "data": {
           "wallet_name": "Wallet name",
           "base_currency": "Base currency (wallet total is shown in this currency)",
-          "scan_interval": "Update interval (minutes)"
+          "scan_interval": "Update interval (minutes)",
+          "expected_annual_return": "Expected annual return for the compound target (%)"
         }
       },
       "valor": {
@@ -38,7 +39,7 @@
       "init": {
         "title": "Manage wallet",
         "menu_options": {
-          "settings": "Edit wallet settings (name, currency, interval)",
+          "settings": "Edit wallet settings (name, currency, interval, target return)",
           "add_contribution": "Add a dated contribution",
           "add_lot": "Import a historical purchase lot",
           "edit_contribution": "Edit a contribution",
@@ -62,7 +63,8 @@
         "data": {
           "wallet_name": "Wallet name",
           "base_currency": "Base currency",
-          "scan_interval": "Update interval (minutes)"
+          "scan_interval": "Update interval (minutes)",
+          "expected_annual_return": "Expected annual return for the compound target (%)"
         }
       },
       "add_contribution": {
@@ -406,6 +408,9 @@
       },
       "wallet_money_weighted_return": {
         "name": "Money-weighted return"
+      },
+      "wallet_target_value": {
+        "name": "Compound target"
       },
       "wallet_cash_balance": {
         "name": "Cash balance"

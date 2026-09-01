@@ -7,7 +7,8 @@
         "data": {
           "wallet_name": "Depotname",
           "base_currency": "Basiswährung (in dieser Währung wird der Depotwert angezeigt)",
-          "scan_interval": "Aktualisierungsintervall (Minuten)"
+          "scan_interval": "Aktualisierungsintervall (Minuten)",
+          "expected_annual_return": "Erwartete Jahresrendite für den Zinseszins-Sollwert (%)"
         }
       },
       "valor": {
@@ -38,7 +39,7 @@
       "init": {
         "title": "Depot verwalten",
         "menu_options": {
-          "settings": "Depoteinstellungen bearbeiten",
+          "settings": "Depoteinstellungen und Vorgaberendite bearbeiten",
           "add_contribution": "Datierte Einzahlung hinzufügen",
           "add_lot": "Historische Kauftranche erfassen",
           "edit_contribution": "Einzahlung bearbeiten",
@@ -62,7 +63,8 @@
         "data": {
           "wallet_name": "Depotname",
           "base_currency": "Basiswährung",
-          "scan_interval": "Aktualisierungsintervall (Minuten)"
+          "scan_interval": "Aktualisierungsintervall (Minuten)",
+          "expected_annual_return": "Erwartete Jahresrendite für den Zinseszins-Sollwert (%)"
         }
       },
       "add_contribution": {
@@ -406,6 +408,9 @@
       },
       "wallet_money_weighted_return": {
         "name": "Geldgewichtete Rendite"
+      },
+      "wallet_target_value": {
+        "name": "Zinseszins-Sollwert"
       },
       "wallet_cash_balance": {
         "name": "Verrechnungskonto"

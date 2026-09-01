@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.6.0
+
+- Add a configurable expected annual return per wallet, defaulting to 7% and
+  editable in the normal wallet settings without changing transactions,
+  holdings or savings plans.
+- Calculate a compound-return target from the documented wallet start. The
+  target uses one-off deposits and the historically applicable planned savings
+  rates, includes due plan payments, combines multiple plans and respects rate
+  changes, pauses, end dates and explicitly skipped months without double
+  counting booked executions.
+- Add a monetary compound-target sensor with the geometrically derived monthly
+  return, wallet start, actual wallet value and absolute/percentage deviation
+  as attributes. The actual comparison includes settlement cash.
+- Show a dismissible dashed target curve and a target-comparison card in the
+  administrator dashboard. Forecast the same curve 1, 3, 5, 10 or 20 years
+  ahead; open-ended active plans continue while ended plans stop on schedule.
+- Keep dividends out of target cash flows because the configured expected
+  return is treated as a total-return assumption. Leave the target unavailable
+  when a legacy opening balance or wallet start cannot be documented instead
+  of inventing a starting value.
+- Preserve the expected return in complete JSON backups and add calculation,
+  plan-history, forecast, dashboard and options regressions.
+
 ## 1.5.0
 
 - Add a portfolio-allocation card with a current-value donut, actual shares,

@@ -5,10 +5,38 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.5.0 requires **Home Assistant 2026.8 or newer**.
+Version 1.6.0 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.6.0: compound target and future forecast
+
+Each wallet now has an **expected annual return**, set to 7% by default and
+editable under **Configure → Edit wallet settings**. My Wallet derives the
+geometric monthly and daily rates and builds an ideal compound-return target
+from the documented wallet start. Changing the expected return recalculates
+only the target; it never changes transactions, units, plans or market values.
+
+The target uses the historically applicable savings-plan amount for each month,
+including a payment that is already due but not yet booked. Multiple plans are
+added together. Historical rate changes, pauses, end dates and explicitly
+skipped months are respected, and an existing automatic execution is not
+counted twice. Manual one-off deposits enter on their actual dates. Dividends
+are not added separately because the expected return is treated as a total
+return assumption.
+
+The administrator dashboard compares today's target with the real wallet total,
+including settlement cash. Its dashed target curve can be hidden. A forecast
+selector continues that same curve for 1, 3, 5, 10 or 20 years; active plans
+without an end date continue through the selected horizon. The new compound
+target sensor exposes the expected annual and derived monthly return, documented
+start date, actual value and absolute/percentage deviation.
+
+My Wallet leaves the target unavailable when an old opening holding or wallet
+start is not documented reliably. It does not guess a starting date or value.
+The target and forecast are mathematical scenarios, not guaranteed returns or
+investment advice.
 
 ## 1.5.0: allocation, purchase details and complete backups
 
@@ -101,6 +129,9 @@ prepared import files are never part of the public source package.
   indices (^DJI), funds, etc.
 - **Per-wallet update schedule** — configurable update interval
   (5–1440 minutes) for each wallet independently.
+- **Compound target and forecast** — configure an expected annual return per
+  wallet, compare the real total with an ideal target and extend the same curve
+  up to 20 years using the applicable savings-plan history.
 - **Currency conversion** — each wallet has a base currency; valors quoted in
   a foreign currency are converted using live Yahoo FX rates
   (e.g. `USDPLN=X`).
@@ -129,7 +160,8 @@ prepared import files are never part of the public source package.
   to see how far its actual share deviates from the target, plus a rebalancing
   hint in the base currency.
 - **Sensors** — value and performance sensors per valor plus wallet totals,
-  profit, XIRR and the next savings-plan execution, grouped under one device.
+  profit, XIRR, compound target and the next savings-plan execution, grouped
+  under one device.
 - **`my_wallet.refresh` service** — force an immediate update of selected
   wallets without waiting for the schedule.
 - **Translations** — English, German, Polish, and Czech.
@@ -216,6 +248,7 @@ your Home Assistant configuration and restart.
    - **Wallet name**
    - **Base currency** — currency the wallet total is displayed in
    - **Update interval** — minutes between Yahoo Finance updates
+   - **Expected annual return** — target/forecast assumption in percent
 3. Add valors: enter the **Yahoo Finance symbol** and the **opening amount** of
    units you already hold. Tracked savings-plan purchases are added to this
    opening balance automatically. Optionally enter a **target share (%)** — the percent of the
@@ -226,7 +259,7 @@ your Home Assistant configuration and restart.
 
 Open the config entry and click **Configure** to:
 
-- edit wallet settings (name, base currency, update interval),
+- edit wallet settings (name, base currency, update interval, expected return),
 - add, edit, or remove dated contributions in the wallet's base currency,
 - import historical purchases one tranche at a time, using a Yahoo close or a
   manually entered effective price when Yahoo has no history; select an
@@ -273,6 +306,7 @@ to the wallet base currency when an exchange rate is available.
 | `sensor.<wallet>_profit` | `total − invested` | `invested`, `total`, contribution attributes |
 | `sensor.<wallet>_profit_pct` | profit as % of the invested amount | `invested`, `total`, contribution attributes |
 | `sensor.<wallet>_money_weighted_return` | annual money-weighted wallet return (XIRR) | `invested`, `total`, `method` |
+| `sensor.<wallet>_target_value` | today's compound target in the base currency | `expected_annual_return`, `monthly_return`, `wallet_start_date`, `actual_value`, `absolute_deviation`, `percentage_deviation`, `calculation_basis` |
 | `sensor.<wallet>_next_execution` | next scheduled date on or after today | plans, allocations, `pending_count`, pending reasons and last processing result |
 
 The wallet total is the market value of all securities plus the settlement

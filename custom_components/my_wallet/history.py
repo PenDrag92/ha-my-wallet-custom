@@ -15,6 +15,7 @@ from .contributions import (
     opening_balance_conflicts,
 )
 from .dividends import dividends_from_data
+from .target import FORECAST_YEARS, add_years, target_projection, target_series
 from .yahoo import HistoricalQuote, fetch_histories, fx_symbol
 
 MAX_HISTORY_DAYS = 3653
@@ -143,6 +144,9 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
     cash = invested = 0.0
     pointer = 0
     points = []
+    forecast_through = add_years(today, max(FORECAST_YEARS))
+    projection = target_projection(data, through=forecast_through)
+    target_values = target_series(projection, start=start, through=forecast_through)
     base = data[c.CONF_BASE_CURRENCY]
     day = start
     missing = set()
@@ -195,6 +199,7 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
                     for symbol in position_values
                 },
                 "baseline": can_start_at_zero and day == start,
+                "target": target_values.get(day.isoformat()),
             }
         )
         day += timedelta(days=1)
@@ -206,6 +211,29 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
         "opening_conflicts": conflicts,
         "missing_history": sorted(missing),
         "range_limited": range_limited,
+        "target": {
+            "annual_return": projection.annual_return,
+            "monthly_return": projection.monthly_return,
+            "start_date": (
+                projection.start_date.isoformat() if projection.start_date else None
+            ),
+            "date": today.isoformat(),
+            "current_value": target_values.get(today.isoformat()),
+            "unavailable_reason": projection.unavailable_reason,
+            "calculation_basis": "planned_savings_rates",
+            "forecasts": {
+                str(years): {
+                    "date": add_years(today, years).isoformat(),
+                    "value": target_values.get(add_years(today, years).isoformat()),
+                }
+                for years in FORECAST_YEARS
+            },
+        },
+        "target_forecast": [
+            {"date": forecast_day, "target": value}
+            for forecast_day, value in target_values.items()
+            if forecast_day > today.isoformat()
+        ],
     }
     result["summaries"] = {
         "wallet": period_summaries(points, events),

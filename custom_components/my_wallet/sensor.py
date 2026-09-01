@@ -23,8 +23,11 @@ from . import MyWalletConfigEntry
 from .const import (
     ALLOCATION_SYMBOL,
     ALLOCATION_VALUE,
+    ATTR_ABSOLUTE_DEVIATION,
+    ATTR_ACTUAL_VALUE,
     ATTR_AMOUNT,
     ATTR_ANNUALIZED_PERFORMANCE_PCT,
+    ATTR_CALCULATION_BASIS,
     ATTR_CASH_BALANCE,
     ATTR_CONTRIBUTION_COUNT,
     ATTR_CONTRIBUTIONS,
@@ -33,14 +36,17 @@ from .const import (
     ATTR_DIVIDEND_COUNT,
     ATTR_DIVIDEND_TOTAL,
     ATTR_DIVIDENDS,
+    ATTR_EXPECTED_ANNUAL_RETURN,
     ATTR_FIRST_CONTRIBUTION_DATE,
     ATTR_FX_RATE,
     ATTR_INVESTED,
     ATTR_LAST_CONTRIBUTION_DATE,
     ATTR_LOTS,
+    ATTR_MONTHLY_RETURN,
     ATTR_NEXT_EXECUTION_DATE,
     ATTR_OPENING_UNITS,
     ATTR_PENDING_EXECUTIONS,
+    ATTR_PERCENTAGE_DEVIATION,
     ATTR_PERFORMANCE_PCT,
     ATTR_PREVIOUS_CLOSE,
     ATTR_PROFIT,
@@ -59,6 +65,7 @@ from .const import (
     ATTR_TRACKED_VALUE,
     ATTR_UNIT_PRICE,
     ATTR_VALUE,
+    ATTR_WALLET_START_DATE,
     CONF_LAST_PLAN_RESULT,
     CONF_SAVINGS_PLANS,
     CONF_VALORS,
@@ -114,6 +121,7 @@ from .dividends import (
 )
 from .models import ValorData, WalletData
 from .plans import next_due_date, normalize_plan
+from .target import target_deviation, target_projection
 
 _REFRESH_SCHEMA: dict[str, Any] = {}
 
@@ -279,6 +287,7 @@ async def async_setup_entry(
         WalletProfitSensor(coordinator, entry),
         WalletProfitPctSensor(coordinator, entry),
         WalletMoneyWeightedReturnSensor(coordinator, entry),
+        WalletTargetValueSensor(coordinator, entry),
         WalletCashBalanceSensor(coordinator, entry),
         WalletDividendSensor(coordinator, entry),
         WalletNextExecutionSensor(coordinator, entry),
@@ -325,6 +334,7 @@ def _cleanup_orphaned_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
             f"{entry.entry_id}_profit",
             f"{entry.entry_id}_profit_pct",
             f"{entry.entry_id}_money_weighted_return",
+            f"{entry.entry_id}_target_value",
             f"{entry.entry_id}_cash_balance",
             f"{entry.entry_id}_dividends",
             f"{entry.entry_id}_next_execution",
@@ -627,6 +637,53 @@ class WalletTotalSensor(WalletBaseSensor):
             "unavailable_valors": sorted(
                 symbol for symbol, valor in data.valors.items() if not valor.available
             ),
+        }
+
+
+class WalletTargetValueSensor(WalletBaseSensor):
+    """Today's compound-return target for the configured savings path."""
+
+    _attr_icon = "mdi:bullseye-arrow"
+
+    def __init__(self, coordinator: WalletCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_target_value"
+        self._attr_translation_key = "wallet_target_value"
+
+    @property
+    def _projection(self):
+        return target_projection(self._entry.data, through=dt_util.now().date())
+
+    @property
+    def native_value(self) -> float | None:
+        value = self._projection.value
+        return round(value, 2) if value is not None else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._projection.value is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        projection = self._projection
+        actual = self.coordinator.data.total
+        absolute, percentage = target_deviation(actual, projection.value)
+        return {
+            ATTR_EXPECTED_ANNUAL_RETURN: projection.annual_return,
+            ATTR_MONTHLY_RETURN: round(projection.monthly_return, 6),
+            ATTR_WALLET_START_DATE: (
+                projection.start_date.isoformat() if projection.start_date else None
+            ),
+            ATTR_ACTUAL_VALUE: round(actual, 2) if actual is not None else None,
+            ATTR_ABSOLUTE_DEVIATION: (
+                round(absolute, 2) if absolute is not None else None
+            ),
+            ATTR_PERCENTAGE_DEVIATION: (
+                round(percentage, 2) if percentage is not None else None
+            ),
+            ATTR_CALCULATION_BASIS: "planned_savings_rates",
+            "cash_flow_count": len(projection.cash_flows),
+            "unavailable_reason": projection.unavailable_reason,
         }
 
 

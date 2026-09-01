@@ -61,6 +61,7 @@ def wallet_data() -> dict:
         c.CONF_WALLET_NAME: "Long-term wallet",
         c.CONF_BASE_CURRENCY: "EUR",
         c.CONF_SCAN_INTERVAL: 30,
+        c.CONF_EXPECTED_ANNUAL_RETURN: 6.5,
         c.CONF_VALORS: [
             {
                 c.VALOR_SYMBOL: "AAA",
@@ -117,6 +118,7 @@ class BackupTests(unittest.TestCase):
         )
         self.assertEqual(restored[c.CONF_DIVIDENDS], original[c.CONF_DIVIDENDS])
         self.assertEqual(restored[c.CONF_SAVINGS_PLANS], original[c.CONF_SAVINGS_PLANS])
+        self.assertEqual(restored[c.CONF_EXPECTED_ANNUAL_RETURN], 6.5)
         self.assertEqual(restored[IMPORT_LINKS], original[IMPORT_LINKS])
         self.assertEqual(restored[UNIT_CORRECTIONS], original[UNIT_CORRECTIONS])
         self.assertEqual(restored[BACKUP_RESTORE_ID], document["backup_id"])

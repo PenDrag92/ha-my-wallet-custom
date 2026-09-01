@@ -177,6 +177,9 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         wallet = connection.results[0][1]["wallets"][0]
         position = wallet["positions"][0]
         self.assertEqual(wallet["start_date"], "2026-01-15")
+        self.assertEqual(wallet["target"]["start_date"], "2026-01-15")
+        self.assertEqual(wallet["target"]["annual_return"], 7)
+        self.assertIsNotNone(wallet["target"]["absolute_deviation"])
         self.assertEqual(position["start_date"], "2026-01-15")
         self.assertAlmostEqual(position["share"], 120 / 140 * 100)
         self.assertEqual(position["lots"][0]["purchase_price"], 10)
@@ -210,6 +213,8 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
 
         wallet = connection.results[0][1]["wallets"][0]
         self.assertIsNone(wallet["start_date"])
+        self.assertIsNone(wallet["target"]["value"])
+        self.assertEqual(wallet["target"]["unavailable_reason"], "unknown_start")
         self.assertIsNone(wallet["positions"][0]["start_date"])
 
     def test_backup_endpoint_returns_a_versioned_detached_document(self):

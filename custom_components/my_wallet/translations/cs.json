@@ -7,7 +7,8 @@
         "data": {
           "wallet_name": "Název peněženky",
           "base_currency": "Základní měna (celková hodnota peněženky se zobrazuje v této měně)",
-          "scan_interval": "Interval aktualizace (minuty)"
+          "scan_interval": "Interval aktualizace (minuty)",
+          "expected_annual_return": "Očekávaný roční výnos pro složený cíl (%)"
         }
       },
       "valor": {
@@ -38,7 +39,7 @@
       "init": {
         "title": "Spravovat peněženku",
         "menu_options": {
-          "settings": "Nastavení peněženky (název, měna, interval)",
+          "settings": "Nastavení peněženky a očekávaného výnosu",
           "add_contribution": "Přidat datovaný vklad",
           "add_lot": "Importovat historickou nákupní tranši",
           "edit_contribution": "Upravit vklad",
@@ -62,7 +63,8 @@
         "data": {
           "wallet_name": "Název peněženky",
           "base_currency": "Základní měna",
-          "scan_interval": "Interval aktualizace (minuty)"
+          "scan_interval": "Interval aktualizace (minuty)",
+          "expected_annual_return": "Očekávaný roční výnos pro složený cíl (%)"
         }
       },
       "add_contribution": {
@@ -406,6 +408,9 @@
       },
       "wallet_money_weighted_return": {
         "name": "Peněžně vážený výnos"
+      },
+      "wallet_target_value": {
+        "name": "Cíl složeného výnosu"
       },
       "wallet_cash_balance": {
         "name": "Hotovost"
