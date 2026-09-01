@@ -239,8 +239,7 @@ def ws_position_aliases(hass, connection, msg):
     symbols = {item[c.VALOR_SYMBOL] for item in entry.data[c.CONF_VALORS]}
     raw_aliases = msg["aliases"]
     if any(
-        not isinstance(symbol, str) or symbol not in symbols
-        for symbol in raw_aliases
+        not isinstance(symbol, str) or symbol not in symbols for symbol in raw_aliases
     ):
         connection.send_error(msg["id"], "invalid_alias", "Unknown position")
         return

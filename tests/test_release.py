@@ -117,11 +117,7 @@ class ReleaseTests(unittest.TestCase):
         self,
     ) -> None:
         source = (
-            ROOT
-            / "custom_components"
-            / "my_wallet"
-            / "frontend"
-            / "my-wallet-panel.js"
+            ROOT / "custom_components" / "my_wallet" / "frontend" / "my-wallet-panel.js"
         ).read_text(encoding="utf-8")
         self.assertLess(
             source.index("this._renderPositionSelection(main, wallet);"),
