@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import calendar
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -27,7 +27,9 @@ from .plans import (
 
 _DAYS_PER_YEAR = 365.2425
 _UNIT_TOLERANCE = 1e-8
-FORECAST_YEARS = (1, 3, 5, 10, 20)
+FORECAST_YEARS = (1, 3, 5, 10, 20, 30)
+MIN_FORECAST_YEARS = 1
+MAX_FORECAST_YEARS = 50
 
 
 @dataclass(frozen=True)
@@ -325,6 +327,49 @@ def target_contribution_series(
             break
         contributed += grouped.get(day, 0.0)
     return values
+
+
+def target_snapshots(
+    projection: TargetProjection, dates: Iterable[date]
+) -> dict[str, dict[str, float]]:
+    """Return exact target and contribution values for selected dates.
+
+    Long forecasts use monthly samples and savings-plan dates in the dashboard.
+    Evaluating those dates directly keeps the result exact without constructing
+    decades of daily points.
+    """
+    if projection.value is None or projection.start_date is None:
+        return {}
+
+    requested = sorted(set(dates))
+    if not requested:
+        return {}
+
+    start = projection.start_date
+    flows = tuple(flow for flow in projection.cash_flows if flow.date >= start)
+    flow_index = 0
+    value = 0.0
+    contributed = 0.0
+    previous = start
+    snapshots: dict[str, dict[str, float]] = {}
+
+    for through in requested:
+        if through < start:
+            snapshots[through.isoformat()] = {"value": 0.0, "contributions": 0.0}
+            continue
+        while flow_index < len(flows) and flows[flow_index].date <= through:
+            flow = flows[flow_index]
+            value *= projection.daily_factor ** (flow.date - previous).days
+            value += flow.amount
+            contributed += flow.amount
+            previous = flow.date
+            flow_index += 1
+        current = value * projection.daily_factor ** (through - previous).days
+        snapshots[through.isoformat()] = {
+            "value": round(current, 2),
+            "contributions": round(contributed, 2),
+        }
+    return snapshots
 
 
 def target_contributed_capital(

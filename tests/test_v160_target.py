@@ -29,6 +29,7 @@ from custom_components.my_wallet.target import (  # noqa: E402
     target_deviation,
     target_projection,
     target_series,
+    target_snapshots,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -230,6 +231,26 @@ class TargetCalculationTests(unittest.TestCase):
         )
         self.assertEqual(contributions[through.isoformat()], 4_500)
 
+    def test_selected_snapshots_match_daily_values_without_daily_decades(self) -> None:
+        data = wallet(
+            contributions=[make_contribution(100, "2026-01-01")],
+            plans=[plan("monthly", "2026-02-01", 100)],
+        )
+        through = date(2027, 9, 17)
+        projection = target_projection(data, through=through)
+
+        daily = target_series(projection, start=date(2026, 1, 1), through=through)
+        contributions = target_contribution_series(
+            projection, start=date(2026, 1, 1), through=through
+        )
+        selected = target_snapshots(
+            projection, [date(2026, 1, 1), date(2026, 9, 17), through]
+        )
+
+        for key, snapshot in selected.items():
+            self.assertEqual(snapshot["value"], daily[key])
+            self.assertEqual(snapshot["contributions"], contributions[key])
+
     def test_deviation_uses_actual_minus_target(self) -> None:
         absolute, percentage = target_deviation(110, 100)
         self.assertEqual(absolute, 10)
@@ -325,9 +346,9 @@ class TargetHistoryTests(unittest.TestCase):
         self.assertEqual(
             history["points"][-1]["target"], history["target"]["current_value"]
         )
-        self.assertEqual(history["target"]["forecasts"]["20"]["date"], "2046-09-01")
-        self.assertEqual(history["target_forecast"][-1]["date"], "2046-09-01")
-        self.assertEqual(history["target_forecast"][-1]["invested"], 24_200)
+        self.assertEqual(history["target"]["forecasts"]["30"]["date"], "2056-09-01")
+        self.assertEqual(history["target_forecast"][-1]["date"], "2056-09-01")
+        self.assertEqual(history["target_forecast"][-1]["invested"], 36_200)
         self.assertEqual(history["target"]["contributions"], 200)
         self.assertEqual(
             history["target"]["growth"],
@@ -337,6 +358,20 @@ class TargetHistoryTests(unittest.TestCase):
         self.assertEqual(forecast["contributions"], 24_200)
         self.assertEqual(forecast["additional_contributions"], 24_000)
         self.assertEqual(forecast["growth"], round(forecast["value"] - 24_200, 2))
+
+    def test_custom_forecast_extends_to_fifty_years_with_compact_samples(self) -> None:
+        data = wallet(
+            contributions=[make_contribution(100, "2026-08-01")],
+            plans=[plan("monthly", "2026-09-01", 100)],
+        )
+
+        history = build_history(data, {}, today=date(2026, 9, 1), forecast_years=50)
+
+        forecast = history["target"]["forecasts"]["50"]
+        self.assertEqual(forecast["date"], "2076-09-01")
+        self.assertEqual(forecast["contributions"], 60_200)
+        self.assertEqual(history["target_forecast"][-1]["date"], "2076-09-01")
+        self.assertLessEqual(len(history["target_forecast"]), 1_200)
 
 
 class TargetDashboardTests(unittest.TestCase):
@@ -353,7 +388,11 @@ class TargetDashboardTests(unittest.TestCase):
             'forecastAllocation: "Prognostizierte Depotaufteilung"',
             'forecastAllocationHint: "Mathematische Hochrechnung',
             'portfolioForecast: "Depotprognose"',
-            "for (const years of [0, 1, 3, 5, 10, 20])",
+            "const presets = [0, 1, 3, 5, 10, 20, 30]",
+            'forecastCustom: "Benutzerdefiniert"',
+            'input.max = "50"',
+            'navData: "Buchungen & Daten"',
+            "this._renderNavigation(main)",
             '"stats target-stats"',
             'stats.classList.add("overview-stats")',
             "wallet.target?.allocation_forecasts",

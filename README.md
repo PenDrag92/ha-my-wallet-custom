@@ -5,10 +5,29 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.6.1 requires **Home Assistant 2026.8 or newer**.
+Version 1.7.0 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.7.0: flexible forecasts and a shorter dashboard
+
+The administrator dashboard is divided into **Overview**, **Positions**,
+**History** and **Transactions & data** tabs. The selected wallet and position
+stay active when moving between tabs, and the last tab is remembered in the
+current browser.
+
+Forecasts now include a 30-year preset and a **Custom** option for any whole
+number from 1 to 50 years. The chosen date drives the target breakdown,
+portfolio continuation, allocation and projected position values together.
+Historical values remain daily. Long future curves use exact monthly samples
+and savings-plan execution dates so a 50-year view stays compact and responsive.
+
+For a planned increase such as an additional EUR 300 per month, add a second
+monthly savings plan and set its first execution to the month in which the
+increase starts. Keep the existing plan unchanged. The forecast automatically
+combines both plans from that date; each plan can keep its own allocation and
+can later be paused or ended independently.
 
 ## 1.6.1: target composition
 
@@ -356,6 +375,12 @@ Open **Configure → Add a monthly savings plan** and enter:
 2. either a total monthly amount with percentage allocations summing to 100%,
    or fixed base-currency amounts per valor,
 3. one or more Yahoo symbols already configured in the wallet.
+
+To schedule a future increase without rewriting the existing plan, create a
+second plan for the additional amount and use the intended month as its first
+execution date. For example, keep the current plan and add another EUR 300 plan
+starting on the planned change date. The forecast combines both plans from then
+on, while their allocations, pauses and end dates remain independent.
 
 If the configured opening units already contain past plan purchases, enable
 **Earlier plan purchases are already included in the opening balance** and

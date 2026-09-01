@@ -1,5 +1,5 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.6.1";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.7.0";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -30,7 +30,7 @@ const WORDS = {
     performance: "Performance", profit: "Gewinn / Verlust", annualReturn: "Geldgewichtete Rendite p. a.",
     targetComparison: "Soll-Ist-Vergleich", expectedReturn: "Vorgaberendite p. a.", targetValue: "Zinseszins-Sollwert",
     targetDeviation: "Abweichung zum Soll", targetLine: "Sollkurve anzeigen", forecast: "Prognosehorizont",
-    forecastToday: "heute", forecastYear: "Jahr", forecastYears: "Jahre", perYear: "p. a.", forecastValue: "Prognostizierter Sollwert", forecastDate: "Prognosedatum",
+    forecastToday: "heute", forecastYear: "Jahr", forecastYears: "Jahre", forecastCustom: "Benutzerdefiniert", forecastCustomYears: "Jahre (1–50)", apply: "Anwenden", perYear: "p. a.", forecastValue: "Prognostizierter Sollwert", forecastDate: "Prognosedatum",
     targetContributions: "Einzahlungen bis dahin", futureContributions: "Davon ab heute geplant", targetGrowth: "Erwarteter Wertzuwachs", currentTargetDeviation: "Aktuelle Abweichung zum Soll", portfolioForecast: "Depotprognose", forecastInvested: "Einzahlungen inkl. Planung",
     targetHint: "Die Einzahlungen kombinieren gebuchte Einmalzahlungen mit den jeweils vorgesehenen Sparraten. Der erwartete Wertzuwachs ist der Sollwert abzüglich dieser Einzahlungen.",
     targetUnavailable: "Der Sollwert ist nicht verfügbar, weil Depotstart oder Anfangsbestand nicht vollständig dokumentiert sind.",
@@ -55,7 +55,7 @@ const WORDS = {
     correction_negative_units: "Die Korrektur würde einen negativen oder leeren Kaufbestand erzeugen.",
     invalid_correction: "Die Anteilskorrektur ist ungültig. Es wurde nichts gespeichert.",
     entry_changed: "Das Depot wurde zwischenzeitlich geändert. Bitte die Vorschau neu erstellen.",
-    overview: "Übersicht", monthlyOverview: "Monate", yearlyOverview: "Jahre", period: "Zeitraum",
+    overview: "Übersicht", navOverview: "Übersicht", navPositions: "Positionen", navHistory: "Verlauf", navData: "Buchungen & Daten", monthlyOverview: "Monate", yearlyOverview: "Jahre", period: "Zeitraum",
     endValue: "Endwert", returnLabel: "Rendite", summaryHint: "Renditen werden aus den Tageswerten nach Zu- und Abflüssen verkettet. Bei fehlenden Kursen oder einem unbekannten Anfangswert bleibt das Ergebnis leer.",
     positionValue: "Positionswert", followup: "Bestehendes Depot abgleichen", createNew: "Neues Depot erstellen", depositsLabel: "Einzahlungen",
     importMode: "Importziel", followupHint: "Der Folgeimport wird zuerst mit dem gewählten Depot abgeglichen. Bereits vorhandene Buchungen werden nicht doppelt angelegt; geschützte Abweichungen benötigen deine Entscheidung.",
@@ -110,7 +110,7 @@ const WORDS = {
     performance: "Performance", profit: "Gain / loss", annualReturn: "Money-weighted return p.a.",
     targetComparison: "Target comparison", expectedReturn: "Expected return p.a.", targetValue: "Compound target",
     targetDeviation: "Difference from target", targetLine: "Show target curve", forecast: "Forecast horizon",
-    forecastToday: "today", forecastYear: "year", forecastYears: "years", perYear: "p.a.", forecastValue: "Forecast target", forecastDate: "Forecast date",
+    forecastToday: "today", forecastYear: "year", forecastYears: "years", forecastCustom: "Custom", forecastCustomYears: "Years (1–50)", apply: "Apply", perYear: "p.a.", forecastValue: "Forecast target", forecastDate: "Forecast date",
     targetContributions: "Contributions through this date", futureContributions: "Planned from today", targetGrowth: "Expected growth", currentTargetDeviation: "Current difference from target", portfolioForecast: "Portfolio forecast", forecastInvested: "Contributions including plan",
     targetHint: "Contributions combine booked one-off deposits with the applicable planned savings rates. Expected growth is the target value minus those contributions.",
     targetUnavailable: "The target is unavailable because the portfolio start or opening holdings are not fully documented.",
@@ -135,7 +135,7 @@ const WORDS = {
     correction_negative_units: "The correction would create a negative or empty purchase holding.",
     invalid_correction: "The unit correction is invalid. Nothing was saved.",
     entry_changed: "The wallet changed in the meantime. Prepare a fresh preview.",
-    overview: "Overview", monthlyOverview: "Months", yearlyOverview: "Years", period: "Period",
+    overview: "Overview", navOverview: "Overview", navPositions: "Positions", navHistory: "History", navData: "Transactions & data", monthlyOverview: "Months", yearlyOverview: "Years", period: "Period",
     endValue: "End value", returnLabel: "Return", summaryHint: "Returns link daily values after cash flows. Missing quotes or an unknown opening value leave the result unavailable.",
     positionValue: "Position value", followup: "Reconcile existing wallet", createNew: "Create new wallet", depositsLabel: "Deposits",
     importMode: "Import target", followupHint: "The follow-up import is reconciled with the selected wallet first. Existing transactions are not duplicated; protected differences require your decision.",
@@ -173,6 +173,7 @@ const CSS = `
   select,input[type=number]{padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}select{max-width:100%}label{display:inline-flex;align-items:center;gap:7px}input[type=checkbox]{width:18px;height:18px;accent-color:var(--primary-color,#1878b5)}
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:14px;margin:18px 0}.target-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.overview-stats{grid-template-columns:repeat(8,minmax(0,1fr))}.overview-stats .stat{padding:16px}.overview-stats .stat strong{font-size:21px;white-space:nowrap}.stat,.card{background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#dce3eb);border-radius:12px;padding:20px}.stat{display:flex;flex-direction:column}.stat strong{display:block;font-size:24px;letter-spacing:-.5px;margin-top:4px;font-variant-numeric:tabular-nums}.stat>span{display:block;min-height:3em;color:var(--secondary-text-color,#57667a);font-size:13px}.card{margin-bottom:18px}
   .selection-card{display:flex;align-items:center;gap:24px}.selection-card h2{margin:0}.selection-copy{min-width:0}.selection-copy p{margin:4px 0 0}.selection-control{display:grid;gap:5px;min-width:min(100%,300px)}.selection-control span{font-size:13px;color:var(--secondary-text-color,#57667a)}
+  .tabs{display:flex;gap:8px;overflow-x:auto;margin:0 0 18px;padding:4px 0}.tabs button{white-space:nowrap}.tabs button[aria-selected=true]{background:var(--primary-color,#1878b5);color:#fff;border-color:var(--primary-color,#1878b5)}.forecast-custom{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.forecast-custom input{width:125px}
   .alias-editor{margin:0 0 18px;padding:14px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px;background:color-mix(in srgb,var(--primary-color,#1878b5) 4%,var(--card-background-color,#fff))}.alias-editor h3{margin:0}.alias-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px 18px;margin:12px 0}.alias-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(120px,1fr);align-items:center;gap:10px}.alias-row input{width:100%;padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}tr.selected td{background:color-mix(in srgb,var(--primary-color,#1878b5) 8%,transparent)}
   .allocation-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);align-items:center;gap:24px}.donut{width:min(100%,280px);margin:auto}.allocation-name{display:inline-flex;align-items:center;gap:8px}.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;flex:0 0 auto}.details-title{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}.details-title .hint{font-weight:400}
   .notice{padding:12px 16px;background:color-mix(in srgb,var(--primary-color,#1878b5) 9%,var(--card-background-color,#fff));border-left:3px solid var(--primary-color,#1878b5);border-radius:5px;margin:12px 0}.warning{border-color:#c4851b;background:color-mix(in srgb,#e6ac37 12%,var(--card-background-color,#fff))}.error{border-color:#c63c45;background:color-mix(in srgb,#c63c45 9%,var(--card-background-color,#fff))}
@@ -182,7 +183,7 @@ const CSS = `
   .negative{color:var(--error-color,#c63c45)}.inline-action{padding:4px 8px;background:transparent}.field{display:grid;gap:5px;margin:12px 0;max-width:620px}.field label{font-size:13px;color:var(--secondary-text-color,#57667a)}.field input,.field select{width:100%}.decision{padding:12px 0;border-bottom:1px solid var(--divider-color,#e4e9ef)}.decision select{margin-top:7px;min-width:min(100%,360px)}
   input[type=file]{max-width:100%;margin:12px 0} .missing-row{display:flex;align-items:center;gap:12px;justify-content:space-between;border-bottom:1px solid var(--divider-color,#e4e9ef);padding:10px 0}.missing-row input{width:155px}
   @media(max-width:1100px){.overview-stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
-  @media(max-width:700px){header{padding:12px}main{padding:14px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stats>.stat:last-child:nth-child(odd){grid-column:1/-1}.stat,.card{padding:14px}.stat strong{font-size:20px}h1{font-size:20px}.toolbar{gap:8px}.toolbar label{width:100%}.toolbar select{flex:1}.selection-card{align-items:stretch;flex-direction:column;gap:12px}.selection-control{width:100%}.selection-control select{width:100%}.allocation-layout{grid-template-columns:1fr;gap:14px}.donut{max-width:240px}.alias-grid{grid-template-columns:1fr}.missing-row{align-items:flex-start;flex-direction:column}.controls{gap:8px}th,td{padding:10px 7px}}
+  @media(max-width:700px){header{padding:12px}main{padding:14px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stats>.stat:last-child:nth-child(odd){grid-column:1/-1}.stat,.card{padding:14px}.stat strong{font-size:20px}h1{font-size:20px}.toolbar{gap:8px}.toolbar label{width:100%}.toolbar select{flex:1}.tabs{margin-left:-2px;margin-right:-2px}.selection-card{align-items:stretch;flex-direction:column;gap:12px}.selection-control{width:100%}.selection-control select{width:100%}.allocation-layout{grid-template-columns:1fr;gap:14px}.donut{max-width:240px}.alias-grid{grid-template-columns:1fr}.missing-row{align-items:flex-start;flex-direction:column}.controls{gap:8px}th,td{padding:10px 7px}}
   @media(prefers-reduced-motion:reduce){.loading:before{animation:none}}
 `;
 
@@ -214,6 +215,9 @@ class MyWalletPanel extends HTMLElement {
     this._cashLine = false;
     this._targetLine = true;
     this._forecastYears = 0;
+    this._customForecastYears = 25;
+    this._customForecastOpen = false;
+    this._section = "overview";
     this._position = "all";
     this._summaryPeriod = "monthly";
     this._busy = false;
@@ -231,6 +235,10 @@ class MyWalletPanel extends HTMLElement {
   _start() {
     if (this._started) return;
     this._started = true;
+    try {
+      const saved = localStorage.getItem(`my-wallet:section:${this._hass.user?.id || "admin"}`);
+      if (["overview", "positions", "history", "data"].includes(saved)) this._section = saved;
+    } catch { /* Browser storage may be disabled. */ }
     this._resize = () => { if (this._history && !this._busy && !this._importOpen) this._render(); };
     window.addEventListener("resize", this._resize);
     this._refresh();
@@ -257,16 +265,17 @@ class MyWalletPanel extends HTMLElement {
     if (code.startsWith("invalid_") || code.includes("import_items")) return this.t("invalid_import");
     return this.t("error");
   }
-  async _refresh(quiet = false) {
+  async _refresh(quiet = false, forecastYears = this._forecastYears) {
     if (this._busy) return;
     this._busy = true;
     this._error = null;
     if (!quiet) this._render();
     try {
-      const result = await this._call("wallets");
+      const forecast = forecastYears > 0 ? { forecast_years: forecastYears } : {};
+      const result = await this._call("wallets", forecast);
       this._wallets = result.wallets;
       if (!this._wallet()) this._selected = this._wallets[0]?.entry_id;
-      this._history = this._selected ? await this._call("history", { entry_id: this._selected }) : null;
+      this._history = this._selected ? await this._call("history", { entry_id: this._selected, ...forecast }) : null;
     } catch (err) { this._error = this._errorText(err); }
     finally { this._busy = false; this._render(); }
   }
@@ -275,6 +284,50 @@ class MyWalletPanel extends HTMLElement {
     const card = node("div", null, "stat");
     card.append(node("span", label), node("strong", value));
     parent.append(card);
+  }
+  _setSection(section) {
+    this._section = section;
+    try { localStorage.setItem(`my-wallet:section:${this._hass.user?.id || "admin"}`, section); } catch { /* Keep the in-memory choice. */ }
+    this._render();
+  }
+  _renderNavigation(parent) {
+    const tabs = node("nav", null, "tabs");
+    tabs.setAttribute("role", "tablist");
+    tabs.setAttribute("aria-label", "My Wallet");
+    for (const [section, label] of [["overview", "navOverview"], ["positions", "navPositions"], ["history", "navHistory"], ["data", "navData"]]) {
+      const tab = button(this.t(label), () => this._setSection(section));
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-selected", String(this._section === section));
+      tabs.append(tab);
+    }
+    parent.append(tabs);
+  }
+  _renderStats(parent, wallet, position) {
+    const stats = node("div", null, "stats");
+    if (!position) stats.classList.add("overview-stats");
+    const values = position ? [
+      ["currentValue", this.money(position.value)], ["purchaseCost", this.money(position.cost)],
+      ["positionStart", position.start_date ? this.day(position.start_date) : this.t("emptyValue")],
+      ["units", this.units(position.units)], ["profit", this.money(position.profit)],
+      ["performance", this.percent(position.performance)], ["dividends", this.money(position.dividends)],
+    ] : [
+      ["value", this.money(wallet.total)], ["invested", this.money(wallet.invested)],
+      ["portfolioStart", wallet.start_date ? this.day(wallet.start_date) : this.t("emptyValue")],
+      ["profit", this.money(wallet.profit)], ["performance", this.percent(wallet.performance)],
+      ["annualReturn", this.percent(wallet.money_weighted_return)], ["cash", this.money(wallet.cash)],
+      ["dividends", this.money(wallet.dividends)],
+    ];
+    for (const [key, value] of values) this._stat(stats, this.t(key), value);
+    parent.append(stats);
+  }
+  async _setForecastYears(years) {
+    this._forecastYears = years;
+    this._customForecastOpen = years > 0 && ![1, 3, 5, 10, 20, 30].includes(years);
+    if (years) this._period = "all";
+    const wallet = this._wallet();
+    const available = !years || (this._history?.target?.forecasts?.[String(years)] && wallet?.target?.allocation_forecasts?.[String(years)]);
+    if (available) this._render();
+    else await this._refresh(false, years);
   }
   _render() {
     const root = this.shadowRoot;
@@ -303,6 +356,7 @@ class MyWalletPanel extends HTMLElement {
       this._selected = select.value;
       this._position = "all";
       this._forecastYears = 0;
+      this._customForecastOpen = false;
       this._aliasOpen = false;
       this._aliasDraft = null;
       this._history = null;
@@ -333,41 +387,31 @@ class MyWalletPanel extends HTMLElement {
       warning.append(list);
       main.append(warning);
     }
+    this._renderNavigation(main);
     this._renderPositionSelection(main, wallet);
-    const stats = node("div", null, "stats");
     const position = wallet.positions.find(item => item.symbol === this._position);
-    if (!position) stats.classList.add("overview-stats");
-    const values = position ? [
-      ["currentValue", this.money(position.value)], ["purchaseCost", this.money(position.cost)],
-      ["positionStart", position.start_date ? this.day(position.start_date) : this.t("emptyValue")],
-      ["units", this.units(position.units)], ["profit", this.money(position.profit)],
-      ["performance", this.percent(position.performance)], ["dividends", this.money(position.dividends)],
-    ] : [
-      ["value", this.money(wallet.total)], ["invested", this.money(wallet.invested)],
-      ["portfolioStart", wallet.start_date ? this.day(wallet.start_date) : this.t("emptyValue")],
-      ["profit", this.money(wallet.profit)], ["performance", this.percent(wallet.performance)],
-      ["annualReturn", this.percent(wallet.money_weighted_return)], ["cash", this.money(wallet.cash)],
-      ["dividends", this.money(wallet.dividends)],
-    ];
-    for (const [key, value] of values) this._stat(stats, this.t(key), value);
-    main.append(stats);
-    if (!position) this._renderTargetSummary(main, wallet);
-    this._renderAllocation(main, wallet);
-    this._renderPositions(main, wallet);
-    if (position) this._renderPositionDetails(main, position, wallet.currency);
-    if (this._correctionOpen) this._renderCorrection(main, wallet);
     if (wallet.pending?.length) this._notice(main, this.t("pending"), "warning");
-    if (this._history) {
+    if (this._section === "overview") {
+      this._renderStats(main, wallet, position);
+      if (!position) this._renderTargetSummary(main, wallet);
+      this._renderAllocation(main, wallet);
+    } else if (this._section === "positions") {
+      if (position) this._renderStats(main, wallet, position);
+      this._renderPositions(main, wallet);
+      if (position) this._renderPositionDetails(main, position, wallet.currency);
+      if (this._correctionOpen) this._renderCorrection(main, wallet);
+    } else if (this._section === "history" && this._history) {
       if (this._history.estimated) this._renderEstimateNotice(main);
       if (this._history.unknown_opening.length) this._notice(main, this.t("openingWarning"), "warning");
       if (this._history.missing_history.length) this._notice(main, this.t("quotesWarning"), "warning");
       if (this._history.range_limited) this._notice(main, this.t("limited"));
       this._renderChart(main);
       this._renderSummary(main);
+    } else if (this._section === "data") {
       this._renderPlans(main, wallet.plans, wallet.currency);
-      this._renderLedger(main);
+      if (this._history) this._renderLedger(main);
+      this._renderExport(main);
     }
-    this._renderExport(main);
   }
   _renderPositionSelection(parent, wallet) {
     const section = node("section", null, "card selection-card");
@@ -384,7 +428,7 @@ class MyWalletPanel extends HTMLElement {
     }
     select.addEventListener("change", () => {
       this._position = select.value;
-      if (this._position !== "all") { this._cashLine = false; this._forecastYears = 0; }
+      if (this._position !== "all") { this._cashLine = false; this._forecastYears = 0; this._customForecastOpen = false; }
       this._render();
     });
     label.append(node("span", this.t("analysisFor")), select);
@@ -397,14 +441,33 @@ class MyWalletPanel extends HTMLElement {
     controls.append(node("h2", this.t("targetComparison")), node("div", null, "grow"));
     const forecast = node("label", this.t("forecast"));
     const select = node("select");
-    for (const years of [0, 1, 3, 5, 10, 20]) {
+    const presets = [0, 1, 3, 5, 10, 20, 30];
+    for (const years of presets) {
       const text = years ? `${years} ${this.t(years === 1 ? "forecastYear" : "forecastYears")}` : this.t("forecastToday");
       const option = node("option", text);
       option.value = String(years); option.selected = years === this._forecastYears; select.append(option);
     }
+    const custom = node("option", this.t("forecastCustom"));
+    custom.value = "custom"; custom.selected = this._customForecastOpen || (this._forecastYears > 0 && !presets.includes(this._forecastYears)); select.append(custom);
     select.disabled = wallet.target?.value == null;
-    select.addEventListener("change", () => { this._forecastYears = Number(select.value); if (this._forecastYears) this._period = "all"; this._render(); });
+    select.addEventListener("change", () => {
+      if (select.value === "custom") { this._customForecastOpen = true; this._render(); }
+      else this._setForecastYears(Number(select.value));
+    });
     forecast.append(select); controls.append(forecast); section.append(controls);
+    if (this._customForecastOpen) {
+      const customControls = node("div", null, "forecast-custom");
+      const input = node("input");
+      input.type = "number"; input.min = "1"; input.max = "50"; input.step = "1"; input.value = String(this._customForecastYears);
+      input.setAttribute("aria-label", this.t("forecastCustomYears"));
+      const apply = button(this.t("apply"), () => {
+        const years = Number(input.value);
+        if (Number.isInteger(years) && years >= 1 && years <= 50) { this._customForecastYears = years; this._setForecastYears(years); }
+      }, "primary");
+      input.addEventListener("input", () => { const years = Number(input.value); apply.disabled = !Number.isInteger(years) || years < 1 || years > 50; });
+      input.addEventListener("keydown", event => { if (event.key === "Enter") apply.click(); });
+      customControls.append(input, apply); section.append(customControls);
+    }
     const target = wallet.target || {};
     if (target.value == null) {
       this._notice(section, this.t("targetUnavailable"), "warning"); parent.append(section); return;
@@ -469,7 +532,7 @@ class MyWalletPanel extends HTMLElement {
       const tr = node("tr"); if (item.symbol === this._position) tr.className = "selected";
       const first = node("td"), swatch = node("span", null, "swatch"); swatch.style.background = item.color;
       if (item.symbol) {
-        const choose = button(item.label, () => { this._position = item.symbol; this._cashLine = false; this._forecastYears = 0; this._render(); }, "inline-action allocation-name");
+        const choose = button(item.label, () => { this._position = item.symbol; this._cashLine = false; this._forecastYears = 0; this._customForecastOpen = false; this._setSection("positions"); }, "inline-action allocation-name");
         choose.prepend(swatch); first.append(choose);
       } else {
         const label = node("span", item.label, "allocation-name"); label.prepend(swatch); first.append(label);
@@ -530,7 +593,7 @@ class MyWalletPanel extends HTMLElement {
     for (const item of wallet.positions) {
       const tr = node("tr"), alias = item.alias?.trim() || "";
       if (item.symbol === this._position) tr.className = "selected";
-      const choose = button(alias || item.symbol, () => { this._position = item.symbol; this._cashLine = false; this._forecastYears = 0; this._render(); }, "inline-action");
+      const choose = button(alias || item.symbol, () => { this._position = item.symbol; this._cashLine = false; this._forecastYears = 0; this._customForecastOpen = false; this._render(); }, "inline-action");
       choose.setAttribute("aria-label", this._positionLabel(item.symbol));
       const first = node("td"); first.append(choose);
       if (alias) first.append(node("span", item.symbol, "hint"));
@@ -687,7 +750,7 @@ class MyWalletPanel extends HTMLElement {
     const section = node("section", null, "card chart");
     section.append(node("h2", this._position === "all" ? this.t("history") : `${this.t("history")} · ${this._positionLabel(this._position)}`));
     const controls = node("div", null, "controls");
-    for (const key of ["all", "year", "six", "three"]) controls.append(button(this.t(key), () => { this._period = key; if (key !== "all") this._forecastYears = 0; this._render(); }, this._period === key ? "active" : ""));
+    for (const key of ["all", "year", "six", "three"]) controls.append(button(this.t(key), () => { this._period = key; if (key !== "all") { this._forecastYears = 0; this._customForecastOpen = false; } this._render(); }, this._period === key ? "active" : ""));
     if (this._position === "all") {
       const cashLabel = node("label", this.t("cashChart")), cashCheck = node("input");
       cashCheck.type = "checkbox"; cashCheck.checked = this._cashLine;

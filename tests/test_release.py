@@ -87,8 +87,8 @@ class ReleaseTests(unittest.TestCase):
         project = tomllib.loads((ROOT / "pyproject.toml").read_text())
         hacs = json.loads((ROOT / "hacs.json").read_text())
 
-        self.assertEqual(manifest["version"], "1.6.1")
-        self.assertEqual(project["project"]["version"], "1.6.1")
+        self.assertEqual(manifest["version"], "1.7.0")
+        self.assertEqual(project["project"]["version"], "1.7.0")
         self.assertEqual(hacs["homeassistant"], "2026.8.0")
         self.assertEqual(project["project"]["requires-python"], ">=3.14.2")
         self.assertEqual(manifest["codeowners"], ["@PenDrag92"])
@@ -121,7 +121,7 @@ class ReleaseTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertLess(
             source.index("this._renderPositionSelection(main, wallet);"),
-            source.index('const stats = node("div", null, "stats");'),
+            source.index("this._renderStats(main, wallet, position);"),
         )
         self.assertIn('first.append(node("span", item.symbol, "hint"))', source)
         self.assertIn('this._call("position_aliases"', source)

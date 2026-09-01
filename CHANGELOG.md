@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.7.0
+
+- Split the administrator dashboard into Overview, Positions, History and
+  Transactions & data tabs while keeping the wallet and position selection
+  consistent across them.
+- Add a 30-year forecast preset and a custom horizon from 1 to 50 years. Apply
+  the selected horizon to the target composition, portfolio forecast,
+  allocation and projected position values.
+- Keep real history at daily precision while sampling long future curves by
+  month and on scheduled plan dates. This keeps custom multi-decade forecasts
+  responsive without changing their end values or contribution totals.
+- Document future savings-rate increases as a separate plan with its own start
+  date, so the existing plan and historical bookings remain unchanged while the
+  forecast combines both rates from the intended month.
+
 ## 1.6.1
 
 - Break down every compound target into the contributions included through the

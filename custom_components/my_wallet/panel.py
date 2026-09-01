@@ -48,6 +48,8 @@ from .history import async_history
 from .history_import import IMPORT_BATCH, async_prepare_import
 from .target import (
     FORECAST_YEARS,
+    MAX_FORECAST_YEARS,
+    MIN_FORECAST_YEARS,
     add_years,
     documented_wallet_start_date,
     target_allocation_forecast,
@@ -59,6 +61,20 @@ _LOGGER = logging.getLogger(__name__)
 _STATE = "my_wallet_panel"
 _MAX_DOCUMENT_BYTES = 2_000_000
 _MAX_ALIAS_LENGTH = 80
+
+
+def _forecast_years(value) -> int:
+    """Validate the bounded custom dashboard forecast horizon."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as err:
+        raise vol.Invalid("forecast_years must be an integer") from err
+    if isinstance(value, bool) or not number.is_integer():
+        raise vol.Invalid("forecast_years must be an integer")
+    years = int(number)
+    if not MIN_FORECAST_YEARS <= years <= MAX_FORECAST_YEARS:
+        raise vol.Invalid("forecast_years must be between 1 and 50")
+    return years
 
 
 def _state(hass):
@@ -134,19 +150,26 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.6.1",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.7.0",
         embed_iframe=False,
         require_admin=True,
     )
     state["registered"] = True
 
 
-@websocket_api.websocket_command({vol.Required("type"): "my_wallet/wallets"})
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "my_wallet/wallets",
+        vol.Optional("forecast_years"): _forecast_years,
+    }
+)
 @callback
 def ws_wallets(hass, connection, msg):
     if not _admin(connection, msg):
         return
     today = dt_util.now().date()
+    forecast_years = int(msg.get("forecast_years", max(FORECAST_YEARS)))
+    forecast_horizons = tuple(sorted({*FORECAST_YEARS, forecast_years}))
     wallets = []
     for entry in _entries(hass):
         coordinator = getattr(entry, "runtime_data", None)
@@ -274,11 +297,11 @@ def ws_wallets(hass, connection, msg):
         target = target_projection(entry.data, through=today)
         target_absolute, target_percentage = target_deviation(total, target.value)
         forecast_projection = target_projection(
-            entry.data, through=add_years(today, max(FORECAST_YEARS))
+            entry.data, through=add_years(today, max(forecast_horizons))
         )
         allocation_forecasts = {
             str(years): forecast
-            for years in FORECAST_YEARS
+            for years in forecast_horizons
             if (
                 forecast := target_allocation_forecast(
                     forecast_projection,
@@ -435,7 +458,11 @@ def ws_backup(hass, connection, msg):
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): "my_wallet/history", vol.Required("entry_id"): str}
+    {
+        vol.Required("type"): "my_wallet/history",
+        vol.Required("entry_id"): str,
+        vol.Optional("forecast_years"): _forecast_years,
+    }
 )
 @websocket_api.async_response
 async def ws_history(hass, connection, msg):
@@ -451,7 +478,9 @@ async def ws_history(hass, connection, msg):
     async with state["locks"].setdefault(entry.entry_id, asyncio.Lock()):
         snapshot = entry.data
         today = dt_util.now().date()
-        cached = state["cache"].get(entry.entry_id)
+        forecast_years = int(msg.get("forecast_years", max(FORECAST_YEARS)))
+        entry_cache = state["cache"].setdefault(entry.entry_id, {})
+        cached = entry_cache.get(forecast_years)
         if (
             cached
             and cached["snapshot"] is snapshot
@@ -463,7 +492,10 @@ async def ws_history(hass, connection, msg):
             try:
                 async with asyncio.timeout(90):
                     result = await async_history(
-                        snapshot, session=async_get_clientsession(hass), today=today
+                        snapshot,
+                        session=async_get_clientsession(hass),
+                        today=today,
+                        forecast_years=forecast_years,
                     )
             except Exception:
                 _LOGGER.exception("Could not reconstruct wallet history")
@@ -476,7 +508,7 @@ async def ws_history(hass, connection, msg):
                     msg["id"], "entry_changed", "Wallet changed; reload history"
                 )
                 return
-            state["cache"][entry.entry_id] = {
+            entry_cache[forecast_years] = {
                 "snapshot": snapshot,
                 "day": today,
                 "expires": monotonic() + 300,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 from bisect import bisect_right
 from collections import defaultdict
 from datetime import date, timedelta
@@ -21,6 +22,7 @@ from .target import (
     target_contribution_series,
     target_projection,
     target_series,
+    target_snapshots,
 )
 from .yahoo import HistoricalQuote, fetch_histories, fx_symbol
 
@@ -115,7 +117,31 @@ def ledger_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
     )
 
 
-def build_history(data, histories, *, today: date) -> dict[str, Any]:
+def _add_months(value: date, months: int) -> date:
+    """Move a dashboard sample date by whole calendar months."""
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def _forecast_sample_dates(projection, *, today: date, through: date) -> list[date]:
+    """Sample long forecasts monthly and at every planned cash-flow date."""
+    dates = {
+        flow.date for flow in projection.cash_flows if today < flow.date <= through
+    }
+    month = 1
+    while (candidate := _add_months(today, month)) < through:
+        dates.add(candidate)
+        month += 1
+    dates.add(through)
+    return sorted(dates)
+
+
+def build_history(
+    data, histories, *, today: date, forecast_years: int | None = None
+) -> dict[str, Any]:
     """Price only dated holdings; an unknown opening position leaves gaps."""
     events = ledger_rows(data)
     eligible = [
@@ -150,12 +176,19 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
     cash = invested = 0.0
     pointer = 0
     points = []
-    forecast_through = add_years(today, max(FORECAST_YEARS))
+    requested_years = forecast_years or max(FORECAST_YEARS)
+    horizons = tuple(sorted({*FORECAST_YEARS, requested_years}))
+    forecast_through = add_years(today, max(horizons))
     projection = target_projection(data, through=forecast_through)
-    target_values = target_series(projection, start=start, through=forecast_through)
+    target_values = target_series(projection, start=start, through=today)
     target_contributions = target_contribution_series(
-        projection, start=start, through=forecast_through
+        projection, start=start, through=today
     )
+    future_dates = _forecast_sample_dates(
+        projection, today=today, through=forecast_through
+    )
+    horizon_dates = [add_years(today, years) for years in horizons]
+    future_snapshots = target_snapshots(projection, [*future_dates, *horizon_dates])
     base = data[c.CONF_BASE_CURRENCY]
     day = start
     missing = set()
@@ -214,8 +247,10 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
         day += timedelta(days=1)
 
     def target_snapshot(through: date) -> dict[str, Any]:
-        value = target_values.get(through.isoformat())
-        contributions = target_contributions.get(through.isoformat())
+        key = through.isoformat()
+        future = future_snapshots.get(key, {})
+        value = target_values.get(key, future.get("value"))
+        contributions = target_contributions.get(key, future.get("contributions"))
         if value is None:
             contributions = None
         return {
@@ -233,7 +268,7 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
 
     current_target = target_snapshot(today)
     forecasts = {
-        str(years): target_snapshot(add_years(today, years)) for years in FORECAST_YEARS
+        str(years): target_snapshot(add_years(today, years)) for years in horizons
     }
     for forecast in forecasts.values():
         forecast["additional_contributions"] = (
@@ -268,10 +303,10 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
         "target_forecast": [
             {
                 "date": forecast_day,
-                "target": value,
-                "invested": target_contributions.get(forecast_day),
+                "target": snapshot["value"],
+                "invested": snapshot["contributions"],
             }
-            for forecast_day, value in target_values.items()
+            for forecast_day, snapshot in future_snapshots.items()
             if forecast_day > today.isoformat()
         ],
     }
@@ -287,7 +322,9 @@ def build_history(data, histories, *, today: date) -> dict[str, Any]:
     return result
 
 
-async def async_history(data, *, session, today: date) -> dict[str, Any]:
+async def async_history(
+    data, *, session, today: date, forecast_years: int | None = None
+) -> dict[str, Any]:
     events = ledger_rows(data)
     days = [date.fromisoformat(row["date"]) for row in events if row["date"]]
     start = max(min(days, default=today), today - timedelta(days=MAX_HISTORY_DAYS))
@@ -308,4 +345,4 @@ async def async_history(data, *, session, today: date) -> dict[str, Any]:
         histories.update(
             await fetch_histories(session, pairs, start - timedelta(days=7), today)
         )
-    return build_history(data, histories, today=today)
+    return build_history(data, histories, today=today, forecast_years=forecast_years)

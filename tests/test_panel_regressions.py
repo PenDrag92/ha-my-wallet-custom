@@ -172,7 +172,11 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         )
         connection = Connection()
 
-        panel.ws_wallets(hass_with([entry]), connection, {"id": 1})
+        panel.ws_wallets(
+            hass_with([entry]),
+            connection,
+            {"id": 1, "forecast_years": 37},
+        )
 
         wallet = connection.results[0][1]["wallets"][0]
         position = wallet["positions"][0]
@@ -187,6 +191,10 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
             forecast["total"],
             forecast["positions"]["AAA"] + forecast["cash"],
             places=2,
+        )
+        self.assertEqual(
+            wallet["target"]["allocation_forecasts"]["37"]["date"],
+            "2063-08-31",
         )
         self.assertEqual(position["start_date"], "2026-01-15")
         self.assertAlmostEqual(position["share"], 120 / 140 * 100)
