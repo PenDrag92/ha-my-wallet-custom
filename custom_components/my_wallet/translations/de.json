@@ -8,7 +8,9 @@
           "wallet_name": "Depotname",
           "base_currency": "Basiswährung (in dieser Währung wird der Depotwert angezeigt)",
           "scan_interval": "Aktualisierungsintervall (Minuten)",
-          "expected_annual_return": "Erwartete Jahresrendite für den Zinseszins-Sollwert (%)"
+          "expected_annual_return": "Erwartete Jahresrendite für den Zinseszins-Sollwert (%)",
+          "inflation_source": "Offizielle Inflationsdaten",
+          "expected_annual_inflation": "Erwartete Jahresinflation für künftige Kaufkraftprognosen (%)"
         }
       },
       "valor": {
@@ -39,7 +41,7 @@
       "init": {
         "title": "Depot verwalten",
         "menu_options": {
-          "settings": "Depoteinstellungen und Vorgaberendite bearbeiten",
+          "settings": "Depoteinstellungen, Vorgaberendite und Inflation bearbeiten",
           "add_contribution": "Datierte Einzahlung hinzufügen",
           "add_lot": "Historische Kauftranche erfassen",
           "edit_contribution": "Einzahlung bearbeiten",
@@ -64,7 +66,9 @@
           "wallet_name": "Depotname",
           "base_currency": "Basiswährung",
           "scan_interval": "Aktualisierungsintervall (Minuten)",
-          "expected_annual_return": "Erwartete Jahresrendite für den Zinseszins-Sollwert (%)"
+          "expected_annual_return": "Erwartete Jahresrendite für den Zinseszins-Sollwert (%)",
+          "inflation_source": "Offizielle Inflationsdaten",
+          "expected_annual_inflation": "Erwartete Jahresinflation für künftige Kaufkraftprognosen (%)"
         }
       },
       "add_contribution": {
@@ -374,6 +378,12 @@
       "options": {
         "future": "Nur künftige Ausführungen",
         "recalculate": "Geeignete automatische Altbuchungen neu berechnen"
+      }
+    },
+    "inflation_source": {
+      "options": {
+        "eurostat_de": "Eurostat-HVPI — Deutschland (offiziell, monatlich)",
+        "disabled": "Deaktiviert"
       }
     }
   },

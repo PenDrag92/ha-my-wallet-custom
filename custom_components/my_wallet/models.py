@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .inflation import InflationSeries
     from .yahoo import Quote
 
 
@@ -52,6 +53,7 @@ class WalletData:
     valors: dict[str, ValorData] = field(default_factory=dict)
     pending_executions: list[dict[str, Any]] = field(default_factory=list)
     cash_balance: float = 0.0
+    inflation: InflationSeries | None = None
 
     @property
     def all_available(self) -> bool:

@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.8.0
+
+- Add a persistent nominal/purchasing-power switch to the administrator
+  dashboard. Apply it to wallet and position performance, purchase lots,
+  history, monthly/yearly summaries, transaction amounts and forecast
+  allocations.
+- Fetch Germany's official monthly all-items HICP from Eurostat at most once per
+  day. Validate and cache the series locally, show its latest month and continue
+  with a visibly stale cache when a refresh is temporarily unavailable.
+- Recalculate historical invested capital, dividends, profit, simple return and
+  money-weighted return in today's purchasing power. Leave an adjusted result
+  unavailable when any required date falls outside the official series instead
+  of combining partial nominal and real data.
+- Add a configurable expected annual inflation assumption, defaulting to 2%,
+  and use its geometric factor for 1–50 year purchasing-power forecasts. Show
+  real target value, contributions, growth, allocation and inflation effect
+  alongside the existing nominal scenario.
+- Expose inflation-adjusted wallet and tracked-position metrics plus their data
+  source, latest month and cache status as sensor attributes. Preserve the new
+  settings in schema-7 migrations, complete backups and imported wallets.
+- Use optional position display names consistently throughout savings-plan,
+  investment, dividend, correction and configuration flows and in entity names,
+  while keeping raw symbols stable for storage, Yahoo requests, unique IDs and
+  CSV exports.
+
 ## 1.7.0
 
 - Split the administrator dashboard into Overview, Positions, History and

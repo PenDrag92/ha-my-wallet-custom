@@ -30,6 +30,21 @@ def install_stubs() -> None:
     sys.modules.setdefault("homeassistant", homeassistant)
     sys.modules.setdefault("homeassistant.const", ha_const)
 
+    storage = types.ModuleType("homeassistant.helpers.storage")
+
+    class Store:
+        def __init__(self, *_: object, **__: object) -> None:
+            self.value = None
+
+        async def async_load(self):
+            return self.value
+
+        async def async_save(self, value) -> None:
+            self.value = value
+
+    storage.Store = Store
+    sys.modules.setdefault("homeassistant.helpers.storage", storage)
+
     if "aiohttp" not in sys.modules:
         aiohttp = types.ModuleType("aiohttp")
 

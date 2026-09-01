@@ -8,7 +8,9 @@
           "wallet_name": "Wallet name",
           "base_currency": "Base currency (wallet total is shown in this currency)",
           "scan_interval": "Update interval (minutes)",
-          "expected_annual_return": "Expected annual return for the compound target (%)"
+          "expected_annual_return": "Expected annual return for the compound target (%)",
+          "inflation_source": "Official inflation data",
+          "expected_annual_inflation": "Expected annual inflation for future purchasing-power forecasts (%)"
         }
       },
       "valor": {
@@ -39,7 +41,7 @@
       "init": {
         "title": "Manage wallet",
         "menu_options": {
-          "settings": "Edit wallet settings (name, currency, interval, target return)",
+          "settings": "Edit wallet settings, target return and inflation",
           "add_contribution": "Add a dated contribution",
           "add_lot": "Import a historical purchase lot",
           "edit_contribution": "Edit a contribution",
@@ -64,7 +66,9 @@
           "wallet_name": "Wallet name",
           "base_currency": "Base currency",
           "scan_interval": "Update interval (minutes)",
-          "expected_annual_return": "Expected annual return for the compound target (%)"
+          "expected_annual_return": "Expected annual return for the compound target (%)",
+          "inflation_source": "Official inflation data",
+          "expected_annual_inflation": "Expected annual inflation for future purchasing-power forecasts (%)"
         }
       },
       "add_contribution": {
@@ -374,6 +378,12 @@
       "options": {
         "future": "Future executions only",
         "recalculate": "Also recalculate eligible automatic executions"
+      }
+    },
+    "inflation_source": {
+      "options": {
+        "eurostat_de": "Eurostat HICP — Germany (official, monthly)",
+        "disabled": "Disabled"
       }
     }
   },

@@ -36,9 +36,13 @@ from .const import (
     ATTR_DIVIDEND_COUNT,
     ATTR_DIVIDEND_TOTAL,
     ATTR_DIVIDENDS,
+    ATTR_EXPECTED_ANNUAL_INFLATION,
     ATTR_EXPECTED_ANNUAL_RETURN,
     ATTR_FIRST_CONTRIBUTION_DATE,
     ATTR_FX_RATE,
+    ATTR_INFLATION_DATA_MONTH,
+    ATTR_INFLATION_SOURCE,
+    ATTR_INFLATION_STALE,
     ATTR_INVESTED,
     ATTR_LAST_CONTRIBUTION_DATE,
     ATTR_LOTS,
@@ -51,6 +55,10 @@ from .const import (
     ATTR_PREVIOUS_CLOSE,
     ATTR_PROFIT,
     ATTR_QUOTE_CURRENCY,
+    ATTR_REAL_ANNUALIZED_PERFORMANCE_PCT,
+    ATTR_REAL_INVESTED,
+    ATTR_REAL_PERFORMANCE_PCT,
+    ATTR_REAL_PROFIT,
     ATTR_REBALANCE_AMOUNT,
     ATTR_SAVINGS_PLANS,
     ATTR_SECURITIES_TOTAL,
@@ -107,6 +115,7 @@ from .const import (
     VALOR_SYMBOL,
 )
 from .contributions import (
+    cashflows,
     contributions_from_data,
     invested_total,
     lot_metrics,
@@ -116,16 +125,87 @@ from .contributions import (
     xirr,
 )
 from .coordinator import WalletCoordinator
+from .display import position_label
 from .dividends import (
     attributed_dividend_flows,
     dividend_total,
     dividends_from_data,
 )
+from .inflation import adjusted_flows, expected_annual_inflation
 from .models import ValorData, WalletData
 from .plans import next_due_date, normalize_plan
 from .target import target_contributed_capital, target_deviation, target_projection
 
 _REFRESH_SCHEMA: dict[str, Any] = {}
+
+
+def _position_label(entry: ConfigEntry, symbol: str) -> str:
+    return position_label(entry.data.get(CONF_VALORS, []), symbol)
+
+
+def _inflation_attributes(data: WalletData, entry: ConfigEntry) -> dict[str, Any]:
+    series = data.inflation
+    return {
+        ATTR_EXPECTED_ANNUAL_INFLATION: expected_annual_inflation(entry.data),
+        ATTR_INFLATION_SOURCE: series.source if series is not None else None,
+        ATTR_INFLATION_DATA_MONTH: (
+            series.latest_month if series is not None else None
+        ),
+        ATTR_INFLATION_STALE: series.stale if series is not None else False,
+    }
+
+
+def _real_wallet_metrics(
+    entry: ConfigEntry, data: WalletData, today: date
+) -> dict[str, float | None]:
+    flows = cashflows(entry.data, through=today)
+    adjusted = (
+        adjusted_flows(flows, through=today, series=data.inflation)
+        if flows is not None and data.inflation is not None
+        else None
+    )
+    invested = -sum(amount for _, amount in adjusted) if adjusted is not None else None
+    total = data.total
+    profit = total - invested if total is not None and invested is not None else None
+    performance = (
+        profit / invested * 100
+        if profit is not None and invested is not None and invested > 0
+        else None
+    )
+    annualized = (
+        xirr([*adjusted, (today, total)])
+        if adjusted and total is not None and total > 0
+        else None
+    )
+    return {
+        "invested": invested,
+        "profit": profit,
+        "performance": performance,
+        "annualized": annualized * 100 if annualized is not None else None,
+    }
+
+
+def _real_wallet_attributes(entry: ConfigEntry, data: WalletData) -> dict[str, Any]:
+    metrics = _real_wallet_metrics(entry, data, dt_util.now().date())
+    return {
+        ATTR_REAL_INVESTED: (
+            round(metrics["invested"], 2) if metrics["invested"] is not None else None
+        ),
+        ATTR_REAL_PROFIT: (
+            round(metrics["profit"], 2) if metrics["profit"] is not None else None
+        ),
+        ATTR_REAL_PERFORMANCE_PCT: (
+            round(metrics["performance"], 2)
+            if metrics["performance"] is not None
+            else None
+        ),
+        ATTR_REAL_ANNUALIZED_PERFORMANCE_PCT: (
+            round(metrics["annualized"], 2)
+            if metrics["annualized"] is not None
+            else None
+        ),
+        **_inflation_attributes(data, entry),
+    }
 
 
 def _invested_amount(entry: ConfigEntry) -> float | None:
@@ -384,7 +464,7 @@ class ValorSensor(WalletBaseSensor):
         self._symbol = symbol
         self._attr_unique_id = f"{entry.entry_id}_{symbol}"
         self._attr_translation_key = "valor"
-        self._attr_translation_placeholders = {"symbol": symbol}
+        self._attr_translation_placeholders = {"symbol": _position_label(entry, symbol)}
 
     @property
     def data(self) -> WalletData:
@@ -452,7 +532,7 @@ class ValorDeviationSensor(WalletBaseSensor):
         self._symbol = symbol
         self._attr_unique_id = f"{entry.entry_id}_{symbol}_deviation"
         self._attr_translation_key = "valor_deviation"
-        self._attr_translation_placeholders = {"symbol": symbol}
+        self._attr_translation_placeholders = {"symbol": _position_label(entry, symbol)}
         self._attr_device_class = None
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -519,6 +599,58 @@ class ValorTrackedBaseSensor(WalletBaseSensor):
         rows = self._rows
         dividends = _tracked_dividend_total(rows)
         invested, value, profit = _tracked_totals(rows, dividends)
+        series = self.coordinator.data.inflation
+        today = dt_util.now().date()
+        real_costs = (
+            [
+                series.adjust(
+                    float(row["_raw_amount"]),
+                    date.fromisoformat(row[LOT_DATE]),
+                    today,
+                )
+                for row in rows
+            ]
+            if series is not None
+            else []
+        )
+        income_flows = [flow for row in rows for flow in row["_income_flows"]]
+        real_income_flows = (
+            adjusted_flows(income_flows, through=today, series=series)
+            if series is not None
+            else None
+        )
+        real_cost = (
+            sum(real_costs)
+            if real_costs and all(item is not None for item in real_costs)
+            else None
+        )
+        real_income = (
+            sum(amount for _, amount in real_income_flows)
+            if real_income_flows is not None
+            else None
+        )
+        real_profit = (
+            value + real_income - real_cost
+            if real_cost is not None and real_income is not None
+            else None
+        )
+        real_xirr = (
+            xirr(
+                [
+                    *[
+                        (
+                            date.fromisoformat(row[LOT_DATE]),
+                            -float(real_amount),
+                        )
+                        for row, real_amount in zip(rows, real_costs, strict=True)
+                    ],
+                    *real_income_flows,
+                    (today, value),
+                ]
+            )
+            if real_cost is not None and real_income_flows is not None
+            else None
+        )
         return {
             ATTR_SYMBOL: self._symbol,
             ATTR_TRACKED_INVESTED: round(invested, 2),
@@ -526,6 +658,17 @@ class ValorTrackedBaseSensor(WalletBaseSensor):
             ATTR_PROFIT: round(profit, 2),
             ATTR_DIVIDEND_TOTAL: round(dividends, 2),
             ATTR_LOTS: _public_lot_rows(rows),
+            ATTR_REAL_INVESTED: round(real_cost, 2) if real_cost is not None else None,
+            ATTR_REAL_PROFIT: round(real_profit, 2)
+            if real_profit is not None
+            else None,
+            ATTR_REAL_PERFORMANCE_PCT: round(real_profit / real_cost * 100, 2)
+            if real_profit is not None and real_cost > 0
+            else None,
+            ATTR_REAL_ANNUALIZED_PERFORMANCE_PCT: round(real_xirr * 100, 2)
+            if real_xirr is not None
+            else None,
+            **_inflation_attributes(self.coordinator.data, self._entry),
         }
 
 
@@ -538,7 +681,7 @@ class ValorProfitSensor(ValorTrackedBaseSensor):
         super().__init__(coordinator, entry, symbol)
         self._attr_unique_id = f"{entry.entry_id}_{symbol}_profit"
         self._attr_translation_key = "valor_profit"
-        self._attr_translation_placeholders = {"symbol": symbol}
+        self._attr_translation_placeholders = {"symbol": _position_label(entry, symbol)}
 
     @property
     def native_value(self) -> float | None:
@@ -557,7 +700,7 @@ class ValorPerformanceSensor(ValorTrackedBaseSensor):
         super().__init__(coordinator, entry, symbol)
         self._attr_unique_id = f"{entry.entry_id}_{symbol}_performance"
         self._attr_translation_key = "valor_performance"
-        self._attr_translation_placeholders = {"symbol": symbol}
+        self._attr_translation_placeholders = {"symbol": _position_label(entry, symbol)}
         self._attr_device_class = None
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -578,7 +721,7 @@ class ValorAnnualizedPerformanceSensor(ValorTrackedBaseSensor):
         super().__init__(coordinator, entry, symbol)
         self._attr_unique_id = f"{entry.entry_id}_{symbol}_annualized_performance"
         self._attr_translation_key = "valor_annualized_performance"
-        self._attr_translation_placeholders = {"symbol": symbol}
+        self._attr_translation_placeholders = {"symbol": _position_label(entry, symbol)}
         self._attr_device_class = None
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = "%"
@@ -639,6 +782,7 @@ class WalletTotalSensor(WalletBaseSensor):
             "unavailable_valors": sorted(
                 symbol for symbol, valor in data.valors.items() if not valor.available
             ),
+            **_real_wallet_attributes(self._entry, data),
         }
 
 
@@ -697,6 +841,7 @@ class WalletTargetValueSensor(WalletBaseSensor):
             ),
             "cash_flow_count": len(projection.cash_flows),
             "unavailable_reason": projection.unavailable_reason,
+            **_real_wallet_attributes(self._entry, self.coordinator.data),
         }
 
 
@@ -718,7 +863,10 @@ class WalletInvestedSensor(WalletBaseSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return _contribution_attributes(self._entry)
+        return {
+            **_contribution_attributes(self._entry),
+            **_real_wallet_attributes(self._entry, self.coordinator.data),
+        }
 
 
 class WalletProfitSensor(WalletBaseSensor):
@@ -758,6 +906,7 @@ class WalletProfitSensor(WalletBaseSensor):
                 dividend_total(self._entry.data, through=dt_util.now().date()), 2
             ),
             **_contribution_attributes(self._entry),
+            **_real_wallet_attributes(self._entry, self.coordinator.data),
         }
 
 
@@ -801,6 +950,7 @@ class WalletProfitPctSensor(WalletBaseSensor):
                 dividend_total(self._entry.data, through=dt_util.now().date()), 2
             ),
             **_contribution_attributes(self._entry),
+            **_real_wallet_attributes(self._entry, self.coordinator.data),
         }
 
 
@@ -839,6 +989,7 @@ class WalletMoneyWeightedReturnSensor(WalletBaseSensor):
             ATTR_DIVIDEND_TOTAL: round(
                 dividend_total(self._entry.data, through=dt_util.now().date()), 2
             ),
+            **_real_wallet_attributes(self._entry, self.coordinator.data),
         }
 
 

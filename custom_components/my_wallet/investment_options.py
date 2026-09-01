@@ -156,7 +156,7 @@ class InvestmentOptionsMixin:
                     "symbols", default=values.get("symbols", [])
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=symbols,
+                        options=self._position_options(symbols),
                         multiple=True,
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
@@ -297,7 +297,7 @@ class InvestmentOptionsMixin:
                 ): vol.Any(None, ui._UNITS_SELECTOR),
                 vol.Optional("back_to_symbol"): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=symbols,
+                        options=self._position_options(symbols),
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
@@ -308,7 +308,7 @@ class InvestmentOptionsMixin:
             data_schema=schema,
             errors=errors,
             description_placeholders={
-                "symbol": symbol,
+                "symbol": self._position_label(symbol),
                 "index": str(self._investment_index + 1),
                 "count": str(len(symbols)),
                 "unit": "%"
@@ -476,7 +476,8 @@ class InvestmentOptionsMixin:
             description_placeholders={
                 "deposit": self._contribution_label(self._investment_deposit),
                 "lots": "\n".join(
-                    f"- {lot[c.LOT_SYMBOL]} · {lot[c.LOT_DATE]} · "
+                    f"- {self._position_label(lot[c.LOT_SYMBOL])} · "
+                    f"{lot[c.LOT_DATE]} · "
                     f"{lot[c.LOT_AMOUNT]:.2f} {currency} · "
                     f"{lot[c.LOT_UNITS]:.6f} "
                     f"{self._text('estimated') if lot[c.LOT_ESTIMATED] else ''}"
@@ -587,7 +588,10 @@ class InvestmentOptionsMixin:
         return self.async_show_form(
             step_id="add_lot",
             data_schema=ui._manual_lot_schema(
-                symbols, self._contribution_options(), user_input
+                symbols,
+                self._contribution_options(),
+                user_input,
+                self._position_options(symbols),
             ),
             errors=errors,
         )
@@ -614,7 +618,7 @@ class InvestmentOptionsMixin:
             else {},
             description_placeholders={
                 "lot": (
-                    f"{self._lot_to_confirm[c.LOT_SYMBOL]} · "
+                    f"{self._position_label(self._lot_to_confirm[c.LOT_SYMBOL])} · "
                     f"{self._lot_to_confirm[c.LOT_DATE]} · "
                     f"{self._lot_to_confirm[c.LOT_AMOUNT]:.2f} "
                     f"{self.config_entry.data[c.CONF_BASE_CURRENCY]} · "

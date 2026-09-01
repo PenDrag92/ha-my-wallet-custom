@@ -202,7 +202,7 @@ class SavingsPlan133Tests(unittest.IsolatedAsyncioTestCase):
         original = wallet(plans=[plan()], rows=[execution("2026-01-20", edited=None)])
         entry = _Entry(5, copy.deepcopy(original))
         self.assertTrue(await migration.async_migrate_entry(_Hass(), entry))
-        self.assertEqual(entry.version, 6)
+        self.assertEqual(entry.version, 7)
         self.assertEqual(
             entry.data[c.CONF_CONTRIBUTIONS], original[c.CONF_CONTRIBUTIONS]
         )

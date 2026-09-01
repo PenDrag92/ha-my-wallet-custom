@@ -163,7 +163,8 @@ class DashboardReleaseTests(unittest.TestCase):
             'portfolioStart: "Depotstart"',
             'positionStart: "Positionsstart"',
             "_renderAllocation(parent, wallet)",
-            "const total = forecast?.total ?? wallet.total",
+            "const total = forecast ? "
+            "(real ? forecast.real_total : forecast.total) : wallet.total",
             "_renderPositionDetails(parent, position, currency)",
             'this._call("backup"',
             'aliasPlaceholder: "z. B. Welt-ETF"',

@@ -8,7 +8,9 @@
           "wallet_name": "Název peněženky",
           "base_currency": "Základní měna (celková hodnota peněženky se zobrazuje v této měně)",
           "scan_interval": "Interval aktualizace (minuty)",
-          "expected_annual_return": "Očekávaný roční výnos pro složený cíl (%)"
+          "expected_annual_return": "Očekávaný roční výnos pro složený cíl (%)",
+          "inflation_source": "Oficiální údaje o inflaci",
+          "expected_annual_inflation": "Očekávaná roční inflace pro budoucí prognózy kupní síly (%)"
         }
       },
       "valor": {
@@ -39,7 +41,7 @@
       "init": {
         "title": "Spravovat peněženku",
         "menu_options": {
-          "settings": "Nastavení peněženky a očekávaného výnosu",
+          "settings": "Upravit nastavení portfolia, očekávaný výnos a inflaci",
           "add_contribution": "Přidat datovaný vklad",
           "add_lot": "Importovat historickou nákupní tranši",
           "edit_contribution": "Upravit vklad",
@@ -64,7 +66,9 @@
           "wallet_name": "Název peněženky",
           "base_currency": "Základní měna",
           "scan_interval": "Interval aktualizace (minuty)",
-          "expected_annual_return": "Očekávaný roční výnos pro složený cíl (%)"
+          "expected_annual_return": "Očekávaný roční výnos pro složený cíl (%)",
+          "inflation_source": "Oficiální údaje o inflaci",
+          "expected_annual_inflation": "Očekávaná roční inflace pro budoucí prognózy kupní síly (%)"
         }
       },
       "add_contribution": {
@@ -374,6 +378,12 @@
       "options": {
         "future": "Pouze budoucí provedení",
         "recalculate": "Přepočítat i vhodná automatická provedení"
+      }
+    },
+    "inflation_source": {
+      "options": {
+        "eurostat_de": "Eurostat HICP — Německo (oficiální, měsíční)",
+        "disabled": "Vypnuto"
       }
     }
   },

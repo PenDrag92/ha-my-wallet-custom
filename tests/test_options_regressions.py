@@ -207,7 +207,7 @@ def _flow(data: dict[str, Any] | None = None) -> tuple[Any, _Entry, _EntryManage
 
 class OptionsFlowRegressionTests(unittest.IsolatedAsyncioTestCase):
     def test_flow_version_and_number_guard(self) -> None:
-        self.assertEqual(config_flow.MyWalletConfigFlow.VERSION, 6)
+        self.assertEqual(config_flow.MyWalletConfigFlow.VERSION, 7)
         self.assertIsNone(config_flow._finite_number(float("nan")))
         self.assertIsNone(config_flow._finite_number(float("inf")))
 

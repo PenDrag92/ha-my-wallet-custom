@@ -24,10 +24,19 @@ from custom_components.my_wallet.dividends import cash_balance
 from custom_components.my_wallet.history import build_history
 from custom_components.my_wallet.plans import make_plan
 from custom_components.my_wallet.yahoo import HistoricalQuote
-from tests.test_market_regressions import WalletCoordinator
-from tests.test_migration_regressions import _Entry, _Hass, migration
-from tests.test_options_regressions import _flow
-from tests.test_panel_regressions import Connection, hass_with, panel
+
+try:
+    from test_market_regressions import WalletCoordinator
+except ModuleNotFoundError:  # Package-style test invocation.
+    from tests.test_market_regressions import WalletCoordinator
+try:
+    from test_migration_regressions import _Entry, _Hass, migration
+    from test_options_regressions import _flow
+    from test_panel_regressions import Connection, hass_with, panel
+except ModuleNotFoundError:  # Package-style test invocation.
+    from tests.test_migration_regressions import _Entry, _Hass, migration
+    from tests.test_options_regressions import _flow
+    from tests.test_panel_regressions import Connection, hass_with, panel
 
 
 def conflicting_wallet():
@@ -81,7 +90,7 @@ class OpeningRecoveryTests(unittest.IsolatedAsyncioTestCase):
         manager = SimpleNamespace(
             async_update_entry=lambda *_a, **_k: self.fail("Unexpected write")
         )
-        entry = SimpleNamespace(data=data, title="Synthetic wallet")
+        entry = SimpleNamespace(entry_id="wallet", data=data, title="Synthetic wallet")
         coordinator = WalletCoordinator(SimpleNamespace(config_entries=manager), entry)
         with patch.object(executions, "fetch_histories", AsyncMock()) as fetch:
             pending = await coordinator._async_book_due_plans(

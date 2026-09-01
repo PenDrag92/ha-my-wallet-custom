@@ -107,7 +107,7 @@ def _valors() -> list[dict[str, Any]]:
 
 
 class MigrationRegressionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_v1_legacy_amount_migrates_directly_to_version_six(self) -> None:
+    async def test_v1_legacy_amount_migrates_directly_to_version_seven(self) -> None:
         hass = _Hass()
         entry = _Entry(
             1,
@@ -120,7 +120,7 @@ class MigrationRegressionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(await migration.async_migrate_entry(hass, entry))
 
-        self.assertEqual(entry.version, 6)
+        self.assertEqual(entry.version, 7)
         self.assertNotIn("invested_amount", entry.data)
         self.assertEqual(entry.data["unrelated"], "preserved")
         self.assertEqual(entry.data["dividends"], [])
@@ -156,7 +156,7 @@ class MigrationRegressionTests(unittest.IsolatedAsyncioTestCase):
             result = await migration.async_migrate_entry(hass, entry)
 
         self.assertTrue(result)
-        self.assertEqual(entry.version, 6)
+        self.assertEqual(entry.version, 7)
         migrated = entry.data["savings_plans"][0]
         self.assertEqual(migrated["id"], "plan-1")
         self.assertEqual(migrated["amount"], 0.01)
@@ -186,7 +186,7 @@ class MigrationRegressionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(await migration.async_migrate_entry(hass, entry))
 
-        self.assertEqual(entry.version, 6)
+        self.assertEqual(entry.version, 7)
         self.assertEqual(
             entry.data["savings_plans"][0]["opening_cutoff_date"], "2026-08-31"
         )
@@ -228,16 +228,18 @@ class MigrationRegressionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(hass.config_entries.calls, [])
         self.assertIn("Failed to migrate", "\n".join(logs.output))
 
-    async def test_v6_entry_is_a_noop_even_with_opaque_data(self) -> None:
+    async def test_v6_entry_adds_inflation_defaults_and_preserves_opaque_data(
+        self,
+    ) -> None:
         hass = _Hass()
         entry = _Entry(6, {"opaque": ["leave", "untouched"]})
-        original = copy.deepcopy(entry.data)
-
         self.assertTrue(await migration.async_migrate_entry(hass, entry))
 
-        self.assertEqual(entry.version, 6)
-        self.assertEqual(entry.data, original)
-        self.assertEqual(hass.config_entries.calls, [])
+        self.assertEqual(entry.version, 7)
+        self.assertEqual(entry.data["opaque"], ["leave", "untouched"])
+        self.assertEqual(entry.data["inflation_source"], "eurostat_de")
+        self.assertEqual(entry.data["expected_annual_inflation"], 2.0)
+        self.assertEqual(len(hass.config_entries.calls), 1)
 
     async def test_v4_invalid_lot_funding_fails_atomically(self) -> None:
         base_lot = {
@@ -325,7 +327,7 @@ class MigrationRegressionTests(unittest.IsolatedAsyncioTestCase):
             result = await migration.async_migrate_entry(hass, entry)
 
         self.assertTrue(result)
-        self.assertEqual(entry.version, 6)
+        self.assertEqual(entry.version, 7)
         for key in original:
             self.assertEqual(entry.data[key], original[key])
         self.assertEqual(len(hass.config_entries.calls), 1)

@@ -16,6 +16,8 @@ CONF_WALLET_NAME: Final = "wallet_name"
 CONF_BASE_CURRENCY: Final = "base_currency"
 CONF_SCAN_INTERVAL: Final = "scan_interval"  # minutes
 CONF_EXPECTED_ANNUAL_RETURN: Final = "expected_annual_return"
+CONF_EXPECTED_ANNUAL_INFLATION: Final = "expected_annual_inflation"
+CONF_INFLATION_SOURCE: Final = "inflation_source"
 CONF_VALORS: Final = "valors"
 # Dated executions and recurring savings plans. ``CONF_INVESTED_AMOUNT`` is
 # retained only for migrating config entries created by version 1.
@@ -32,7 +34,7 @@ CONF_INVESTED_AMOUNT: Final = "invested_amount"  # optional, in base currency
 # Valor keys
 VALOR_SYMBOL: Final = "symbol"
 VALOR_AMOUNT: Final = "amount"
-VALOR_ALIAS: Final = "alias"  # optional dashboard display name
+VALOR_ALIAS: Final = "alias"  # optional user-facing display name
 VALOR_TARGET_SHARE: Final = "target_share"  # optional, percent of the wallet
 
 # Contribution keys
@@ -101,6 +103,12 @@ MAX_SCAN_INTERVAL: Final = 1440
 DEFAULT_EXPECTED_ANNUAL_RETURN: Final = 7.0
 MIN_EXPECTED_ANNUAL_RETURN: Final = -99.0
 MAX_EXPECTED_ANNUAL_RETURN: Final = 100.0
+DEFAULT_EXPECTED_ANNUAL_INFLATION: Final = 2.0
+MIN_EXPECTED_ANNUAL_INFLATION: Final = -20.0
+MAX_EXPECTED_ANNUAL_INFLATION: Final = 100.0
+INFLATION_SOURCE_EUROSTAT_DE: Final = "eurostat_de"
+INFLATION_SOURCE_DISABLED: Final = "disabled"
+DEFAULT_INFLATION_SOURCE: Final = INFLATION_SOURCE_EUROSTAT_DE
 
 # Service names
 SERVICE_REFRESH: Final = "refresh"
@@ -173,6 +181,16 @@ ATTR_PERCENTAGE_DEVIATION: Final = "percentage_deviation"
 ATTR_CALCULATION_BASIS: Final = "calculation_basis"
 ATTR_TARGET_CONTRIBUTIONS: Final = "target_contributions"
 ATTR_TARGET_GROWTH: Final = "target_growth"
+ATTR_EXPECTED_ANNUAL_INFLATION: Final = "expected_annual_inflation"
+ATTR_INFLATION_SOURCE: Final = "inflation_source"
+ATTR_INFLATION_DATA_MONTH: Final = "inflation_data_month"
+ATTR_INFLATION_STALE: Final = "inflation_data_stale"
+ATTR_REAL_INVESTED: Final = "inflation_adjusted_invested"
+ATTR_REAL_PROFIT: Final = "inflation_adjusted_profit"
+ATTR_REAL_PERFORMANCE_PCT: Final = "inflation_adjusted_performance_pct"
+ATTR_REAL_ANNUALIZED_PERFORMANCE_PCT: Final = (
+    "inflation_adjusted_annualized_performance_pct"
+)
 
 # Tolerance when validating the sum of target shares (floating point safety).
 TARGET_SHARE_SUM_TOLERANCE: Final = 0.005

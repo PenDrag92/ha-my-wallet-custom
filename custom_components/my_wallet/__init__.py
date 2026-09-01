@@ -14,13 +14,21 @@ from .const import (
     ALLOCATION_SYMBOL,
     CONF_CONTRIBUTIONS,
     CONF_DIVIDENDS,
+    CONF_EXPECTED_ANNUAL_INFLATION,
+    CONF_INFLATION_SOURCE,
     CONF_INVESTED_AMOUNT,
     CONF_RETIRED_SAVINGS_PLANS,
     CONF_SAVINGS_PLANS,
     CONF_VALORS,
     CONTRIBUTION_SOURCE_LEGACY,
+    DEFAULT_EXPECTED_ANNUAL_INFLATION,
+    DEFAULT_INFLATION_SOURCE,
     DIVIDEND_SYMBOL,
+    INFLATION_SOURCE_DISABLED,
+    INFLATION_SOURCE_EUROSTAT_DE,
     LOT_SYMBOL,
+    MAX_EXPECTED_ANNUAL_INFLATION,
+    MIN_EXPECTED_ANNUAL_INFLATION,
     PLAN_ALLOCATIONS,
     PLAN_ENABLED,
     PLAN_ID,
@@ -114,20 +122,39 @@ def _validate_migrated_references(data: dict[str, Any]) -> None:
 
 async def async_migrate_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -> bool:
     """Migrate legacy ledger data and harden savings-plan boundaries."""
-    if entry.version > 6:
+    if entry.version > 7:
         _LOGGER.error(
             "Cannot migrate My Wallet config entry from unsupported version %s",
             entry.version,
         )
         return False
 
-    if entry.version == 6:
+    if entry.version == 7:
         return True
 
     original_version = entry.version
     today = dt_util.now().date().isoformat()
     try:
         data: dict[str, Any] = dict(entry.data)
+        data.setdefault(
+            CONF_EXPECTED_ANNUAL_INFLATION,
+            DEFAULT_EXPECTED_ANNUAL_INFLATION,
+        )
+        data.setdefault(CONF_INFLATION_SOURCE, DEFAULT_INFLATION_SOURCE)
+        inflation = float(data[CONF_EXPECTED_ANNUAL_INFLATION])
+        if (
+            not isfinite(inflation)
+            or not MIN_EXPECTED_ANNUAL_INFLATION
+            <= inflation
+            <= MAX_EXPECTED_ANNUAL_INFLATION
+        ):
+            raise ValueError("Invalid expected annual inflation")
+        data[CONF_EXPECTED_ANNUAL_INFLATION] = inflation
+        if data[CONF_INFLATION_SOURCE] not in {
+            INFLATION_SOURCE_EUROSTAT_DE,
+            INFLATION_SOURCE_DISABLED,
+        }:
+            raise ValueError("Invalid inflation source")
         if original_version < 4:
             legacy_amount = data.pop(CONF_INVESTED_AMOUNT, None)
             contributions = list(data.get(CONF_CONTRIBUTIONS, []))
@@ -193,9 +220,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -
                 for item in conflicts
             ),
         )
-    hass.config_entries.async_update_entry(entry, data=data, version=6)
+    hass.config_entries.async_update_entry(entry, data=data, version=7)
     _LOGGER.info(
-        "Migrated My Wallet config entry from version %s to version 6 "
+        "Migrated My Wallet config entry from version %s to version 7 "
         "(%s legacy mini-plan(s) disabled, %s future opening cutoff(s) clamped)",
         original_version,
         disabled_count,

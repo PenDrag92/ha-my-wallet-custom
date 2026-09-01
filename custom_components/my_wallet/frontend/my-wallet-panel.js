@@ -1,5 +1,5 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.7.0";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.8.0";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -80,6 +80,9 @@ const WORDS = {
     invalid_import: "Die Datei entspricht nicht dem My-Wallet-Importformat. Es wurde nichts gespeichert.",
     unauthorized: "Die Verlaufsansicht und der Import sind nur für Administratoren verfügbar.",
     emptyValue: "nicht verfügbar", priceDate: "Kursdatum", booked: "Buchungsdatum", dateUnknown: "ohne Datum",
+    purchasingPower: "Kaufkraftbereinigt", expectedInflation: "Erwartete Inflation p. a.", inflationEffect: "Inflationseffekt",
+    inflationHint: "Historische Werte werden mit dem offiziellen deutschen HVPI von Eurostat bereinigt; Zukunftswerte verwenden die eingestellte Inflation.",
+    inflationAsOf: "Offizielle Inflationsdaten bis", inflationStale: "Letzter gespeicherter Datenstand (Abruf derzeit nicht möglich)",
   },
   en: {
     subtitle: "Portfolio history", wallet: "Wallet", refresh: "Refresh", settings: "Manage",
@@ -160,6 +163,9 @@ const WORDS = {
     invalid_import: "The file does not match the My Wallet import format. Nothing was saved.",
     unauthorized: "The history panel and import require administrator access.",
     emptyValue: "unavailable", priceDate: "Price date", booked: "Booking date", dateUnknown: "undated",
+    purchasingPower: "Inflation adjusted", expectedInflation: "Expected inflation p.a.", inflationEffect: "Inflation effect",
+    inflationHint: "Historical values use Eurostat's official German HICP; future values use the configured inflation assumption.",
+    inflationAsOf: "Official inflation data through", inflationStale: "Last cached data (refresh currently unavailable)",
   },
 };
 
@@ -172,7 +178,7 @@ const CSS = `
   button:disabled{opacity:.5;cursor:default}.primary,button.active{background:var(--primary-color,#1878b5);color:white;border-color:var(--primary-color,#1878b5)}button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #de9d30;outline-offset:2px}
   select,input[type=number]{padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}select{max-width:100%}label{display:inline-flex;align-items:center;gap:7px}input[type=checkbox]{width:18px;height:18px;accent-color:var(--primary-color,#1878b5)}
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:14px;margin:18px 0}.target-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.overview-stats{grid-template-columns:repeat(8,minmax(0,1fr))}.overview-stats .stat{padding:16px}.overview-stats .stat strong{font-size:21px;white-space:nowrap}.stat,.card{background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#dce3eb);border-radius:12px;padding:20px}.stat{display:flex;flex-direction:column}.stat strong{display:block;font-size:24px;letter-spacing:-.5px;margin-top:4px;font-variant-numeric:tabular-nums}.stat>span{display:block;min-height:3em;color:var(--secondary-text-color,#57667a);font-size:13px}.card{margin-bottom:18px}
-  .selection-card{display:flex;align-items:center;gap:24px}.selection-card h2{margin:0}.selection-copy{min-width:0}.selection-copy p{margin:4px 0 0}.selection-control{display:grid;gap:5px;min-width:min(100%,300px)}.selection-control span{font-size:13px;color:var(--secondary-text-color,#57667a)}
+  .selection-card{display:flex;align-items:center;gap:24px}.selection-card h2{margin:0}.selection-copy{min-width:0}.selection-copy p{margin:4px 0 0}.selection-control{display:grid;gap:5px;min-width:min(100%,300px)}.selection-control span{font-size:13px;color:var(--secondary-text-color,#57667a)}.real-toggle{display:flex;align-items:center;gap:8px;white-space:nowrap}.real-toggle input{width:20px;height:20px}
   .tabs{display:flex;gap:8px;overflow-x:auto;margin:0 0 18px;padding:4px 0}.tabs button{white-space:nowrap}.tabs button[aria-selected=true]{background:var(--primary-color,#1878b5);color:#fff;border-color:var(--primary-color,#1878b5)}.forecast-custom{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.forecast-custom input{width:125px}
   .alias-editor{margin:0 0 18px;padding:14px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px;background:color-mix(in srgb,var(--primary-color,#1878b5) 4%,var(--card-background-color,#fff))}.alias-editor h3{margin:0}.alias-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px 18px;margin:12px 0}.alias-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(120px,1fr);align-items:center;gap:10px}.alias-row input{width:100%;padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}tr.selected td{background:color-mix(in srgb,var(--primary-color,#1878b5) 8%,transparent)}
   .allocation-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);align-items:center;gap:24px}.donut{width:min(100%,280px);margin:auto}.allocation-name{display:inline-flex;align-items:center;gap:8px}.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;flex:0 0 auto}.details-title{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}.details-title .hint{font-weight:400}
@@ -214,6 +220,7 @@ class MyWalletPanel extends HTMLElement {
     this._type = "all";
     this._cashLine = false;
     this._targetLine = true;
+    this._real = false;
     this._forecastYears = 0;
     this._customForecastYears = 25;
     this._customForecastOpen = false;
@@ -258,6 +265,17 @@ class MyWalletPanel extends HTMLElement {
     const alias = this._positionAlias(symbol);
     return alias ? `${alias} (${symbol})` : symbol;
   }
+  _realKey() { return `my-wallet:real:${this._hass?.user?.id || "admin"}:${this._selected || "none"}`; }
+  _loadRealPreference() {
+    let enabled = false;
+    try { enabled = localStorage.getItem(this._realKey()) === "true"; } catch { /* Keep nominal values. */ }
+    this._real = Boolean(enabled && this._wallet()?.inflation?.available);
+  }
+  _setReal(enabled) {
+    this._real = Boolean(enabled && this._wallet()?.inflation?.available);
+    try { localStorage.setItem(this._realKey(), String(this._real)); } catch { /* Keep the in-memory choice. */ }
+    this._render();
+  }
   _call(type, data = {}) { return this._hass.callWS({ type: `my_wallet/${type}`, ...data }); }
   _errorText(err) {
     const code = err?.code || "error";
@@ -271,10 +289,13 @@ class MyWalletPanel extends HTMLElement {
     this._error = null;
     if (!quiet) this._render();
     try {
+      const previousSelected = this._selected;
       const forecast = forecastYears > 0 ? { forecast_years: forecastYears } : {};
       const result = await this._call("wallets", forecast);
       this._wallets = result.wallets;
       if (!this._wallet()) this._selected = this._wallets[0]?.entry_id;
+      if (previousSelected !== this._selected) this._loadRealPreference();
+      if (!this._wallet()?.inflation?.available) this._real = false;
       this._history = this._selected ? await this._call("history", { entry_id: this._selected, ...forecast }) : null;
     } catch (err) { this._error = this._errorText(err); }
     finally { this._busy = false; this._render(); }
@@ -305,17 +326,18 @@ class MyWalletPanel extends HTMLElement {
   _renderStats(parent, wallet, position) {
     const stats = node("div", null, "stats");
     if (!position) stats.classList.add("overview-stats");
+    const real = this._real && wallet.inflation?.available;
     const values = position ? [
-      ["currentValue", this.money(position.value)], ["purchaseCost", this.money(position.cost)],
+      ["currentValue", this.money(position.value)], ["purchaseCost", this.money(real ? position.real_cost : position.cost)],
       ["positionStart", position.start_date ? this.day(position.start_date) : this.t("emptyValue")],
-      ["units", this.units(position.units)], ["profit", this.money(position.profit)],
-      ["performance", this.percent(position.performance)], ["dividends", this.money(position.dividends)],
+      ["units", this.units(position.units)], ["profit", this.money(real ? position.real_profit : position.profit)],
+      ["performance", this.percent(real ? position.real_performance : position.performance)], ["dividends", this.money(real ? position.real_dividends : position.dividends)],
     ] : [
-      ["value", this.money(wallet.total)], ["invested", this.money(wallet.invested)],
+      ["value", this.money(wallet.total)], ["invested", this.money(real ? wallet.real_invested : wallet.invested)],
       ["portfolioStart", wallet.start_date ? this.day(wallet.start_date) : this.t("emptyValue")],
-      ["profit", this.money(wallet.profit)], ["performance", this.percent(wallet.performance)],
-      ["annualReturn", this.percent(wallet.money_weighted_return)], ["cash", this.money(wallet.cash)],
-      ["dividends", this.money(wallet.dividends)],
+      ["profit", this.money(real ? wallet.real_profit : wallet.profit)], ["performance", this.percent(real ? wallet.real_performance : wallet.performance)],
+      ["annualReturn", this.percent(real ? wallet.real_money_weighted_return : wallet.money_weighted_return)], ["cash", this.money(wallet.cash)],
+      ["dividends", this.money(real ? wallet.real_dividends : wallet.dividends)],
     ];
     for (const [key, value] of values) this._stat(stats, this.t(key), value);
     parent.append(stats);
@@ -354,6 +376,7 @@ class MyWalletPanel extends HTMLElement {
     select.disabled = this._busy || !this._wallets.length;
     select.addEventListener("change", () => {
       this._selected = select.value;
+      this._loadRealPreference();
       this._position = "all";
       this._forecastYears = 0;
       this._customForecastOpen = false;
@@ -432,7 +455,16 @@ class MyWalletPanel extends HTMLElement {
       this._render();
     });
     label.append(node("span", this.t("analysisFor")), select);
-    section.append(copy, node("div", null, "grow"), label);
+    section.append(copy, node("div", null, "grow"));
+    if (wallet.inflation?.available) {
+      const realLabel = node("label", this.t("purchasingPower"), "real-toggle"), check = node("input");
+      check.type = "checkbox"; check.checked = this._real;
+      check.addEventListener("change", () => this._setReal(check.checked));
+      const detail = `${this.t(wallet.inflation.stale ? "inflationStale" : "inflationAsOf")} ${wallet.inflation.latest_month || "—"}`;
+      realLabel.title = `${this.t("inflationHint")} ${detail}`;
+      realLabel.prepend(check); section.append(realLabel);
+    }
+    section.append(label);
     parent.append(section);
   }
   _renderTargetSummary(parent, wallet) {
@@ -473,22 +505,33 @@ class MyWalletPanel extends HTMLElement {
       this._notice(section, this.t("targetUnavailable"), "warning"); parent.append(section); return;
     }
     const historyTarget = this._history?.target || {};
-    const forecastItem = this._forecastYears ? historyTarget.forecasts?.[String(this._forecastYears)] : { date: target.date, value: target.value, contributions: historyTarget.contributions, growth: historyTarget.growth };
+    const forecastItem = this._forecastYears ? historyTarget.forecasts?.[String(this._forecastYears)] : {
+      date: target.date, value: target.value, real_value: historyTarget.real_current_value,
+      contributions: historyTarget.contributions, real_contributions: historyTarget.real_contributions,
+      growth: historyTarget.growth, real_growth: historyTarget.real_growth, inflation_effect: 0,
+    };
+    const real = this._real && wallet.inflation?.available;
     const stats = node("div", null, "stats target-stats");
     this._stat(stats, this.t("expectedReturn"), this.ratio(target.annual_return));
-    this._stat(stats, this._forecastYears ? this.t("forecastValue") : this.t("targetValue"), this.money(forecastItem?.value));
+    if (wallet.inflation?.available) this._stat(stats, this.t("expectedInflation"), this.ratio(wallet.inflation.expected_annual_inflation));
+    this._stat(stats, this._forecastYears ? this.t("forecastValue") : this.t("targetValue"), this.money(real ? forecastItem?.real_value : forecastItem?.value));
     this._stat(stats, this.t("forecastDate"), this.day(forecastItem?.date));
-    this._stat(stats, this.t("targetContributions"), this.money(forecastItem?.contributions));
-    if (this._forecastYears) this._stat(stats, this.t("futureContributions"), this.money(forecastItem?.additional_contributions));
-    this._stat(stats, this.t("targetGrowth"), this.money(forecastItem?.growth));
+    this._stat(stats, this.t("targetContributions"), this.money(real ? forecastItem?.real_contributions : forecastItem?.contributions));
+    if (this._forecastYears) this._stat(stats, this.t("futureContributions"), this.money(real ? forecastItem?.additional_real_contributions : forecastItem?.additional_contributions));
+    this._stat(stats, this.t("targetGrowth"), this.money(real ? forecastItem?.real_growth : forecastItem?.growth));
+    if (this._forecastYears && wallet.inflation?.available) this._stat(stats, this.t("inflationEffect"), this.money(forecastItem?.inflation_effect));
     if (!this._forecastYears) this._stat(stats, this.t("currentTargetDeviation"), `${this.money(target.absolute_deviation)} · ${this.percent(target.percentage_deviation)}`);
-    section.append(stats, node("p", this.t("targetHint"), "hint")); parent.append(section);
+    section.append(stats, node("p", this.t("targetHint"), "hint"));
+    if (wallet.inflation?.available) section.append(node("p", `${this.t("inflationHint")} ${this.t(wallet.inflation.stale ? "inflationStale" : "inflationAsOf")} ${wallet.inflation.latest_month || "—"}.`, "hint"));
+    parent.append(section);
   }
   _renderAllocation(parent, wallet) {
     const section = node("section", null, "card");
     const forecast = this._forecastYears ? wallet.target?.allocation_forecasts?.[String(this._forecastYears)] : null;
-    const total = forecast?.total ?? wallet.total, cash = forecast?.cash ?? wallet.cash;
-    const positionValue = item => forecast?.positions?.[item.symbol] ?? item.value;
+    const real = this._real && wallet.inflation?.available;
+    const total = forecast ? (real ? forecast.real_total : forecast.total) : wallet.total;
+    const cash = forecast ? (real ? forecast.real_cash : forecast.cash) : wallet.cash;
+    const positionValue = item => forecast ? (real ? forecast.real_positions?.[item.symbol] : forecast.positions?.[item.symbol]) : item.value;
     const title = forecast ? `${this.t("forecastAllocation")} · ${this.day(forecast.date)}` : this.t("allocation");
     section.append(node("h2", title), node("p", this.t(forecast ? "forecastAllocationHint" : "allocationHint"), "hint"));
     if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(cash) || cash < 0 || wallet.positions.some(item => !Number.isFinite(positionValue(item)) || positionValue(item) < 0)) {
@@ -549,6 +592,7 @@ class MyWalletPanel extends HTMLElement {
     if (this._positionAlias(position.symbol)) heading.append(node("span", position.symbol, "hint"));
     section.append(heading);
     const rows = position.lots || [];
+    const real = this._real && this._wallet()?.inflation?.available;
     if (!rows.length) {
       this._notice(section, this.t("noLots"));
       parent.append(section);
@@ -564,10 +608,13 @@ class MyWalletPanel extends HTMLElement {
       const units = node("td", this.units(row.units), "num");
       if (row.estimated) units.append(node("span", this.t("estimate"), "badge"));
       const cls = value => `num ${value > 0 ? "positive" : value < 0 ? "negative" : ""}`;
-      tr.append(dateCell, node("td", this.money(row.amount, currency), "num"), units, node("td", this.money(row.purchase_price, currency), "num"),
-        node("td", this.money(row.current_value, currency), "num"), node("td", this.money(row.dividends, currency), "num"),
-        node("td", this.money(row.profit, currency), cls(row.profit)), node("td", this.percent(row.performance), cls(row.performance)),
-        node("td", this.percent(row.annualized_performance), cls(row.annualized_performance)));
+      const cost = real ? row.real_cost : row.amount, dividends = real ? row.real_dividends : row.dividends;
+      const profit = real ? row.real_profit : row.profit, performance = real ? row.real_performance : row.performance;
+      const annualized = real ? row.real_annualized_performance : row.annualized_performance;
+      tr.append(dateCell, node("td", this.money(cost, currency), "num"), units, node("td", this.money(real && row.units ? cost / row.units : row.purchase_price, currency), "num"),
+        node("td", this.money(row.current_value, currency), "num"), node("td", this.money(dividends, currency), "num"),
+        node("td", this.money(profit, currency), cls(profit)), node("td", this.percent(performance), cls(performance)),
+        node("td", this.percent(annualized), cls(annualized)));
       body.append(tr);
     }
     table.append(body); wrap.append(table); section.append(wrap, node("p", this.t("lotDetailsHint"), "hint")); parent.append(section);
@@ -575,6 +622,7 @@ class MyWalletPanel extends HTMLElement {
   _renderPositions(parent, wallet) {
     const section = node("section", null, "card"), controls = node("div", null, "controls");
     const forecast = this._forecastYears ? wallet.target?.allocation_forecasts?.[String(this._forecastYears)] : null;
+    const real = this._real && wallet.inflation?.available;
     controls.append(node("h2", this.t("positions")), node("div", null, "grow"));
     controls.append(
       button(this.t("editAliases"), () => {
@@ -599,10 +647,12 @@ class MyWalletPanel extends HTMLElement {
       if (alias) first.append(node("span", item.symbol, "hint"));
       if (!item.cost_complete) first.append(node("span", this.t("incompleteCost"), "hint"));
       const cls = value => `num ${value > 0 ? "positive" : value < 0 ? "negative" : ""}`;
-      const forecastValue = forecast?.positions?.[item.symbol], forecastShare = forecastValue != null && forecast.total ? forecastValue / forecast.total * 100 : null;
+      const forecastValue = forecast ? (real ? forecast.real_positions?.[item.symbol] : forecast.positions?.[item.symbol]) : null;
+      const forecastTotal = real ? forecast?.real_total : forecast?.total, forecastShare = forecastValue != null && forecastTotal ? forecastValue / forecastTotal * 100 : null;
+      const cost = real ? item.real_cost : item.cost, profit = real ? item.real_profit : item.profit, performance = real ? item.real_performance : item.performance;
       tr.append(first, node("td", this.units(item.units), "num"), node("td", this.money(item.price), "num"),
-        node("td", this.money(item.value), "num"), node("td", this.money(item.cost), "num"),
-        node("td", this.money(item.profit), cls(item.profit)), node("td", this.percent(item.performance), cls(item.performance)),
+        node("td", this.money(item.value), "num"), node("td", this.money(cost), "num"),
+        node("td", this.money(profit), cls(profit)), node("td", this.percent(performance), cls(performance)),
         node("td", this.ratio(item.share), "num"));
       if (forecast) tr.append(node("td", this.money(forecastValue), "num"), node("td", this.ratio(forecastShare), "num"));
       tr.append(node("td", this.ratio(item.target), "num"));
@@ -766,21 +816,38 @@ class MyWalletPanel extends HTMLElement {
     section.append(controls);
     const limit = { year: 366, six: 184, three: 93 }[this._period];
     let source = limit ? this._history.points.slice(-limit) : this._history.points;
+    const real = this._real && this._history.inflation?.available;
+    if (real) source = source.map(point => ({
+      ...point,
+      value: point.real_value,
+      invested: point.real_invested,
+      cash: point.real_cash,
+      target: point.real_target,
+      positions: point.real_positions,
+      position_costs: point.real_position_costs,
+    }));
     let showProjection = false;
     if (this._position === "all" && this._forecastYears && !limit && this._targetLine) {
       const cutoff = this._history.target?.forecasts?.[String(this._forecastYears)]?.date;
       const target = this._history.target || {}, wallet = this._wallet();
-      const canProject = Number.isFinite(wallet?.total) && Number.isFinite(target.current_value) && Number.isFinite(target.annual_return) && target.date;
+      const targetCurrent = real ? target.real_current_value : target.current_value;
+      const walletInvested = real ? wallet?.real_invested : wallet?.invested;
+      const targetContributions = real ? target.real_contributions : target.contributions;
+      const canProject = Number.isFinite(wallet?.total) && Number.isFinite(targetCurrent) && Number.isFinite(target.annual_return) && target.date;
       const project = point => {
         const days = (Date.parse(`${point.date}T00:00:00Z`) - Date.parse(`${target.date}T00:00:00Z`)) / 86400000;
-        return point.target + (wallet.total - target.current_value) * Math.pow(1 + target.annual_return / 100, days / 365.2425);
+        const delta = (wallet.total - targetCurrent) * Math.pow(1 + target.annual_return / 100, days / 365.2425);
+        return point.target + (real && point.inflation_factor ? delta / point.inflation_factor : delta);
       };
-      const projectInvested = point => Number.isFinite(wallet?.invested) && Number.isFinite(target.contributions) && Number.isFinite(point.invested) ? wallet.invested + point.invested - target.contributions : point.invested;
+      const projectInvested = point => Number.isFinite(walletInvested) && Number.isFinite(targetContributions) && Number.isFinite(point.invested) ? walletInvested + point.invested - targetContributions : point.invested;
       if (canProject && source.length) {
         source = source.map((point, index) => index === source.length - 1 ? { ...point, projected: wallet.total } : point);
         showProjection = true;
       }
-      source = [...source, ...(this._history.target_forecast || []).filter(point => !cutoff || point.date <= cutoff).map(point => ({ ...point, value: null, projected: canProject ? project(point) : null, invested: projectInvested(point), cash: null }))];
+      source = [...source, ...(this._history.target_forecast || []).filter(point => !cutoff || point.date <= cutoff).map(point => {
+        const prepared = real ? { ...point, target: point.real_target, invested: point.real_invested } : point;
+        return { ...prepared, value: null, projected: canProject ? project(prepared) : null, invested: projectInvested(prepared), cash: null };
+      })];
     }
     const points = this._position === "all" ? source : source.map(point => ({
       ...point,
@@ -879,7 +946,8 @@ class MyWalletPanel extends HTMLElement {
     controls.append(node("h2", this.t("overview")), node("div", null, "grow"));
     for (const [key, label] of [["monthly", "monthlyOverview"], ["yearly", "yearlyOverview"]]) controls.append(button(this.t(label), () => { this._summaryPeriod = key; this._render(); }, this._summaryPeriod === key ? "active" : ""));
     section.append(controls);
-    const source = this._position === "all" ? this._history.summaries?.wallet : this._history.summaries?.positions?.[this._position];
+    const summaries = this._real && this._history.inflation?.available ? this._history.summaries_real : this._history.summaries;
+    const source = this._position === "all" ? summaries?.wallet : summaries?.positions?.[this._position];
     const rows = [...(source?.[this._summaryPeriod] || [])].reverse();
     const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr");
     const flowKey = this._position === "all" ? "depositsLabel" : "purchaseCost";
@@ -928,7 +996,8 @@ class MyWalletPanel extends HTMLElement {
       const units = node("td", this.units(row.units), "num");
       if (row.estimated) units.append(node("span", this.t("estimate"), "badge"));
       if (row.price_date && row.price_date !== row.date) units.append(node("span", `${this.t("priceDate")}: ${this.day(row.price_date)}`, "hint"));
-      tr.append(dateCell, node("td", this.t(row.type)), asset, node("td", this.money(row.amount), `num ${row.amount > 0 ? "positive" : ""}`), units);
+      const amount = this._real && this._history.inflation?.available ? row.real_amount : row.amount;
+      tr.append(dateCell, node("td", this.t(row.type)), asset, node("td", this.money(amount), `num ${amount > 0 ? "positive" : ""}`), units);
       body.append(tr);
     }
     table.append(body); wrap.append(table); section.append(wrap);

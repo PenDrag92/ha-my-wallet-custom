@@ -87,7 +87,7 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
             data={
                 "wallet_name": "Old wallet name",
                 "base_currency": "EUR",
-                "valors": [{"symbol": "AAA", "amount": 0, "alias": "Amundi"}],
+                "valors": [{"symbol": "AAA", "amount": 0, "alias": "World ETF"}],
                 "contributions": [],
                 "dividends": [],
                 "savings_plans": [],
@@ -102,7 +102,7 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             connection.results[0][1]["wallets"][0]["positions"][0]["alias"],
-            "Amundi",
+            "World ETF",
         )
 
     def test_wallet_and_position_start_dates_and_lot_details_are_documented(self):
@@ -203,6 +203,152 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(position["lots"][0]["dividends"], 10)
         self.assertEqual(position["lots"][0]["profit"], 30)
 
+    def test_wallets_expose_official_inflation_adjusted_performance(self):
+        from custom_components.my_wallet import const as c
+        from custom_components.my_wallet.contributions import (
+            make_contribution,
+            make_lot,
+        )
+        from custom_components.my_wallet.dividends import make_dividend
+        from custom_components.my_wallet.inflation import InflationSeries
+        from custom_components.my_wallet.models import ValorData, WalletData
+        from custom_components.my_wallet.yahoo import Quote
+
+        data = {
+            c.CONF_WALLET_NAME: "Wallet",
+            c.CONF_BASE_CURRENCY: "EUR",
+            c.CONF_SCAN_INTERVAL: 30,
+            c.CONF_EXPECTED_ANNUAL_INFLATION: 2,
+            c.CONF_VALORS: [{c.VALOR_SYMBOL: "AAA", c.VALOR_AMOUNT: 0}],
+            c.CONF_CONTRIBUTIONS: [
+                make_contribution(
+                    100,
+                    "2026-01-01",
+                    lots=[
+                        make_lot(
+                            symbol="AAA",
+                            execution_date="2026-01-01",
+                            amount=80,
+                            unit_price=10,
+                            quote_currency="EUR",
+                            units=8,
+                            estimated=False,
+                        )
+                    ],
+                )
+            ],
+            c.CONF_DIVIDENDS: [
+                make_dividend(booking_date="2026-02-01", amount=10, symbol="AAA"),
+                make_dividend(booking_date="2027-02-01", amount=100, symbol="AAA"),
+            ],
+            c.CONF_SAVINGS_PLANS: [],
+            c.CONF_RETIRED_SAVINGS_PLANS: [],
+        }
+        current = WalletData(
+            valors={
+                "AAA": ValorData("AAA", 8, 0, quote=Quote("AAA", 12, "EUR"), fx_rate=1)
+            },
+            cash_balance=30,
+            inflation=InflationSeries(
+                c.INFLATION_SOURCE_EUROSTAT_DE,
+                "DE",
+                {"2026-01": 100, "2026-02": 110},
+            ),
+        )
+        entry = types.SimpleNamespace(
+            entry_id="wallet",
+            title="Wallet",
+            data=data,
+            runtime_data=types.SimpleNamespace(data=current, last_update_success=True),
+        )
+        connection = Connection()
+
+        panel.ws_wallets(hass_with([entry]), connection, {"id": 1})
+
+        wallet = connection.results[0][1]["wallets"][0]
+        position = wallet["positions"][0]
+        self.assertAlmostEqual(wallet["real_invested"], 110)
+        self.assertAlmostEqual(wallet["real_profit"], 16)
+        self.assertEqual(wallet["dividends"], 10)
+        self.assertEqual(wallet["real_dividends"], 10)
+        self.assertEqual(wallet["inflation"]["latest_month"], "2026-02")
+        self.assertAlmostEqual(position["real_cost"], 88)
+        self.assertEqual(position["dividends"], 10)
+        self.assertEqual(position["real_dividends"], 10)
+        self.assertAlmostEqual(position["real_profit"], 18)
+        self.assertIn("real_total", wallet["target"]["allocation_forecasts"]["1"])
+
+    def test_position_real_metrics_require_every_cost_to_have_inflation_data(self):
+        from custom_components.my_wallet import const as c
+        from custom_components.my_wallet.contributions import (
+            make_contribution,
+            make_lot,
+        )
+        from custom_components.my_wallet.inflation import InflationSeries
+        from custom_components.my_wallet.models import ValorData, WalletData
+        from custom_components.my_wallet.yahoo import Quote
+
+        data = {
+            c.CONF_WALLET_NAME: "Wallet",
+            c.CONF_BASE_CURRENCY: "EUR",
+            c.CONF_SCAN_INTERVAL: 30,
+            c.CONF_VALORS: [{c.VALOR_SYMBOL: "AAA", c.VALOR_AMOUNT: 0}],
+            c.CONF_CONTRIBUTIONS: [
+                make_contribution(
+                    80,
+                    "1995-01-01",
+                    lots=[
+                        make_lot(
+                            symbol="AAA",
+                            execution_date="1995-01-01",
+                            amount=40,
+                            unit_price=10,
+                            quote_currency="EUR",
+                            units=4,
+                            estimated=False,
+                        ),
+                        make_lot(
+                            symbol="AAA",
+                            execution_date="2026-01-01",
+                            amount=40,
+                            unit_price=10,
+                            quote_currency="EUR",
+                            units=4,
+                            estimated=False,
+                        ),
+                    ],
+                )
+            ],
+            c.CONF_DIVIDENDS: [],
+            c.CONF_SAVINGS_PLANS: [],
+            c.CONF_RETIRED_SAVINGS_PLANS: [],
+        }
+        current = WalletData(
+            valors={
+                "AAA": ValorData("AAA", 8, 0, quote=Quote("AAA", 12, "EUR"), fx_rate=1)
+            },
+            cash_balance=0,
+            inflation=InflationSeries(
+                c.INFLATION_SOURCE_EUROSTAT_DE,
+                "DE",
+                {"2026-01": 100, "2026-02": 101},
+            ),
+        )
+        entry = types.SimpleNamespace(
+            entry_id="wallet",
+            title="Wallet",
+            data=data,
+            runtime_data=types.SimpleNamespace(data=current, last_update_success=True),
+        )
+        connection = Connection()
+
+        panel.ws_wallets(hass_with([entry]), connection, {"id": 1})
+
+        position = connection.results[0][1]["wallets"][0]["positions"][0]
+        self.assertIsNone(position["real_cost"])
+        self.assertIsNone(position["real_profit"])
+        self.assertIsNone(position["real_performance"])
+
     def test_unknown_opening_holding_does_not_invent_a_later_wallet_start(self):
         from custom_components.my_wallet.contributions import make_contribution
 
@@ -259,7 +405,7 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(document["wallet"]["data"]["valors"][0]["alias"], "World ETF")
         self.assertIsNot(document["wallet"]["data"], data)
 
-    def test_position_aliases_are_trimmed_and_persisted_without_a_reload(self):
+    def test_position_aliases_are_trimmed_and_reload_entity_names(self):
         data = {
             "wallet_name": "Wallet",
             "base_currency": "EUR",
@@ -282,7 +428,7 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
             {
                 "id": 1,
                 "entry_id": "wallet",
-                "aliases": {"AAA": "  Amundi   Prime  ", "BBB": ""},
+                "aliases": {"AAA": "  World   ETF  ", "BBB": ""},
             },
         )
 
@@ -294,16 +440,16 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
                     "symbol": "AAA",
                     "amount": 1,
                     "target_share": 60,
-                    "alias": "Amundi Prime",
+                    "alias": "World ETF",
                 },
                 {"symbol": "BBB", "amount": 2},
             ],
         )
         self.assertIs(saved["contributions"], data["contributions"])
-        hass.config_entries.async_schedule_reload.assert_not_called()
+        hass.config_entries.async_schedule_reload.assert_called_once_with("wallet")
         self.assertEqual(
             connection.results[0][1]["aliases"],
-            {"AAA": "Amundi Prime", "BBB": ""},
+            {"AAA": "World ETF", "BBB": ""},
         )
 
     def test_position_aliases_reject_unknown_symbols_and_long_values(self):

@@ -224,7 +224,7 @@ class PlanOptionsMixin:
                         "symbols", default=self._selected_plan_symbols or []
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=symbols,
+                            options=self._position_options(symbols),
                             multiple=True,
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
@@ -359,7 +359,7 @@ class PlanOptionsMixin:
                     else ui._CONTRIBUTION_AMOUNT_SELECTOR,
                     vol.Optional("back_to_symbol"): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=selected,
+                            options=self._position_options(selected),
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     ),
@@ -367,7 +367,7 @@ class PlanOptionsMixin:
             ),
             errors=errors,
             description_placeholders={
-                "symbol": symbol,
+                "symbol": self._position_label(symbol),
                 "index": str(self._plan_index + 1),
                 "count": str(len(selected)),
                 "current_total": str(
@@ -512,7 +512,8 @@ class PlanOptionsMixin:
             else currency
         )
         allocation = "\n".join(
-            f"- {row[c.ALLOCATION_SYMBOL]}: {row[c.ALLOCATION_VALUE]:.2f} {unit}"
+            f"- {self._position_label(row[c.ALLOCATION_SYMBOL])}: "
+            f"{row[c.ALLOCATION_VALUE]:.2f} {unit}"
             for row in plan[c.PLAN_ALLOCATIONS]
         )
         return self.async_show_form(
@@ -595,7 +596,12 @@ class PlanOptionsMixin:
                 f"{self._text(item.get('reason', 'booking_failed'))}"
                 + (
                     " · "
-                    + ", ".join(item.get("affected_symbols") or item["missing_symbols"])
+                    + ", ".join(
+                        self._position_label(symbol)
+                        for symbol in (
+                            item.get("affected_symbols") or item["missing_symbols"]
+                        )
+                    )
                     if item.get("affected_symbols") or item.get("missing_symbols")
                     else ""
                 )

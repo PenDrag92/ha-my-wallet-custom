@@ -22,6 +22,7 @@ def _install_coordinator_stubs() -> None:
     helpers = types.ModuleType("homeassistant.helpers")
     aiohttp_client = types.ModuleType("homeassistant.helpers.aiohttp_client")
     update_coordinator = types.ModuleType("homeassistant.helpers.update_coordinator")
+    storage = types.ModuleType("homeassistant.helpers.storage")
     util = types.ModuleType("homeassistant.util")
     dt_module = types.ModuleType("homeassistant.util.dt")
 
@@ -43,11 +44,22 @@ def _install_coordinator_stubs() -> None:
     class UpdateFailed(Exception):
         pass
 
+    class Store:
+        def __init__(self, *_: object, **__: object) -> None:
+            self.value = None
+
+        async def async_load(self):
+            return self.value
+
+        async def async_save(self, value) -> None:
+            self.value = value
+
     config_entries.ConfigEntry = ConfigEntry
     core.HomeAssistant = HomeAssistant
     aiohttp_client.async_get_clientsession = lambda hass: hass.session
     update_coordinator.DataUpdateCoordinator = DataUpdateCoordinator
     update_coordinator.UpdateFailed = UpdateFailed
+    storage.Store = Store
     dt_module.now = lambda: datetime.now(UTC)
     util.dt = dt_module
 
@@ -57,6 +69,7 @@ def _install_coordinator_stubs() -> None:
         "homeassistant.helpers": helpers,
         "homeassistant.helpers.aiohttp_client": aiohttp_client,
         "homeassistant.helpers.update_coordinator": update_coordinator,
+        "homeassistant.helpers.storage": storage,
         "homeassistant.util": util,
         "homeassistant.util.dt": dt_module,
     }
@@ -163,7 +176,7 @@ class CoordinatorRegressionTests(unittest.TestCase):
     def _coordinator(self, data: dict[str, Any]) -> tuple[WalletCoordinator, Any]:
         manager = _ConfigEntries()
         hass = SimpleNamespace(config_entries=manager)
-        entry = SimpleNamespace(data=data, title="Fallback wallet")
+        entry = SimpleNamespace(entry_id="wallet", data=data, title="Fallback wallet")
         return WalletCoordinator(hass, entry), entry
 
     def test_name_uses_wallet_name_key(self) -> None:

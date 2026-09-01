@@ -1,4 +1,9 @@
-"""Localized dynamic booking labels (form labels live in translations)."""
+"""Localized dynamic labels (form field names live in translations)."""
+
+from collections.abc import Iterable, Mapping
+from typing import Any
+
+from . import const as c
 
 MESSAGES = {
     "en": {
@@ -130,3 +135,25 @@ def text(key: str, language: str = "en") -> str:
     return MESSAGES.get(language.split("-")[0], MESSAGES["en"]).get(
         key, MESSAGES["en"].get(key, key)
     )
+
+
+def position_label(valors: Iterable[Mapping[str, Any]], symbol: str) -> str:
+    """Return a friendly label while retaining the stable technical symbol."""
+    valor = next((item for item in valors if item.get(c.VALOR_SYMBOL) == symbol), None)
+    alias = str((valor or {}).get(c.VALOR_ALIAS) or "").strip()
+    return f"{alias} ({symbol})" if alias else symbol
+
+
+def position_options(
+    valors: Iterable[Mapping[str, Any]], symbols: Iterable[str] | None = None
+) -> list[dict[str, str]]:
+    """Build Home Assistant selector options with stable stored values."""
+    rows = list(valors)
+    selected = (
+        list(symbols)
+        if symbols is not None
+        else [str(item[c.VALOR_SYMBOL]) for item in rows]
+    )
+    return [
+        {"value": symbol, "label": position_label(rows, symbol)} for symbol in selected
+    ]

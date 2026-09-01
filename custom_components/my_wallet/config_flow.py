@@ -23,7 +23,9 @@ from .const import (
     CONF_BASE_CURRENCY,
     CONF_CONTRIBUTIONS,
     CONF_DIVIDENDS,
+    CONF_EXPECTED_ANNUAL_INFLATION,
     CONF_EXPECTED_ANNUAL_RETURN,
+    CONF_INFLATION_SOURCE,
     CONF_INVESTED_AMOUNT,
     CONF_RETIRED_SAVINGS_PLANS,
     CONF_SAVINGS_PLANS,
@@ -43,7 +45,9 @@ from .const import (
     CONTRIBUTION_SOURCE_LEGACY,
     CONTRIBUTION_SOURCE_PURCHASE,
     DEFAULT_BASE_CURRENCY,
+    DEFAULT_EXPECTED_ANNUAL_INFLATION,
     DEFAULT_EXPECTED_ANNUAL_RETURN,
+    DEFAULT_INFLATION_SOURCE,
     DEFAULT_SCAN_INTERVAL,
     DIVIDEND_AMOUNT,
     DIVIDEND_BOOKING_DATE,
@@ -52,6 +56,8 @@ from .const import (
     DIVIDEND_SYMBOL,
     DIVIDEND_VALUE_DATE,
     DOMAIN,
+    INFLATION_SOURCE_DISABLED,
+    INFLATION_SOURCE_EUROSTAT_DE,
     LOT_AMOUNT,
     LOT_DATE,
     LOT_FX_RATE,
@@ -61,8 +67,10 @@ from .const import (
     LOT_SYMBOL,
     LOT_UNIT_PRICE,
     LOT_UNITS,
+    MAX_EXPECTED_ANNUAL_INFLATION,
     MAX_EXPECTED_ANNUAL_RETURN,
     MAX_SCAN_INTERVAL,
+    MIN_EXPECTED_ANNUAL_INFLATION,
     MIN_EXPECTED_ANNUAL_RETURN,
     MIN_SCAN_INTERVAL,
     PLAN_ALLOCATION_MODE,
@@ -89,6 +97,7 @@ from .contributions import (
     normalize_contributions,
     opening_balance_conflicts,
 )
+from .display import position_label, position_options
 from .display import text as display_text
 from .dividends import (
     dividends_from_data,
@@ -175,6 +184,24 @@ _EXPECTED_RETURN_SELECTOR = selector.NumberSelector(
         step=0.1,
         unit_of_measurement="%",
         mode=selector.NumberSelectorMode.BOX,
+    )
+)
+
+_EXPECTED_INFLATION_SELECTOR = selector.NumberSelector(
+    selector.NumberSelectorConfig(
+        min=MIN_EXPECTED_ANNUAL_INFLATION,
+        max=MAX_EXPECTED_ANNUAL_INFLATION,
+        step=0.1,
+        unit_of_measurement="%",
+        mode=selector.NumberSelectorMode.BOX,
+    )
+)
+
+_INFLATION_SOURCE_SELECTOR = selector.SelectSelector(
+    selector.SelectSelectorConfig(
+        options=[INFLATION_SOURCE_EUROSTAT_DE, INFLATION_SOURCE_DISABLED],
+        mode=selector.SelectSelectorMode.DROPDOWN,
+        translation_key="inflation_source",
     )
 )
 
@@ -341,6 +368,8 @@ def _settings_schema(
     currency: str = DEFAULT_BASE_CURRENCY,
     interval: Any = DEFAULT_SCAN_INTERVAL,
     expected_return: Any = DEFAULT_EXPECTED_ANNUAL_RETURN,
+    inflation_source: str = DEFAULT_INFLATION_SOURCE,
+    expected_inflation: Any = DEFAULT_EXPECTED_ANNUAL_INFLATION,
 ) -> vol.Schema:
     safe_interval = _finite_number(
         interval, minimum=MIN_SCAN_INTERVAL, maximum=MAX_SCAN_INTERVAL
@@ -350,6 +379,16 @@ def _settings_schema(
         minimum=MIN_EXPECTED_ANNUAL_RETURN,
         maximum=MAX_EXPECTED_ANNUAL_RETURN,
     )
+    safe_inflation = _finite_number(
+        expected_inflation,
+        minimum=MIN_EXPECTED_ANNUAL_INFLATION,
+        maximum=MAX_EXPECTED_ANNUAL_INFLATION,
+    )
+    if inflation_source not in (
+        INFLATION_SOURCE_EUROSTAT_DE,
+        INFLATION_SOURCE_DISABLED,
+    ):
+        inflation_source = DEFAULT_INFLATION_SOURCE
     return vol.Schema(
         {
             vol.Required(CONF_WALLET_NAME, default=name): str,
@@ -368,6 +407,17 @@ def _settings_schema(
                     else DEFAULT_EXPECTED_ANNUAL_RETURN
                 ),
             ): _EXPECTED_RETURN_SELECTOR,
+            vol.Required(
+                CONF_INFLATION_SOURCE, default=inflation_source
+            ): _INFLATION_SOURCE_SELECTOR,
+            vol.Required(
+                CONF_EXPECTED_ANNUAL_INFLATION,
+                default=(
+                    safe_inflation
+                    if safe_inflation is not None
+                    else DEFAULT_EXPECTED_ANNUAL_INFLATION
+                ),
+            ): _EXPECTED_INFLATION_SELECTOR,
         }
     )
 
@@ -441,6 +491,7 @@ def _allocation_schema(
     mode: str,
     symbol: str | None = None,
     value: float | None = None,
+    options: list[dict[str, str]] | None = None,
 ) -> vol.Schema:
     """Build one allocation row for a savings plan."""
     value_selector = (
@@ -459,7 +510,7 @@ def _allocation_schema(
         {
             symbol_marker: selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=symbols,
+                    options=options or symbols,
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
@@ -473,6 +524,7 @@ def _manual_lot_schema(
     symbols: list[str],
     contribution_options: list[dict[str, str]],
     values: dict[str, Any] | None = None,
+    symbol_options: list[dict[str, str]] | None = None,
 ) -> vol.Schema:
     """Build the form for importing one historical purchase lot."""
     values = values or {}
@@ -486,7 +538,7 @@ def _manual_lot_schema(
     fields: dict[vol.Marker, Any] = {
         vol.Required(LOT_SYMBOL, default=selected_symbol): selector.SelectSelector(
             selector.SelectSelectorConfig(
-                options=symbols,
+                options=symbol_options or symbols,
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
         ),
@@ -522,7 +574,9 @@ def _manual_lot_schema(
 
 
 def _dividend_schema(
-    symbols: list[str], dividend: dict[str, Any] | None = None
+    symbols: list[str],
+    dividend: dict[str, Any] | None = None,
+    symbol_options: list[dict[str, str]] | None = None,
 ) -> vol.Schema:
     """Build the form for one net dividend credit."""
     dividend = dividend or {}
@@ -538,7 +592,9 @@ def _dividend_schema(
             "label": "—",
         }
     ]
-    source_options.extend({"value": symbol, "label": symbol} for symbol in symbols)
+    source_options.extend(
+        symbol_options or ({"value": symbol, "label": symbol} for symbol in symbols)
+    )
     return vol.Schema(
         {
             vol.Required(
@@ -571,7 +627,7 @@ def _dividend_schema(
 class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the initial creation of a wallet."""
 
-    VERSION = 6
+    VERSION = 7
 
     def __init__(self) -> None:
         self._valors: list[dict[str, Any]] = []
@@ -579,6 +635,8 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._currency: str = DEFAULT_BASE_CURRENCY
         self._interval: int = DEFAULT_SCAN_INTERVAL
         self._expected_return: float = DEFAULT_EXPECTED_ANNUAL_RETURN
+        self._inflation_source: str = DEFAULT_INFLATION_SOURCE
+        self._expected_inflation: float = DEFAULT_EXPECTED_ANNUAL_INFLATION
 
     async def async_step_import(self, user_input):
         """Create a separate wallet from a confirmed server-side preview."""
@@ -619,17 +677,37 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 minimum=MIN_EXPECTED_ANNUAL_RETURN,
                 maximum=MAX_EXPECTED_ANNUAL_RETURN,
             )
+            expected_inflation = _finite_number(
+                user_input.get(
+                    CONF_EXPECTED_ANNUAL_INFLATION,
+                    DEFAULT_EXPECTED_ANNUAL_INFLATION,
+                ),
+                minimum=MIN_EXPECTED_ANNUAL_INFLATION,
+                maximum=MAX_EXPECTED_ANNUAL_INFLATION,
+            )
+            inflation_source = user_input.get(
+                CONF_INFLATION_SOURCE, DEFAULT_INFLATION_SOURCE
+            )
             if not name:
                 errors[CONF_WALLET_NAME] = "invalid_name"
             elif interval is None or not interval.is_integer():
                 errors[CONF_SCAN_INTERVAL] = "invalid_number"
             elif expected_return is None:
                 errors[CONF_EXPECTED_ANNUAL_RETURN] = "invalid_number"
+            elif expected_inflation is None:
+                errors[CONF_EXPECTED_ANNUAL_INFLATION] = "invalid_number"
+            elif inflation_source not in (
+                INFLATION_SOURCE_EUROSTAT_DE,
+                INFLATION_SOURCE_DISABLED,
+            ):
+                errors[CONF_INFLATION_SOURCE] = "invalid_input"
             else:
                 self._name = name
                 self._currency = user_input[CONF_BASE_CURRENCY]
                 self._interval = int(interval)
                 self._expected_return = expected_return
+                self._inflation_source = inflation_source
+                self._expected_inflation = expected_inflation
                 return await self.async_step_valor()
         return self.async_show_form(
             step_id="user",
@@ -638,6 +716,8 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._currency,
                 self._interval,
                 self._expected_return,
+                self._inflation_source,
+                self._expected_inflation,
             ),
             errors=errors,
         )
@@ -698,6 +778,8 @@ class MyWalletConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_BASE_CURRENCY: self._currency,
             CONF_SCAN_INTERVAL: self._interval,
             CONF_EXPECTED_ANNUAL_RETURN: self._expected_return,
+            CONF_INFLATION_SOURCE: self._inflation_source,
+            CONF_EXPECTED_ANNUAL_INFLATION: self._expected_inflation,
             CONF_VALORS: self._valors,
             CONF_CONTRIBUTIONS: [],
             CONF_SAVINGS_PLANS: [],
@@ -786,7 +868,8 @@ class MyWalletOptionsFlow(
                 self._text("opening_balance_conflict")
                 + "\n\n"
                 + "\n".join(
-                    f"- {item['symbol']}: {self._text('configured_units')} "
+                    f"- {self._position_label(item['symbol'])}: "
+                    f"{self._text('configured_units')} "
                     f"{item['configured_units']:.12g}; {self._text('included_units')} "
                     f"{item['included_units']:.12g}"
                     for item in conflicts
@@ -800,6 +883,16 @@ class MyWalletOptionsFlow(
 
     def _valors(self) -> list[dict[str, Any]]:
         return list(self.config_entry.data.get(CONF_VALORS, []))
+
+    def _position_label(self, symbol: str) -> str:
+        """Show an alias together with its stable technical symbol."""
+        return position_label(self._valors(), symbol)
+
+    def _position_options(
+        self, symbols: Iterable[str] | None = None
+    ) -> list[dict[str, str]]:
+        """Build labeled choices whose stored values remain stable symbols."""
+        return position_options(self._valors(), symbols)
 
     def _contributions(self) -> list[dict[str, Any]]:
         return contributions_from_data(self.config_entry.data)
@@ -893,7 +986,7 @@ class MyWalletOptionsFlow(
             {
                 "value": lot[LOT_ID],
                 "label": (
-                    f"{lot[LOT_DATE]} · {lot[LOT_SYMBOL]} · "
+                    f"{lot[LOT_DATE]} · {self._position_label(lot[LOT_SYMBOL])} · "
                     f"{lot[LOT_AMOUNT]:.2f} {currency}"
                 ),
             }
@@ -915,17 +1008,20 @@ class MyWalletOptionsFlow(
 
     def _dividend_options(self) -> list[dict[str, str]]:
         currency = self.config_entry.data.get(CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY)
-        return [
-            {
-                "value": item[DIVIDEND_ID],
-                "label": (
-                    f"{item[DIVIDEND_BOOKING_DATE]} · "
-                    f"{item.get(DIVIDEND_SYMBOL, 'Portfolio')} · "
-                    f"{item[DIVIDEND_AMOUNT]:.2f} {currency}"
-                ),
-            }
-            for item in self._dividends()
-        ]
+        options = []
+        for item in self._dividends():
+            symbol = item.get(DIVIDEND_SYMBOL)
+            position = self._position_label(symbol) if symbol else "Portfolio"
+            options.append(
+                {
+                    "value": item[DIVIDEND_ID],
+                    "label": (
+                        f"{item[DIVIDEND_BOOKING_DATE]} · {position} · "
+                        f"{item[DIVIDEND_AMOUNT]:.2f} {currency}"
+                    ),
+                }
+            )
+        return options
 
     def _update_entry(
         self,
@@ -984,12 +1080,36 @@ class MyWalletOptionsFlow(
                 minimum=MIN_EXPECTED_ANNUAL_RETURN,
                 maximum=MAX_EXPECTED_ANNUAL_RETURN,
             )
+            expected_inflation = _finite_number(
+                user_input.get(
+                    CONF_EXPECTED_ANNUAL_INFLATION,
+                    self.config_entry.data.get(
+                        CONF_EXPECTED_ANNUAL_INFLATION,
+                        DEFAULT_EXPECTED_ANNUAL_INFLATION,
+                    ),
+                ),
+                minimum=MIN_EXPECTED_ANNUAL_INFLATION,
+                maximum=MAX_EXPECTED_ANNUAL_INFLATION,
+            )
+            inflation_source = user_input.get(
+                CONF_INFLATION_SOURCE,
+                self.config_entry.data.get(
+                    CONF_INFLATION_SOURCE, DEFAULT_INFLATION_SOURCE
+                ),
+            )
             if not name:
                 errors[CONF_WALLET_NAME] = "invalid_name"
             elif interval is None or not interval.is_integer():
                 errors[CONF_SCAN_INTERVAL] = "invalid_number"
             elif expected_return is None:
                 errors[CONF_EXPECTED_ANNUAL_RETURN] = "invalid_number"
+            elif expected_inflation is None:
+                errors[CONF_EXPECTED_ANNUAL_INFLATION] = "invalid_number"
+            elif inflation_source not in (
+                INFLATION_SOURCE_EUROSTAT_DE,
+                INFLATION_SOURCE_DISABLED,
+            ):
+                errors[CONF_INFLATION_SOURCE] = "invalid_input"
             elif user_input[CONF_BASE_CURRENCY] != self.config_entry.data.get(
                 CONF_BASE_CURRENCY, DEFAULT_BASE_CURRENCY
             ) and (self._contributions() or self._plans() or self._dividends()):
@@ -1003,6 +1123,8 @@ class MyWalletOptionsFlow(
                         CONF_BASE_CURRENCY: user_input[CONF_BASE_CURRENCY],
                         CONF_SCAN_INTERVAL: int(interval),
                         CONF_EXPECTED_ANNUAL_RETURN: expected_return,
+                        CONF_INFLATION_SOURCE: inflation_source,
+                        CONF_EXPECTED_ANNUAL_INFLATION: expected_inflation,
                     },
                 )
         data = self.config_entry.data
@@ -1015,6 +1137,11 @@ class MyWalletOptionsFlow(
                 data.get(
                     CONF_EXPECTED_ANNUAL_RETURN,
                     DEFAULT_EXPECTED_ANNUAL_RETURN,
+                ),
+                data.get(CONF_INFLATION_SOURCE, DEFAULT_INFLATION_SOURCE),
+                data.get(
+                    CONF_EXPECTED_ANNUAL_INFLATION,
+                    DEFAULT_EXPECTED_ANNUAL_INFLATION,
                 ),
             ),
             errors=errors,
@@ -1061,7 +1188,9 @@ class MyWalletOptionsFlow(
         return self.async_show_form(
             step_id="add_dividend",
             data_schema=_dividend_schema(
-                [valor[VALOR_SYMBOL] for valor in self._valors()], user_input
+                [valor[VALOR_SYMBOL] for valor in self._valors()],
+                user_input,
+                self._position_options(),
             ),
             errors=errors,
         )
@@ -1144,7 +1273,9 @@ class MyWalletOptionsFlow(
         return self.async_show_form(
             step_id="edit_dividend_fields",
             data_schema=_dividend_schema(
-                [valor[VALOR_SYMBOL] for valor in self._valors()], shown
+                [valor[VALOR_SYMBOL] for valor in self._valors()],
+                shown,
+                self._position_options(),
             ),
             description_placeholders={
                 "dividend": (
@@ -1292,7 +1423,8 @@ class MyWalletOptionsFlow(
             description_placeholders={
                 "contribution": self._contribution_label(current),
                 "lots": "\n".join(
-                    f"- {lot[LOT_SYMBOL]} · {lot[LOT_DATE]} · {lot[LOT_AMOUNT]:.2f}"
+                    f"- {self._position_label(lot[LOT_SYMBOL])} · "
+                    f"{lot[LOT_DATE]} · {lot[LOT_AMOUNT]:.2f}"
                     for lot in current[CONTRIBUTION_LOTS]
                 )
                 or "—",
@@ -1385,7 +1517,8 @@ class MyWalletOptionsFlow(
                 "contribution": self._contribution_label(removed),
                 "count": str(len(removed[CONTRIBUTION_LOTS])),
                 "lots": "\n".join(
-                    f"- {lot[LOT_SYMBOL]} · {lot[LOT_DATE]} · {lot[LOT_AMOUNT]:.2f}"
+                    f"- {self._position_label(lot[LOT_SYMBOL])} · "
+                    f"{lot[LOT_DATE]} · {lot[LOT_AMOUNT]:.2f}"
                     for lot in removed[CONTRIBUTION_LOTS]
                 )
                 or "—",
@@ -1566,7 +1699,9 @@ class MyWalletOptionsFlow(
                 }
             ),
             description_placeholders={
-                "lot": f"{current[LOT_DATE]} · {current[LOT_SYMBOL]}"
+                "lot": (
+                    f"{current[LOT_DATE]} · {self._position_label(current[LOT_SYMBOL])}"
+                )
             },
             errors=errors,
         )
@@ -1754,7 +1889,7 @@ class MyWalletOptionsFlow(
                 {
                     vol.Required(VALOR_SYMBOL): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=[v[VALOR_SYMBOL] for v in valors],
+                            options=self._position_options(),
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     )
@@ -1782,7 +1917,9 @@ class MyWalletOptionsFlow(
                 data_schema=_valor_fields_schema(
                     current[VALOR_AMOUNT], current.get(VALOR_TARGET_SHARE)
                 ),
-                description_placeholders={VALOR_SYMBOL: self._edit_symbol},
+                description_placeholders={
+                    VALOR_SYMBOL: self._position_label(self._edit_symbol)
+                },
             )
         return self.async_show_form(
             step_id="edit_valor",
@@ -1790,7 +1927,7 @@ class MyWalletOptionsFlow(
                 {
                     vol.Required(VALOR_SYMBOL): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=[v[VALOR_SYMBOL] for v in valors],
+                            options=self._position_options(),
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     )
@@ -1813,7 +1950,9 @@ class MyWalletOptionsFlow(
                 data_schema=_valor_fields_schema(
                     current[VALOR_AMOUNT], current.get(VALOR_TARGET_SHARE)
                 ),
-                description_placeholders={VALOR_SYMBOL: str(symbol)},
+                description_placeholders={
+                    VALOR_SYMBOL: self._position_label(str(symbol))
+                },
             )
         amount = _finite_number(
             user_input.get(VALOR_AMOUNT), minimum=0, maximum=_MAX_NUMBER
@@ -1825,7 +1964,9 @@ class MyWalletOptionsFlow(
                     user_input.get(VALOR_AMOUNT),
                     user_input.get(VALOR_TARGET_SHARE),
                 ),
-                description_placeholders={VALOR_SYMBOL: str(symbol)},
+                description_placeholders={
+                    VALOR_SYMBOL: self._position_label(str(symbol))
+                },
                 errors={VALOR_AMOUNT: "invalid_number"},
             )
         # A legacy conflict may need several corrections. Permit each step
@@ -1838,7 +1979,9 @@ class MyWalletOptionsFlow(
                 data_schema=_valor_fields_schema(
                     amount, user_input.get(VALOR_TARGET_SHARE)
                 ),
-                description_placeholders={VALOR_SYMBOL: str(symbol)},
+                description_placeholders={
+                    VALOR_SYMBOL: self._position_label(str(symbol))
+                },
                 errors={VALOR_AMOUNT: "included_units_exceeded"},
             )
         try:
@@ -1849,7 +1992,9 @@ class MyWalletOptionsFlow(
                 data_schema=_valor_fields_schema(
                     amount, user_input.get(VALOR_TARGET_SHARE)
                 ),
-                description_placeholders={VALOR_SYMBOL: str(symbol)},
+                description_placeholders={
+                    VALOR_SYMBOL: self._position_label(str(symbol))
+                },
                 errors={VALOR_TARGET_SHARE: "invalid_number"},
             )
         others = (v for v in valors if v[VALOR_SYMBOL] != symbol)
@@ -1859,7 +2004,9 @@ class MyWalletOptionsFlow(
                 data_schema=_valor_fields_schema(
                     amount, user_input.get(VALOR_TARGET_SHARE)
                 ),
-                description_placeholders={VALOR_SYMBOL: symbol},
+                description_placeholders={
+                    VALOR_SYMBOL: self._position_label(str(symbol))
+                },
                 errors={VALOR_TARGET_SHARE: "target_sum_exceeded"},
             )
         new_valors = []

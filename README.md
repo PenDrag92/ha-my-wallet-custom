@@ -5,10 +5,40 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.7.0 requires **Home Assistant 2026.8 or newer**.
+Version 1.8.0 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.8.0: purchasing power and consistent position names
+
+The administrator dashboard can switch between nominal values and a
+**purchasing-power-adjusted** view. Historical amounts use Germany's official
+monthly all-items HICP from Eurostat. My Wallet refreshes that public series at
+most once per day, keeps a validated local cache and visibly identifies the
+latest available month. If Eurostat is temporarily unavailable, the last cache
+remains usable and is marked as stored data.
+
+The purchasing-power view applies consistently to wallet and position
+performance, purchase lots, value charts, monthly/yearly summaries,
+transactions and forecast allocations. Current market values remain today's
+values; past deposits, purchase costs, dividends and historical values are
+converted to today's purchasing power before profit and return are calculated.
+When the official series does not cover every required dated amount, My Wallet
+leaves the affected real result unavailable instead of mixing adjusted and
+unadjusted figures.
+
+Future values use a separate **expected annual inflation** assumption, set to
+2% by default and editable under **Configure → Edit wallet settings**. The
+selected 1–50 year forecast then exposes its value, contributions, growth,
+allocation and inflation effect both nominally and in today's purchasing power.
+The expected return and expected inflation remain independent scenario inputs;
+neither changes transactions, holdings or live prices.
+
+Position display names now appear together with their stable technical symbol
+throughout savings-plan, investment, dividend, correction and configuration
+flows as well as the dashboard and entity names. Stored symbols, entity unique
+IDs, Yahoo requests and CSV identifiers remain unchanged.
 
 ## 1.7.0: flexible forecasts and a shorter dashboard
 
@@ -116,7 +146,7 @@ same selection filters the value curve, monthly/yearly summaries and transaction
 history, while the selected row is highlighted in the position table.
 
 Use **Edit names** in the position table to add optional, persistent display
-names such as `Amundi`. The dashboard shows that name together with the original
+names such as `World ETF`. The dashboard shows that name together with the original
 Yahoo symbol, which remains the stable identifier for quotes, imports and CSV
 exports. Changing a display name does not alter units, payments or history.
 
@@ -175,8 +205,11 @@ prepared import files are never part of the public source package.
 - **Per-wallet update schedule** — configurable update interval
   (5–1440 minutes) for each wallet independently.
 - **Compound target and forecast** — configure an expected annual return per
-  wallet, compare the real total with an ideal target and extend the same curve
-  up to 20 years using the applicable savings-plan history.
+  wallet, compare the actual total with an ideal target and extend the same curve
+  up to 50 years using the applicable savings-plan history.
+- **Inflation and purchasing power** — compare nominal results with historical
+  figures adjusted using official monthly Eurostat HICP data for Germany, and
+  deflate future scenarios with a configurable expected inflation rate.
 - **Currency conversion** — each wallet has a base currency; valors quoted in
   a foreign currency are converted using live Yahoo FX rates
   (e.g. `USDPLN=X`).
@@ -212,7 +245,8 @@ prepared import files are never part of the public source package.
 - **Translations** — English, German, Polish, and Czech.
 
 No external Python dependencies — prices are fetched directly from Yahoo
-Finance's chart API using `aiohttp`.
+Finance's chart API and official German all-items HICP data from Eurostat's
+public dissemination API using Home Assistant's bundled `aiohttp` client.
 
 ## New in 1.3.3
 
@@ -258,8 +292,8 @@ broker, place orders or download bank statements.
 ### Upgrade safety
 
 Back up Home Assistant before replacing integration files. Config-entry schema
-6 preserves the ledger and labels existing correction status conservatively.
-Do not downgrade to 1.3.2 against schema-6 data; restore the backup as well.
+7 preserves the ledger, position names and inflation settings. Do not downgrade
+to a release that cannot read schema-7 data; restore the backup as well.
 Existing entity unique IDs are unchanged. The invested-capital sensor display
 name is now **Deposited capital** (German: **Eingezahltes Kapital**).
 
@@ -294,6 +328,9 @@ your Home Assistant configuration and restart.
    - **Base currency** — currency the wallet total is displayed in
    - **Update interval** — minutes between Yahoo Finance updates
    - **Expected annual return** — target/forecast assumption in percent
+   - **Official inflation data** — Eurostat HICP for Germany, or disabled
+   - **Expected annual inflation** — future purchasing-power assumption in
+     percent
 3. Add valors: enter the **Yahoo Finance symbol** and the **opening amount** of
    units you already hold. Tracked savings-plan purchases are added to this
    opening balance automatically. Optionally enter a **target share (%)** — the percent of the
@@ -304,7 +341,8 @@ your Home Assistant configuration and restart.
 
 Open the config entry and click **Configure** to:
 
-- edit wallet settings (name, base currency, update interval, expected return),
+- edit wallet settings (name, base currency, update interval, expected return,
+  official inflation source and expected future inflation),
 - add, edit, or remove dated contributions in the wallet's base currency,
 - import historical purchases one tranche at a time, using a Yahoo close or a
   manually entered effective price when Yahoo has no history; select an
@@ -354,6 +392,14 @@ to the wallet base currency when an exchange rate is available.
 | `sensor.<wallet>_target_value` | today's compound target in the base currency | `expected_annual_return`, `monthly_return`, `wallet_start_date`, `actual_value`, `absolute_deviation`, `percentage_deviation`, `target_contributions`, `target_growth`, `calculation_basis` |
 | `sensor.<wallet>_next_execution` | next scheduled date on or after today | plans, allocations, `pending_count`, pending reasons and last processing result |
 
+When official inflation data are enabled and cover all required dates, the
+relevant wallet and tracked-position sensors also expose
+`inflation_adjusted_invested`, `inflation_adjusted_profit`,
+`inflation_adjusted_performance_pct` and
+`inflation_adjusted_annualized_performance_pct`. The accompanying
+`inflation_source`, `inflation_data_month`, `inflation_data_stale` and
+`expected_annual_inflation` attributes document the data and assumption used.
+
 The wallet total is the market value of all securities plus the settlement
 cash balance. If any configured quote or FX rate is unavailable, the aggregate
 total, profit and XIRR become unavailable rather than reporting a misleading
@@ -362,6 +408,15 @@ re-converted automatically. The base currency is therefore locked while
 contributions, dividends, or plans exist. *Profit %* remains the simple return
 `(total − invested) / invested`; the separate *Money-weighted return* sensor
 uses all execution dates and the current wallet value to calculate XIRR.
+
+Historical purchasing-power calculations use the official
+[Eurostat monthly HICP dataset](https://ec.europa.eu/eurostat/databrowser/view/prc_hicp_minr/default/table?lang=en)
+for Germany, all items, beginning in January 1996. The series is monthly and
+official publication naturally lags the current date. A transaction before the
+available series, an unknown transaction date or missing official data leaves
+the dependent adjusted result unavailable. Future purchasing power is a
+mathematical scenario based on the configured expected inflation, not an
+official inflation forecast or investment advice.
 
 When upgrading from version 1.2, an existing single invested amount is retained
 as a legacy contribution with an unknown date. Open **Configure → Edit a

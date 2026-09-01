@@ -156,6 +156,20 @@ def prepare_backup(
         minimum=c.MIN_EXPECTED_ANNUAL_RETURN,
         maximum=c.MAX_EXPECTED_ANNUAL_RETURN,
     )
+    expected_inflation = _number(
+        raw.get(
+            c.CONF_EXPECTED_ANNUAL_INFLATION,
+            c.DEFAULT_EXPECTED_ANNUAL_INFLATION,
+        ),
+        minimum=c.MIN_EXPECTED_ANNUAL_INFLATION,
+        maximum=c.MAX_EXPECTED_ANNUAL_INFLATION,
+    )
+    inflation_source = raw.get(c.CONF_INFLATION_SOURCE, c.DEFAULT_INFLATION_SOURCE)
+    if inflation_source not in {
+        c.INFLATION_SOURCE_EUROSTAT_DE,
+        c.INFLATION_SOURCE_DISABLED,
+    }:
+        raise ValueError("invalid_backup")
 
     raw_valors = raw.get(c.CONF_VALORS)
     if not isinstance(raw_valors, list) or not 1 <= len(raw_valors) <= 100:
@@ -244,6 +258,8 @@ def prepare_backup(
         c.CONF_BASE_CURRENCY: currency,
         c.CONF_SCAN_INTERVAL: int(interval_value),
         c.CONF_EXPECTED_ANNUAL_RETURN: expected_return,
+        c.CONF_EXPECTED_ANNUAL_INFLATION: expected_inflation,
+        c.CONF_INFLATION_SOURCE: inflation_source,
         c.CONF_VALORS: valors,
         c.CONF_CONTRIBUTIONS: contributions,
         c.CONF_DIVIDENDS: dividends,

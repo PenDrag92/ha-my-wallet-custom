@@ -8,7 +8,9 @@
           "wallet_name": "Nazwa portfela",
           "base_currency": "Waluta bazowa (wartość portfela prezentowana w tej walucie)",
           "scan_interval": "Częstotliwość aktualizacji (minuty)",
-          "expected_annual_return": "Oczekiwana roczna stopa zwrotu dla celu składanego (%)"
+          "expected_annual_return": "Oczekiwana roczna stopa zwrotu dla celu składanego (%)",
+          "inflation_source": "Oficjalne dane o inflacji",
+          "expected_annual_inflation": "Oczekiwana roczna inflacja dla przyszłych prognoz siły nabywczej (%)"
         }
       },
       "valor": {
@@ -39,7 +41,7 @@
       "init": {
         "title": "Zarządzaj portfelem",
         "menu_options": {
-          "settings": "Ustawienia portfela i oczekiwanej stopy zwrotu",
+          "settings": "Edytuj ustawienia portfela, oczekiwaną stopę zwrotu i inflację",
           "add_contribution": "Dodaj wpłatę z datą",
           "add_lot": "Importuj historyczną transzę zakupu",
           "edit_contribution": "Edytuj wpłatę",
@@ -64,7 +66,9 @@
           "wallet_name": "Nazwa portfela",
           "base_currency": "Waluta bazowa",
           "scan_interval": "Częstotliwość aktualizacji (minuty)",
-          "expected_annual_return": "Oczekiwana roczna stopa zwrotu dla celu składanego (%)"
+          "expected_annual_return": "Oczekiwana roczna stopa zwrotu dla celu składanego (%)",
+          "inflation_source": "Oficjalne dane o inflacji",
+          "expected_annual_inflation": "Oczekiwana roczna inflacja dla przyszłych prognoz siły nabywczej (%)"
         }
       },
       "add_contribution": {
@@ -374,6 +378,12 @@
       "options": {
         "future": "Tylko przyszłe wykonania",
         "recalculate": "Przelicz też automatyczne wykonania"
+      }
+    },
+    "inflation_source": {
+      "options": {
+        "eurostat_de": "Eurostat HICP — Niemcy (oficjalne, miesięczne)",
+        "disabled": "Wyłączone"
       }
     }
   },

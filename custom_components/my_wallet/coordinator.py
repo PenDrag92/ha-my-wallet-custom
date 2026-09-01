@@ -16,11 +16,13 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_BASE_CURRENCY,
     CONF_CONTRIBUTIONS,
+    CONF_INFLATION_SOURCE,
     CONF_LAST_PLAN_RESULT,
     CONF_SAVINGS_PLANS,
     CONF_SCAN_INTERVAL,
     CONF_VALORS,
     CONF_WALLET_NAME,
+    DEFAULT_INFLATION_SOURCE,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MAX_SCAN_INTERVAL,
@@ -47,6 +49,7 @@ from .executions import (
 from .executions import (
     _included_opening_overflows as _included_opening_overflows,
 )
+from .inflation_client import InflationDataClient
 from .models import ValorData, WalletData
 from .plans import normalize_plan
 from .yahoo import (
@@ -64,6 +67,7 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.entry = entry
         self.base_currency: str = entry.data[CONF_BASE_CURRENCY]
+        self._inflation = InflationDataClient(hass, entry.entry_id)
         interval = min(
             MAX_SCAN_INTERVAL,
             max(
@@ -126,10 +130,18 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
     async def _async_update_data(self) -> WalletData:
         valors = self.valors
         today = dt_util.now().date()
-        if not valors:
-            return WalletData(cash_balance=cash_balance(self.entry.data, through=today))
-
         session = async_get_clientsession(self.hass)
+        inflation = await self._inflation.async_get(
+            session,
+            source=self.entry.data.get(CONF_INFLATION_SOURCE, DEFAULT_INFLATION_SOURCE),
+            today=today,
+        )
+        if not valors:
+            return WalletData(
+                cash_balance=cash_balance(self.entry.data, through=today),
+                inflation=inflation,
+            )
+
         symbols = [valor[VALOR_SYMBOL] for valor in valors]
         try:
             quotes = await fetch_quotes(session, symbols)
@@ -148,6 +160,7 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
         data = WalletData(
             pending_executions=pending,
             cash_balance=cash_balance(self.entry.data, through=today),
+            inflation=inflation,
         )
         for valor in valors:
             symbol = valor[VALOR_SYMBOL]

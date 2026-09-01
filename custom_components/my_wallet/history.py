@@ -16,6 +16,12 @@ from .contributions import (
     opening_balance_conflicts,
 )
 from .dividends import dividends_from_data
+from .inflation import (
+    InflationSeries,
+    expected_annual_inflation,
+    future_inflation_factor,
+    purchasing_power,
+)
 from .target import (
     FORECAST_YEARS,
     add_years,
@@ -139,11 +145,83 @@ def _forecast_sample_dates(projection, *, today: date, through: date) -> list[da
     return sorted(dates)
 
 
+def _today_value(
+    amount: float,
+    when: date,
+    *,
+    today: date,
+    inflation: InflationSeries | None,
+    expected_inflation: float,
+) -> float | None:
+    """Express a dated amount in today's purchasing power."""
+    if inflation is None:
+        return None
+    if when <= today:
+        return inflation.adjust(amount, when, today)
+    return purchasing_power(
+        amount,
+        today=today,
+        through=when,
+        annual_percent=expected_inflation,
+    )
+
+
+def _real_target_contributions(
+    projection,
+    *,
+    through: date,
+    today: date,
+    inflation: InflationSeries | None,
+    expected_inflation: float,
+) -> float | None:
+    """Return planned external capital in today's purchasing power."""
+    if projection.value is None or projection.start_date is None:
+        return None
+    values = []
+    for flow in projection.cash_flows:
+        if not projection.start_date <= flow.date <= through:
+            continue
+        value = _today_value(
+            flow.amount,
+            flow.date,
+            today=today,
+            inflation=inflation,
+            expected_inflation=expected_inflation,
+        )
+        if value is None:
+            return None
+        values.append(value)
+    return sum(values)
+
+
 def build_history(
-    data, histories, *, today: date, forecast_years: int | None = None
+    data,
+    histories,
+    *,
+    today: date,
+    forecast_years: int | None = None,
+    inflation: InflationSeries | None = None,
 ) -> dict[str, Any]:
     """Price only dated holdings; an unknown opening position leaves gaps."""
     events = ledger_rows(data)
+    expected_inflation = expected_annual_inflation(data)
+    real_events_complete = inflation is not None
+    for row in events:
+        event_date = row.get("date")
+        adjusted = (
+            _today_value(
+                float(row["amount"]),
+                date.fromisoformat(event_date),
+                today=today,
+                inflation=inflation,
+                expected_inflation=expected_inflation,
+            )
+            if event_date
+            else None
+        )
+        row["real_amount"] = round(adjusted, 2) if adjusted is not None else None
+        if adjusted is None and abs(float(row["amount"])) > 1e-12:
+            real_events_complete = False
     eligible = [
         row for row in events if not row["date"] or row["date"] <= today.isoformat()
     ]
@@ -173,7 +251,10 @@ def build_history(
     positions = defaultdict(float)
     position_costs = defaultdict(float)
     position_dividends = defaultdict(float)
+    real_position_costs = defaultdict(float)
+    real_position_dividends = defaultdict(float)
     cash = invested = 0.0
+    real_invested = 0.0
     pointer = 0
     points = []
     requested_years = forecast_years or max(FORECAST_YEARS)
@@ -201,11 +282,17 @@ def build_history(
             cash += row["cash_delta"]
             if row["type"] in ("deposit", "opening"):
                 invested += row["amount"]
+                if row["real_amount"] is not None:
+                    real_invested += row["real_amount"]
             if row["type"] == "purchase":
                 positions[row["symbol"]] += row["units"]
                 position_costs[row["symbol"]] += -row["amount"]
+                if row["real_amount"] is not None:
+                    real_position_costs[row["symbol"]] += -row["real_amount"]
             if row["type"] == "dividend" and row.get("symbol"):
                 position_dividends[row["symbol"]] += row["amount"]
+                if row["real_amount"] is not None:
+                    real_position_dividends[row["symbol"]] += row["real_amount"]
             pointer += 1
         value = cash
         complete = not unknown_opening and not conflicts
@@ -224,6 +311,19 @@ def build_history(
         for symbol in {valor[c.VALOR_SYMBOL] for valor in data[c.CONF_VALORS]}:
             if positions[symbol] > 1e-10 and symbol not in position_values:
                 position_values[symbol] = None
+        price_factor = inflation.factor(day, today) if inflation is not None else None
+        real_value = (
+            value * price_factor if complete and price_factor is not None else None
+        )
+        real_positions = {
+            symbol: (
+                round(position_value * price_factor, 2)
+                if position_value is not None and price_factor is not None
+                else None
+            )
+            for symbol, position_value in position_values.items()
+        }
+        target_value = target_values.get(day.isoformat())
         points.append(
             {
                 "date": day.isoformat(),
@@ -240,8 +340,39 @@ def build_history(
                     symbol: round(position_dividends[symbol], 2)
                     for symbol in position_values
                 },
+                "real_invested": (
+                    round(real_invested, 2) if real_events_complete else None
+                ),
+                "real_cash": (
+                    round(cash * price_factor, 2) if price_factor is not None else None
+                ),
+                "real_value": round(real_value, 2) if real_value is not None else None,
+                "real_profit": (
+                    round(real_value - real_invested, 2)
+                    if real_value is not None and real_events_complete
+                    else None
+                ),
+                "real_positions": real_positions,
+                "real_position_costs": {
+                    symbol: round(real_position_costs[symbol], 2)
+                    if real_events_complete
+                    else None
+                    for symbol in position_values
+                },
+                "real_position_dividends": {
+                    symbol: round(real_position_dividends[symbol], 2)
+                    if real_events_complete
+                    else None
+                    for symbol in position_values
+                },
+                "inflation_factor": price_factor,
                 "baseline": can_start_at_zero and day == start,
-                "target": target_values.get(day.isoformat()),
+                "target": target_value,
+                "real_target": (
+                    round(target_value * price_factor, 2)
+                    if target_value is not None and price_factor is not None
+                    else None
+                ),
             }
         )
         day += timedelta(days=1)
@@ -253,6 +384,23 @@ def build_history(
         contributions = target_contributions.get(key, future.get("contributions"))
         if value is None:
             contributions = None
+        if through <= today:
+            price_factor = (
+                inflation.factor(through, today) if inflation is not None else None
+            )
+            real_value = (
+                value * price_factor if value is not None and price_factor else None
+            )
+        else:
+            price_factor = future_inflation_factor(expected_inflation, today, through)
+            real_value = value / price_factor if value is not None else None
+        real_contributions = _real_target_contributions(
+            projection,
+            through=through,
+            today=today,
+            inflation=inflation,
+            expected_inflation=expected_inflation,
+        )
         return {
             "date": through.isoformat(),
             "value": value,
@@ -264,6 +412,21 @@ def build_history(
                 if value is not None and contributions is not None
                 else None
             ),
+            "real_value": round(real_value, 2) if real_value is not None else None,
+            "real_contributions": (
+                round(real_contributions, 2) if real_contributions is not None else None
+            ),
+            "real_growth": (
+                round(real_value - real_contributions, 2)
+                if real_value is not None and real_contributions is not None
+                else None
+            ),
+            "inflation_effect": (
+                round(value - real_value, 2)
+                if value is not None and real_value is not None
+                else None
+            ),
+            "inflation_factor": round(price_factor, 8) if price_factor else None,
         }
 
     current_target = target_snapshot(today)
@@ -277,6 +440,30 @@ def build_history(
             and current_target["contributions"] is not None
             else None
         )
+        forecast["additional_real_contributions"] = (
+            round(
+                forecast["real_contributions"] - current_target["real_contributions"],
+                2,
+            )
+            if forecast["real_contributions"] is not None
+            and current_target["real_contributions"] is not None
+            else None
+        )
+    target_forecast = []
+    for forecast_day, snapshot in future_snapshots.items():
+        if forecast_day <= today.isoformat():
+            continue
+        real_snapshot = target_snapshot(date.fromisoformat(forecast_day))
+        target_forecast.append(
+            {
+                "date": forecast_day,
+                "target": snapshot["value"],
+                "invested": snapshot["contributions"],
+                "real_target": real_snapshot["real_value"],
+                "real_invested": real_snapshot["real_contributions"],
+                "inflation_factor": real_snapshot["inflation_factor"],
+            }
+        )
 
     result = {
         "points": points,
@@ -286,29 +473,33 @@ def build_history(
         "opening_conflicts": conflicts,
         "missing_history": sorted(missing),
         "range_limited": range_limited,
+        "inflation": {
+            "available": inflation is not None,
+            "source": inflation.source if inflation is not None else None,
+            "region": inflation.region if inflation is not None else None,
+            "latest_month": inflation.latest_month if inflation is not None else None,
+            "stale": inflation.stale if inflation is not None else False,
+            "expected_annual_inflation": expected_inflation,
+        },
         "target": {
             "annual_return": projection.annual_return,
+            "expected_annual_inflation": expected_inflation,
             "monthly_return": projection.monthly_return,
             "start_date": (
                 projection.start_date.isoformat() if projection.start_date else None
             ),
             "date": today.isoformat(),
             "current_value": current_target["value"],
+            "real_current_value": current_target["real_value"],
             "contributions": current_target["contributions"],
+            "real_contributions": current_target["real_contributions"],
             "growth": current_target["growth"],
+            "real_growth": current_target["real_growth"],
             "unavailable_reason": projection.unavailable_reason,
             "calculation_basis": "planned_savings_rates",
             "forecasts": forecasts,
         },
-        "target_forecast": [
-            {
-                "date": forecast_day,
-                "target": snapshot["value"],
-                "invested": snapshot["contributions"],
-            }
-            for forecast_day, snapshot in future_snapshots.items()
-            if forecast_day > today.isoformat()
-        ],
+        "target_forecast": target_forecast,
     }
     result["summaries"] = {
         "wallet": period_summaries(points, events),
@@ -319,11 +510,42 @@ def build_history(
             for valor in data[c.CONF_VALORS]
         },
     }
+    if real_events_complete:
+        real_points = [
+            {
+                **point,
+                "value": point["real_value"],
+                "invested": point["real_invested"],
+                "positions": point["real_positions"],
+                "position_costs": point["real_position_costs"],
+                "position_dividends": point["real_position_dividends"],
+            }
+            for point in points
+        ]
+        real_ledger = [{**event, "amount": event["real_amount"]} for event in events]
+        result["summaries_real"] = {
+            "wallet": period_summaries(real_points, real_ledger),
+            "positions": {
+                valor[c.VALOR_SYMBOL]: period_summaries(
+                    real_points,
+                    real_ledger,
+                    symbol=valor[c.VALOR_SYMBOL],
+                )
+                for valor in data[c.CONF_VALORS]
+            },
+        }
+    else:
+        result["summaries_real"] = None
     return result
 
 
 async def async_history(
-    data, *, session, today: date, forecast_years: int | None = None
+    data,
+    *,
+    session,
+    today: date,
+    forecast_years: int | None = None,
+    inflation: InflationSeries | None = None,
 ) -> dict[str, Any]:
     events = ledger_rows(data)
     days = [date.fromisoformat(row["date"]) for row in events if row["date"]]
@@ -345,4 +567,10 @@ async def async_history(
         histories.update(
             await fetch_histories(session, pairs, start - timedelta(days=7), today)
         )
-    return build_history(data, histories, today=today, forecast_years=forecast_years)
+    return build_history(
+        data,
+        histories,
+        today=today,
+        forecast_years=forecast_years,
+        inflation=inflation,
+    )
