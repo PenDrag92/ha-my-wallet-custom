@@ -113,7 +113,9 @@ class ReleaseTests(unittest.TestCase):
         self.assertIn("not an independent", audit)
         self.assertIn("security certification", audit)
 
-    def test_position_selection_precedes_its_metrics_and_alias_keeps_symbol(self) -> None:
+    def test_position_selection_precedes_its_metrics_and_alias_keeps_symbol(
+        self,
+    ) -> None:
         source = (
             ROOT
             / "custom_components"
