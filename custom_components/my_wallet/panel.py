@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from time import monotonic
@@ -33,7 +34,7 @@ from .contributions import (
     opening_balance_conflicts,
     xirr,
 )
-from .corrections import correction_choices, prepare_correction
+from .corrections import correction_choices, position_units, prepare_correction
 from .dividends import (
     attributed_dividend_flows,
     cash_balance,
@@ -52,6 +53,7 @@ from .inflation import (
     expected_annual_inflation,
     future_inflation_factor,
 )
+from .models import ValorData
 from .planning import change_planned_deposit, planned_deposit_summaries
 from .target import (
     FORECAST_YEARS,
@@ -158,11 +160,30 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.9.0",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.9.1",
         embed_iframe=False,
         require_admin=True,
     )
     state["registered"] = True
+
+
+def _wallet_with_saved_units(data, current, *, today):
+    """Value saved holdings using cached quotes while a reload is still pending."""
+    if current is None:
+        return None
+    valors = {}
+    for valor in data[c.CONF_VALORS]:
+        symbol = valor[c.VALOR_SYMBOL]
+        previous = current.valors.get(symbol) or ValorData(symbol, 0, 0)
+        valors[symbol] = replace(
+            previous,
+            amount=position_units(data, symbol, today),
+            opening_amount=float(valor[c.VALOR_AMOUNT]),
+            target_share=valor.get(c.VALOR_TARGET_SHARE),
+        )
+    return replace(
+        current, valors=valors, cash_balance=cash_balance(data, through=today)
+    )
 
 
 @websocket_api.websocket_command(
@@ -181,7 +202,9 @@ def ws_wallets(hass, connection, msg):
     wallets = []
     for entry in _entries(hass):
         coordinator = getattr(entry, "runtime_data", None)
-        current = getattr(coordinator, "data", None)
+        current = _wallet_with_saved_units(
+            entry.data, getattr(coordinator, "data", None), today=today
+        )
         invested = invested_total(entry.data, through=today)
         total = (
             current.total
@@ -407,7 +430,7 @@ def ws_wallets(hass, connection, msg):
                 {
                     "symbol": symbol,
                     "alias": valor.get(c.VALOR_ALIAS),
-                    "units": item.amount if item is not None else None,
+                    "units": position_units(entry.data, symbol, today),
                     "price": item.quote.price * item.fx_rate
                     if item is not None and item.available
                     else None,

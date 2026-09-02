@@ -38,8 +38,8 @@ jobs:
         run: python -m tests.schema_defaults
       - name: Frontend syntax
         run: node --check custom_components/my_wallet/frontend/my-wallet-panel.js
-      - name: Chart scale tests
-        run: node --test tests/chart-scales.test.mjs
+      - name: Frontend calculation and input tests
+        run: node --test tests/chart-scales.test.mjs tests/unit-input.test.mjs
       - name: Bandit security scan
         run: bandit -q -r custom_components/my_wallet
       - name: Validate JSON and YAML

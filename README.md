@@ -5,10 +5,29 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.9.0 requires **Home Assistant 2026.8 or newer**.
+Version 1.9.1 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.9.1: edit units directly in the dashboard
+
+Click an underlined unit count in the allocation overview, positions table,
+position metrics, purchase details or transaction ledger. A focused dialog opens
+with that position or purchase already selected. Enter the actual units with a
+decimal comma or point, preview the change, then save. Blank, negative and
+ambiguous inputs are rejected; Escape or Cancel discards the unsaved edit.
+
+A total-position correction still updates one explicitly identified purchase
+or opening holding, not an invented trade. The dialog prefers an estimated
+purchase when available and lets you change that assignment. The preview shows
+both the position total and the affected holding. Purchase dates, recorded
+payments, deposits and cash stay unchanged. Use a per-purchase edit only when
+you know that purchase's actual units. This does not add a PDF import feature.
+
+Allocation deviations now use neutral labels for overweight, underweight and
+on-target positions. The heading spells out percentage points rather than
+repeating an abbreviation in every cell; zero targets remain fully supported.
 
 ## 1.9.0: future deposits and zero allocation targets
 

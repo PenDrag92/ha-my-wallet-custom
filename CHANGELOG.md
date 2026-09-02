@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.9.1
+
+- Make current unit counts clickable in the allocation overview, positions,
+  position metrics, purchase details and transaction ledger. Open a focused
+  correction dialog with the selected position or purchase already filled in.
+- Accept decimal commas and points without rounding the entered units. Reject
+  blank, negative, non-finite, out-of-range and ambiguous input. Keep drafts
+  stable during background refresh and allow cancellation with Escape.
+- Retain the existing preview and explicit save step. Show the affected purchase
+  for total-position corrections, prefer estimated purchases when available,
+  invalidate previews when input changes and retain errors without losing edits.
+  Recorded payment amounts, purchase dates, cash and deposits stay unchanged.
+- Revalue saved holdings with the last available quotes immediately after an
+  edit, without waiting for the integration reload or changing cached sensor
+  state. Keep known unit counts visible when quotes are unavailable.
+- Display allocation deviations with neutral overweight/underweight labels and
+  a clear percentage-points heading, including positions with a zero target.
+
 ## 1.9.0
 
 - Preserve explicit zero allocation targets in configuration, computed state,

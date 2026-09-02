@@ -1,5 +1,6 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.9.0";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.9.1";
+import { parseUnits } from "./unit-input.mjs?v=1.9.1";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -46,6 +47,11 @@ const WORDS = {
     noLots: "Für diese Position sind keine vollständig dokumentierten Kauftranchen vorhanden.",
     incompleteCost: "Kaufdaten unvollständig", correctUnits: "Anteile korrigieren", correction: "Anteilskorrektur",
     correctionHint: "Wähle den Anfangsbestand oder einen konkreten Kauf als Ursache der Abweichung. Zahlungsbetrag, Cash-Bestand und Einzahlungen ändern sich nicht.",
+    clickUnitsHint: "Stückzahl anklicken, um den genauen Bestand einzutragen.",
+    decimalUnitsHint: "Komma oder Punkt als Dezimaltrennzeichen, ohne Tausendertrennzeichen.",
+    invalid_units_input: "Bitte eine gültige, nicht negative Stückzahl eingeben. Das Feld darf nicht leer sein.",
+    correctionAssignment: "Abweichung diesem Bestand zuordnen", correctionQuickHint: "Der Gesamtbestand wird über den ausgewählten Kauf oder Anfangsbestand angepasst. Die Vorschau zeigt beide Änderungen.",
+    deviationPoints: "Abweichung in Prozentpunkten", overweight: "Übergewichtet", underweight: "Untergewichtet", onTarget: "Im Ziel",
     correctionTarget: "Zu korrigierender Bestand", openingUnits: "Anfangsbestand", chosenLot: "Ausgewählter Kauf",
     totalPosition: "Gesamtbestand angleichen", onlyLot: "Nur diesen Bestand korrigieren", exactTotal: "Exakter Gesamtbestand",
     exactLot: "Exakte Anteile", reason: "Notiz (optional)", correctionPreview: "Korrektur prüfen",
@@ -134,6 +140,11 @@ const WORDS = {
     noLots: "No fully documented purchase lots are available for this position.",
     incompleteCost: "Incomplete purchase data", correctUnits: "Correct units", correction: "Unit correction",
     correctionHint: "Choose the opening holding or a specific purchase that explains the difference. Payment amount, cash and deposits do not change.",
+    clickUnitsHint: "Click a unit count to enter the exact holding.",
+    decimalUnitsHint: "Use a comma or point for decimals, without thousands separators.",
+    invalid_units_input: "Enter a valid, non-negative unit count. The field must not be blank.",
+    correctionAssignment: "Apply the difference to this holding", correctionQuickHint: "The total is reconciled through the selected purchase or opening holding. The preview shows both changes.",
+    deviationPoints: "Deviation in percentage points", overweight: "Overweight", underweight: "Underweight", onTarget: "On target",
     correctionTarget: "Holding to correct", openingUnits: "Opening holding", chosenLot: "Selected purchase",
     totalPosition: "Reconcile total position", onlyLot: "Correct only this holding", exactTotal: "Exact total position",
     exactLot: "Exact units", reason: "Note (optional)", correctionPreview: "Preview correction",
@@ -191,6 +202,8 @@ const CSS = `
   .selection-card{display:flex;align-items:center;gap:24px}.selection-card h2{margin:0}.selection-copy{min-width:0}.selection-copy p{margin:4px 0 0}.selection-control{display:grid;gap:5px;min-width:min(100%,300px)}.selection-control span{font-size:13px;color:var(--secondary-text-color,#57667a)}.real-toggle{display:flex;align-items:center;gap:8px;white-space:nowrap}.real-toggle input{width:20px;height:20px}
   .tabs{display:flex;gap:8px;overflow-x:auto;margin:0 0 18px;padding:4px 0}.tabs button{white-space:nowrap}.tabs button[aria-selected=true]{background:var(--primary-color,#1878b5);color:#fff;border-color:var(--primary-color,#1878b5)}.forecast-custom{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.forecast-custom input{width:125px}
   .planning-form{margin:16px 0;padding:16px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px}.planning-form input{padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}.planning-form .controls{margin:16px 0 0}.planning-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .unit-edit{padding:3px 5px;border:0;border-bottom:1px dashed var(--primary-color,#1878b5);border-radius:3px;background:transparent;font:inherit;white-space:nowrap}.unit-edit:hover{background:color-mix(in srgb,var(--primary-color,#1878b5) 10%,transparent)}.edit-mark{margin-left:5px;font-size:.8em;color:var(--secondary-text-color,#57667a)}
+  .correction-dialog{width:min(620px,calc(100vw - 28px));max-height:calc(100dvh - 28px);overflow:auto;margin:auto;padding:24px;border:1px solid var(--divider-color,#dce3eb);border-radius:12px;color:var(--primary-text-color,#182b42);background:var(--card-background-color,#fff);box-shadow:0 12px 48px #0004}.correction-dialog::backdrop{background:#0006}.correction-dialog .field>span{font-size:13px;color:var(--secondary-text-color,#57667a)}.correction-dialog input[type=text]{padding:10px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}.correction-dialog .controls{margin:18px 0 0}.correction-dialog h2{margin-bottom:6px}.deviation-heading{white-space:normal;min-width:120px;max-width:160px}
   .alias-editor{margin:0 0 18px;padding:14px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px;background:color-mix(in srgb,var(--primary-color,#1878b5) 4%,var(--card-background-color,#fff))}.alias-editor h3{margin:0}.alias-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px 18px;margin:12px 0}.alias-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(120px,1fr);align-items:center;gap:10px}.alias-row input{width:100%;padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}tr.selected td{background:color-mix(in srgb,var(--primary-color,#1878b5) 8%,transparent)}
   .allocation-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);align-items:center;gap:24px}.donut{width:min(100%,280px);margin:auto}.allocation-name{display:inline-flex;align-items:center;gap:8px}.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;flex:0 0 auto}.details-title{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}.details-title .hint{font-weight:400}
   .notice{padding:12px 16px;background:color-mix(in srgb,var(--primary-color,#1878b5) 9%,var(--card-background-color,#fff));border-left:3px solid var(--primary-color,#1878b5);border-radius:5px;margin:12px 0}.warning{border-color:#c4851b;background:color-mix(in srgb,#e6ac37 12%,var(--card-background-color,#fff))}.error{border-color:#c63c45;background:color-mix(in srgb,#c63c45 9%,var(--card-background-color,#fff))}
@@ -243,6 +256,7 @@ class MyWalletPanel extends HTMLElement {
     this._aliasOpen = false;
     this._aliasDraft = null;
     this._depositDraft = null;
+    this._correctionOpen = false;
   }
   set hass(value) {
     this._hass = value;
@@ -258,11 +272,11 @@ class MyWalletPanel extends HTMLElement {
       const saved = localStorage.getItem(`my-wallet:section:${this._hass.user?.id || "admin"}`);
       if (["overview", "planning", "positions", "history", "data"].includes(saved)) this._section = saved;
     } catch { /* Browser storage may be disabled. */ }
-    this._resize = () => { if (this._history && !this._busy && !this._importOpen) this._render(); };
+    this._resize = () => { if (this._history && !this._busy && !this._importOpen && !this._correctionOpen) this._render(); };
     window.addEventListener("resize", this._resize);
     this._refresh();
     this._timer = setInterval(() => {
-      if (!this._busy && !this._importOpen && !this._depositDraft && document.visibilityState !== "hidden") this._refresh(true);
+      if (!this._busy && !this._importOpen && !this._depositDraft && !this._correctionOpen && document.visibilityState !== "hidden") this._refresh(true);
     }, 60000);
   }
   t(key) { return WORDS[this._lang || "en"][key] || WORDS.en[key] || key; }
@@ -313,9 +327,10 @@ class MyWalletPanel extends HTMLElement {
     finally { this._busy = false; this._render(); }
   }
   _notice(parent, text, kind = "") { parent.append(node("p", text, `notice ${kind}`)); }
-  _stat(parent, label, value) {
+  _stat(parent, label, value, control = null) {
     const card = node("div", null, "stat");
-    card.append(node("span", label), node("strong", value));
+    const content = node("strong"); content.append(control || document.createTextNode(value));
+    card.append(node("span", label), content);
     parent.append(card);
   }
   _setSection(section) {
@@ -351,7 +366,7 @@ class MyWalletPanel extends HTMLElement {
       ["annualReturn", this.percent(real ? wallet.real_money_weighted_return : wallet.money_weighted_return)], ["cash", this.money(wallet.cash)],
       ["dividends", this.money(real ? wallet.real_dividends : wallet.dividends)],
     ];
-    for (const [key, value] of values) this._stat(stats, this.t(key), value);
+    for (const [key, value] of values) this._stat(stats, this.t(key), value, position && key === "units" ? this._unitsButton(position.symbol, position.units) : null);
     parent.append(stats);
   }
   async _setForecastYears(years) {
@@ -395,6 +410,9 @@ class MyWalletPanel extends HTMLElement {
       this._aliasOpen = false;
       this._aliasDraft = null;
       this._depositDraft = null;
+      this._correctionOpen = false;
+      this._correction = null;
+      this._correctionPreview = null;
       this._history = null;
       this._refresh();
     });
@@ -441,7 +459,6 @@ class MyWalletPanel extends HTMLElement {
       if (position) this._renderStats(main, wallet, position);
       this._renderPositions(main, wallet);
       if (position) this._renderPositionDetails(main, position, wallet.currency);
-      if (this._correctionOpen) this._renderCorrection(main, wallet);
     } else if (this._section === "history" && this._history) {
       if (this._history.estimated) this._renderEstimateNotice(main);
       if (this._history.unknown_opening.length) this._notice(main, this.t("openingWarning"), "warning");
@@ -453,6 +470,7 @@ class MyWalletPanel extends HTMLElement {
       if (this._history) this._renderLedger(main);
       this._renderExport(main);
     }
+    if (this._correctionOpen) this._renderCorrection(main, wallet);
   }
   _renderPositionSelection(parent, wallet) {
     const section = node("section", null, "card selection-card");
@@ -562,6 +580,7 @@ class MyWalletPanel extends HTMLElement {
       symbol: item.symbol,
       label: this._positionLabel(item.symbol),
       value: positionValue(item),
+      units: item.units,
       target: item.target,
       color: palette[index % palette.length],
     }));
@@ -587,7 +606,7 @@ class MyWalletPanel extends HTMLElement {
     centerLabel.textContent = this.t("all"); svg.append(centerValue, centerLabel);
 
     const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr");
-    for (const key of ["position", forecast ? "projectedValue" : "currentValue", forecast ? "forecastShare" : "actualShare", "target", "deviation"]) hr.append(node("th", key === "deviation" ? `${this.t(key)} (${this.t("percentagePointUnit")})` : this.t(key), key === "position" ? "" : "num"));
+    for (const key of ["position", ...(!forecast ? ["units"] : []), forecast ? "projectedValue" : "currentValue", forecast ? "forecastShare" : "actualShare", "target", "deviation"]) hr.append(node("th", this.t(key === "deviation" ? "deviationPoints" : key), key === "position" ? "" : `num${key === "deviation" ? " deviation-heading" : ""}`));
     head.append(hr); table.append(head); const body = node("tbody");
     for (const item of rows) {
       const actual = item.value / total * 100, difference = item.target == null ? null : actual - item.target;
@@ -599,8 +618,12 @@ class MyWalletPanel extends HTMLElement {
       } else {
         const label = node("span", item.label, "allocation-name"); label.prepend(swatch); first.append(label);
       }
-      const cls = value => `num ${value > 0 ? "positive" : value < 0 ? "negative" : ""}`;
-      tr.append(first, node("td", this.money(item.value, wallet.currency), "num"), node("td", this.ratio(actual), "num"), node("td", this.ratio(item.target), "num"), node("td", this.percent(difference).replace(" %", ` ${this.t("percentagePointUnit")}`), cls(difference)));
+      const displayedDifference = difference == null ? null : Math.abs(difference) < 0.005 ? 0 : difference;
+      const deviation = node("td", this.percent(displayedDifference).replace(" %", ""), "num");
+      if (displayedDifference != null) deviation.append(node("span", this.t(displayedDifference > 0 ? "overweight" : displayedDifference < 0 ? "underweight" : "onTarget"), "hint"));
+      tr.append(first);
+      if (!forecast) { const units = node("td", null, "num"); units.append(item.symbol ? this._unitsButton(item.symbol, item.units) : document.createTextNode("—")); tr.append(units); }
+      tr.append(node("td", this.money(item.value, wallet.currency), "num"), node("td", this.ratio(actual), "num"), node("td", this.ratio(item.target), "num"), deviation);
       body.append(tr);
     }
     table.append(body); wrap.append(table); layout.append(svg, wrap); section.append(layout); parent.append(section);
@@ -624,7 +647,7 @@ class MyWalletPanel extends HTMLElement {
       const tr = node("tr"), dateCell = node("td", this.day(row.date));
       if (row.included_in_opening) dateCell.append(node("span", this.t("includedOpening"), "badge"));
       if (row.price_date && row.price_date !== row.date) dateCell.append(node("span", `${this.t("priceDate")}: ${this.day(row.price_date)}`, "hint"));
-      const units = node("td", this.units(row.units), "num");
+      const units = node("td", null, "num"); units.append(this._unitsButton(position.symbol, row.units, row.id));
       if (row.estimated) units.append(node("span", this.t("estimate"), "badge"));
       const cls = value => `num ${value > 0 ? "positive" : value < 0 ? "negative" : ""}`;
       const cost = real ? row.real_cost : row.amount, dividends = real ? row.real_dividends : row.dividends;
@@ -649,9 +672,9 @@ class MyWalletPanel extends HTMLElement {
         this._aliasDraft = this._aliasOpen ? Object.fromEntries(wallet.positions.map(item => [item.symbol, item.alias || ""])) : null;
         this._render();
       }, this._aliasOpen ? "active" : ""),
-      button(this.t("correctUnits"), () => { this._correctionOpen = !this._correctionOpen; this._correctionPreview = null; this._render(); }),
+      button(this.t("correctUnits"), () => this._openCorrection(null, null, false)),
     );
-    section.append(controls);
+    section.append(controls, node("p", this.t("clickUnitsHint"), "hint"));
     if (this._aliasOpen) this._renderAliasEditor(section, wallet);
     const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr");
     const columns = ["position", "units", "currentPrice", "currentValue", "purchaseCost", "profit", "performance", "share", ...(forecast ? ["projectedValue", "forecastShare"] : []), "target"];
@@ -669,7 +692,8 @@ class MyWalletPanel extends HTMLElement {
       const forecastValue = forecast ? (real ? forecast.real_positions?.[item.symbol] : forecast.positions?.[item.symbol]) : null;
       const forecastTotal = real ? forecast?.real_total : forecast?.total, forecastShare = forecastValue != null && forecastTotal ? forecastValue / forecastTotal * 100 : null;
       const cost = real ? item.real_cost : item.cost, profit = real ? item.real_profit : item.profit, performance = real ? item.real_performance : item.performance;
-      tr.append(first, node("td", this.units(item.units), "num"), node("td", this.money(item.price), "num"),
+      const units = node("td", null, "num"); units.append(this._unitsButton(item.symbol, item.units));
+      tr.append(first, units, node("td", this.money(item.price), "num"),
         node("td", this.money(item.value), "num"), node("td", this.money(cost), "num"),
         node("td", this.money(profit), cls(profit)), node("td", this.percent(performance), cls(performance)),
         node("td", this.ratio(item.share), "num"));
@@ -716,67 +740,130 @@ class MyWalletPanel extends HTMLElement {
     if (saved) await this._refresh();
     else this._render();
   }
+  _unitsButton(symbol, value, target = null) {
+    const choice = this._wallet()?.correction_choices?.find(item => item.symbol === symbol);
+    if (!choice || (target && !choice.lots.some(item => item.id === target))) return node("span", this.units(value));
+    const control = button(this.units(value), () => this._openCorrection(symbol, target), "unit-edit");
+    const date = target ? choice.lots.find(item => item.id === target).date : null;
+    const label = `${this.t(target ? "exactLot" : "exactTotal")}: ${this._positionLabel(symbol)}${date ? ` · ${this.day(date)}` : ""}`;
+    control.setAttribute("aria-label", label); control.title = this.t("clickUnitsHint");
+    control.setAttribute("aria-description", `${this.units(value)} ${this.t("units")}`);
+    control.dataset.editUnits = JSON.stringify([symbol, target]);
+    const mark = node("span", "✎", "edit-mark"); mark.setAttribute("aria-hidden", "true"); control.append(mark);
+    control.disabled = this._busy;
+    return control;
+  }
+  _defaultCorrectionTarget(choice) {
+    return [...choice.lots].reverse().find(item => item.estimated)?.id || choice.lots.at(-1)?.id || "opening";
+  }
+  _openCorrection(symbol = null, target = null, quick = true) {
+    if (this._busy) return;
+    const choices = this._wallet()?.correction_choices || [];
+    const choice = choices.find(item => item.symbol === (symbol || this._position)) || choices[0];
+    if (!choice) return;
+    const lot = target ? choice.lots.find(item => item.id === target) : null;
+    if (target && !lot) return;
+    this._correction = { symbol: choice.symbol, target: target || this._defaultCorrectionTarget(choice), mode: target ? "lot" : "position", units: lot ? lot.units : choice.units, note: "" };
+    this._correctionTrigger = symbol ? JSON.stringify([symbol, target]) : null;
+    this._correctionQuick = quick;
+    this._correctionPreview = null;
+    this._error = null;
+    this._correctionOpen = true;
+    this._render();
+  }
+  _closeCorrection() {
+    if (this._busy) return;
+    this._correctionOpen = false; this._correctionPreview = null; this._correction = null; this._error = null;
+    this._render();
+    [...this.shadowRoot.querySelectorAll("[data-edit-units]")].find(item => item.dataset.editUnits === this._correctionTrigger)?.focus();
+  }
+  _invalidateCorrectionPreview() {
+    this._correctionPreview = null;
+    this.shadowRoot.querySelector(".correction-result")?.remove();
+  }
   _renderCorrection(parent, wallet) {
-    const section = node("section", null, "card");
-    section.append(node("h2", this.t("correction")), node("p", this.t("correctionHint"), "hint"));
-    const choices = wallet.correction_choices || [];
-    if (!choices.length) { this._notice(section, this.t("noRows")); parent.append(section); return; }
-    if (!this._correction || !choices.some(item => item.symbol === this._correction.symbol)) {
-      const initial = choices.find(item => item.symbol === this._position) || choices[0];
-      this._correction = { symbol: initial.symbol, target: initial.lots.at(-1)?.id || "opening", mode: "position", units: initial.units, note: "" };
+    const choices = wallet.correction_choices || [], draft = this._correction;
+    const selected = choices.find(item => item.symbol === draft?.symbol);
+    if (!selected) { this._correctionOpen = false; return; }
+    const section = node("dialog", null, "correction-dialog"), heading = node("h2", this.t("correctUnits"));
+    heading.id = "correction-heading"; section.setAttribute("aria-labelledby", heading.id);
+    section.addEventListener("cancel", event => { event.preventDefault(); this._closeCorrection(); });
+    section.append(heading, node("p", this._positionLabel(draft.symbol), "hint"));
+    if (this._error) { const error = node("p", this._error, "notice error"); error.setAttribute("role", "alert"); section.append(error); }
+    const form = node("form", null, "correction-form"); section.append(form);
+    const field = (label, control) => { const wrapper = node("label", null, "field"); control.disabled = this._busy; wrapper.append(node("span", label), control); form.append(wrapper); return control; };
+    const targetUnits = () => draft.target === "opening" ? selected.opening_units : selected.lots.find(item => item.id === draft.target)?.units;
+    const lotLabel = lot => `${this.day(lot.date)} · ${this.units(lot.units)} · ${this.money(lot.amount)}${lot.estimated ? ` · ${this.t("estimate")}` : ""}`;
+    if (!this._correctionQuick) {
+      const symbol = field(this.t("position"), node("select"));
+      for (const item of choices) { const option = node("option", this._positionLabel(item.symbol)); option.value = item.symbol; symbol.append(option); }
+      symbol.value = draft.symbol;
+      symbol.addEventListener("change", () => this._openCorrection(symbol.value, null, false));
+      const scope = field(this.t("correction"), node("select"));
+      for (const [value, label] of [["position", "totalPosition"], ["lot", "onlyLot"]]) { const option = node("option", this.t(label)); option.value = value; scope.append(option); }
+      scope.value = draft.mode;
+      scope.addEventListener("change", () => { draft.mode = scope.value; draft.units = draft.mode === "position" ? selected.units : targetUnits(); this._invalidateCorrectionPreview(); this._render(); });
     }
-    const selected = () => choices.find(item => item.symbol === this._correction.symbol);
-    const targetUnits = () => this._correction.target === "opening" ? selected().opening_units : selected().lots.find(item => item.id === this._correction.target)?.units;
-    if (this._correction.units == null) this._correction.units = this._correction.mode === "position" ? selected().units : targetUnits();
-    const field = (label, control) => { const wrapper = node("div", null, "field"); wrapper.append(node("label", label), control); section.append(wrapper); return control; };
-    const symbol = field(this.t("position"), node("select"));
-    for (const item of choices) { const option = node("option", this._positionLabel(item.symbol)); option.value = item.symbol; option.selected = item.symbol === this._correction.symbol; symbol.append(option); }
-    symbol.addEventListener("change", () => { const next = choices.find(item => item.symbol === symbol.value); this._correction = { symbol: symbol.value, target: next.lots.at(-1)?.id || "opening", mode: "position", units: next.units, note: this._correction.note }; this._correctionPreview = null; this._render(); });
-    const target = field(this.t("correctionTarget"), node("select"));
-    const opening = node("option", `${this.t("openingUnits")}: ${this.units(selected().opening_units)}`); opening.value = "opening"; target.append(opening);
-    for (const lot of selected().lots) {
-      const option = node("option", `${this.day(lot.date)} · ${this.units(lot.units)} · ${this.money(lot.amount)}${lot.estimated ? ` · ${this.t("estimate")}` : ""}`);
-      option.value = lot.id; option.selected = lot.id === this._correction.target; target.append(option);
+    const units = field(this.t(draft.mode === "position" ? "exactTotal" : "exactLot"), node("input"));
+    units.type = "text"; units.inputMode = "decimal"; units.required = true; units.maxLength = 80; units.autocomplete = "off"; units.value = String(draft.units);
+    units.setAttribute("aria-describedby", "unit-input-hint");
+    const hint = node("p", this.t("decimalUnitsHint"), "hint"); hint.id = "unit-input-hint"; form.append(hint);
+    units.addEventListener("input", () => { draft.units = units.value; units.setCustomValidity(""); this._invalidateCorrectionPreview(); });
+    if (draft.mode === "position" || !this._correctionQuick) {
+      const target = field(this.t(draft.mode === "position" ? "correctionAssignment" : "correctionTarget"), node("select"));
+      const opening = node("option", `${this.t("openingUnits")}: ${this.units(selected.opening_units)}`); opening.value = "opening"; target.append(opening);
+      for (const lot of selected.lots) { const option = node("option", lotLabel(lot)); option.value = lot.id; target.append(option); }
+      target.value = draft.target;
+      target.addEventListener("change", () => { draft.target = target.value; if (draft.mode === "lot") draft.units = targetUnits(); this._invalidateCorrectionPreview(); this._render(); });
+      form.append(node("p", this.t(draft.mode === "position" ? "correctionQuickHint" : "correctionHint"), "hint"));
+    } else {
+      const lot = selected.lots.find(item => item.id === draft.target);
+      form.append(node("p", `${this.t("chosenLot")}: ${lotLabel(lot)}`, "hint"));
     }
-    target.value = this._correction.target;
-    target.addEventListener("change", () => { this._correction.target = target.value; this._correction.units = this._correction.mode === "position" ? selected().units : targetUnits(); this._correctionPreview = null; this._render(); });
-    const scope = field(this.t("correction"), node("select"));
-    for (const [value, label] of [["position", "totalPosition"], ["lot", "onlyLot"]]) { const option = node("option", this.t(label)); option.value = value; option.selected = value === this._correction.mode; scope.append(option); }
-    scope.addEventListener("change", () => { this._correction.mode = scope.value; this._correction.units = scope.value === "position" ? selected().units : targetUnits(); this._correctionPreview = null; this._render(); });
-    const units = field(this.t(this._correction.mode === "position" ? "exactTotal" : "exactLot"), node("input"));
-    units.type = "number"; units.min = "0"; units.step = "any"; units.value = String(this._correction.units);
-    units.addEventListener("input", () => { this._correction.units = units.value; this._correctionPreview = null; });
-    const note = field(this.t("reason"), node("input")); note.maxLength = 500; note.value = this._correction.note;
-    note.addEventListener("input", () => { this._correction.note = note.value; });
-    section.append(node("p", this.t("unchangedPayments"), "notice"));
-    const actions = node("div", null, "controls"), preview = button(this.t("correctionPreview"), () => this._prepareCorrection());
-    preview.disabled = this._busy; actions.append(preview, button(this.t("cancel"), () => { this._correctionOpen = false; this._correctionPreview = null; this._render(); })); section.append(actions);
+    const note = field(this.t("reason"), node("input")); note.type = "text"; note.maxLength = 500; note.value = draft.note;
+    note.addEventListener("input", () => { draft.note = note.value; this._invalidateCorrectionPreview(); });
+    form.append(node("p", this.t("unchangedPayments"), "notice"));
+    const actions = node("div", null, "controls"), preview = node("button", this.t("correctionPreview"), "primary"); preview.type = "submit"; preview.disabled = this._busy;
+    const cancel = button(this.t("cancel"), () => this._closeCorrection()); cancel.disabled = this._busy;
+    actions.append(preview, cancel); form.append(actions);
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      units.setCustomValidity(parseUnits(units.value) == null ? this.t("invalid_units_input") : "");
+      if (form.reportValidity()) this._prepareCorrection();
+    });
+    let confirm;
     if (this._correctionPreview?.summary) {
-      const summary = this._correctionPreview.summary, result = node("div", null, "notice");
-      result.append(node("strong", `${this._positionLabel(summary.symbol)}: ${this.t("before")} ${this.units(summary.before_total)} → ${this.t("after")} ${this.units(summary.after_total)}`));
-      result.append(node("p", `${this.t(summary.target === "opening" ? "openingUnits" : "chosenLot")}: ${this.units(summary.before_units)} → ${this.units(summary.after_units)}`));
-      section.append(result);
-      const label = node("label", this.t("correctionCheck")), check = node("input"); check.type = "checkbox"; label.prepend(check); section.append(label);
-      const confirm = button(this.t("correctionConfirm"), () => this._commitCorrection(), "primary"); confirm.disabled = true;
-      check.addEventListener("change", () => { confirm.disabled = !check.checked || this._busy; });
-      const confirmActions = node("div", null, "controls"); confirmActions.append(confirm); section.append(confirmActions);
+      const summary = this._correctionPreview.summary, result = node("div", null, "correction-result");
+      const notice = node("div", null, "notice");
+      notice.append(node("strong", `${this.t("exactTotal")}: ${this.t("before")} ${this.units(summary.before_total)} → ${this.t("after")} ${this.units(summary.after_total)}`));
+      const targetName = summary.target === "opening" ? this.t("openingUnits") : `${this.t("chosenLot")} · ${this.day(summary.effective_date)}`;
+      notice.append(node("p", `${targetName}: ${this.units(summary.before_units)} → ${this.units(summary.after_units)}`));
+      result.append(notice);
+      confirm = button(this.t("correctionConfirm"), () => this._commitCorrection(), "primary"); confirm.disabled = this._busy;
+      const confirmActions = node("div", null, "controls"); confirmActions.append(confirm); result.append(confirmActions); section.append(result);
     }
-    parent.append(section);
+    parent.append(section); section.showModal();
+    if (!this._busy) { if (confirm) confirm.focus(); else { units.focus(); units.select(); } }
   }
   async _prepareCorrection() {
-    if (this._busy) return;
+    if (this._busy || !this._correction) return;
+    const units = parseUnits(this._correction.units);
+    if (units == null) { this._error = this.t("invalid_units_input"); this._render(); return; }
+    const request = { ...this._correction, units };
     this._busy = true; this._error = null; this._correctionPreview = null; this._render();
-    try { this._correctionPreview = await this._call("correction_preview", { entry_id: this._selected, correction: this._correction }); }
+    try { this._correctionPreview = await this._call("correction_preview", { entry_id: this._selected, correction: request }); }
     catch (err) { this._error = this._errorText(err); }
     finally { this._busy = false; this._render(); }
   }
   async _commitCorrection() {
     if (this._busy || !this._correctionPreview?.token) return;
     this._busy = true; this._error = null; this._render();
-    try { await this._call("correction_commit", { token: this._correctionPreview.token, confirm: true }); this._correctionOpen = false; this._correctionPreview = null; }
-    catch (err) { this._error = this._errorText(err); }
+    let saved = false;
+    try { await this._call("correction_commit", { token: this._correctionPreview.token, confirm: true }); this._correctionOpen = false; this._correctionPreview = null; this._correction = null; saved = true; }
+    catch (err) { this._error = this._errorText(err); this._correctionPreview = null; }
     finally { this._busy = false; }
-    await this._refresh();
+    if (saved) await this._refresh();
+    else this._render();
   }
   percent(value) { return value == null ? "—" : new Intl.NumberFormat(this._lang, { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero" }).format(value) + " %"; }
   ratio(value) { return value == null ? "—" : new Intl.NumberFormat(this._lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + " %"; }
@@ -1080,7 +1167,8 @@ class MyWalletPanel extends HTMLElement {
       if (alias) asset.append(node("span", row.symbol, "hint"));
       if (row.symbol && row.plan) asset.append(node("span", row.plan, "hint"));
       if (row.note) asset.append(node("span", row.note, "hint"));
-      const units = node("td", this.units(row.units), "num");
+      const units = node("td", null, "num");
+      units.append(row.type === "purchase" ? this._unitsButton(row.symbol, row.units, row.id) : document.createTextNode(this.units(row.units)));
       if (row.estimated) units.append(node("span", this.t("estimate"), "badge"));
       if (row.price_date && row.price_date !== row.date) units.append(node("span", `${this.t("priceDate")}: ${this.day(row.price_date)}`, "hint"));
       const amount = this._real && this._history.inflation?.available ? row.real_amount : row.amount;
