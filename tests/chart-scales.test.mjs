@@ -31,3 +31,54 @@ test("zero-decimal currencies do not show fractional currency ticks", () => {
   assert.ok(scale.ticks.every(Number.isInteger));
   assert.equal(new Set(axisLabels(scale, "ja", "JPY")).size, scale.ticks.length);
 });
+
+const fitted = (values, currency = "EUR") => currencyScale(values, currency, 4, { includeZero: false });
+
+test("short-period axes reveal small price changes without extending to zero", () => {
+  const values = [641.15, 641.88, null, 642.12, 641.48];
+  const scale = fitted(values);
+  assert.ok(scale.min > 640 && scale.min < 641.15);
+  assert.ok(scale.max > 642.12 && scale.max < 644);
+  assert.ok(scale.max - scale.min < 3);
+  assert.ok(scale.ticks.length >= 3 && scale.ticks.length <= 8);
+  assert.ok(values.filter(Number.isFinite).every(value => value > scale.min && value < scale.max));
+  assert.deepEqual(scale, fitted(values.filter(Number.isFinite)), "missing samples are not zeros");
+  assert.equal(new Set(axisLabels(scale, "de", "EUR")).size, scale.ticks.length);
+});
+
+test("fitted scales handle unchanged, single, empty and cent-level balances", () => {
+  for (const values of [[], [null, NaN, Infinity], [640], [640, 640], [0], [0.01, 0.02], [-25, -24], [-0.01, 0, 0.01]]) {
+    const scale = fitted(values);
+    assert.ok(Number.isFinite(scale.min) && Number.isFinite(scale.max));
+    assert.ok(scale.max > scale.min);
+    assert.ok(scale.ticks.length >= 2 && scale.ticks.length <= 8);
+    assert.ok(values.filter(Number.isFinite).every(value => value >= scale.min && value <= scale.max));
+    assert.equal(new Set(axisLabels(scale, "de", "EUR")).size, scale.ticks.length);
+    if (values.filter(Number.isFinite).every(value => value >= 0)) assert.ok(scale.min >= 0);
+  }
+  assert.deepEqual(fitted([640]), fitted([640, 640]), "poll counts do not change a flat scale");
+  assert.ok(fitted([640]).min > 638);
+});
+
+test("large portfolios retain distinct labels even for small short-period changes", () => {
+  for (const currency of ["EUR", "JPY", "KWD"]) {
+    const values = [1_000_000.001, 1_000_000.012];
+    const scale = fitted(values, currency);
+    const labels = axisLabels(scale, "de", currency);
+    assert.ok(values.every(value => value >= scale.min && value <= scale.max));
+    assert.equal(new Set(labels).size, labels.length);
+    assert.ok(scale.ticks.length <= 8);
+    if (currency === "JPY") assert.ok(scale.ticks.every(Number.isInteger));
+  }
+});
+
+test("changing the visible period or selected position fits only that series", () => {
+  const day = fitted([640, 641]);
+  const week = fitted([600, 640, 641, 700]);
+  const position = fitted([51, 52]);
+  const cash = fitted([0.01, 0.02]);
+  assert.ok(week.min < 600 && week.max > 700);
+  assert.ok(day.max - day.min < week.max - week.min);
+  assert.ok(position.max < day.min);
+  assert.ok(cash.max < 0.1);
+});

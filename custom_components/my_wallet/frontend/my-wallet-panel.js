@@ -1,7 +1,7 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.10.0";
-import { parseUnits } from "./unit-input.mjs?v=1.10.0";
-import { dailyPeriod, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.10.0";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.10.1";
+import { parseUnits } from "./unit-input.mjs?v=1.10.1";
+import { dailyPeriod, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.10.1";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -36,7 +36,7 @@ const WORDS = {
     unitsInput: "Tatsächliche Stückzahl", previewExpires: "Die Vorschau ist zehn Minuten gültig. Eine bereits importierte Datei wird nicht erneut gebucht.",
     enabled: "aktiv", disabled: "pausiert", ended: "beendet", from: "ab", until: "bis", monthly: "monatlich",
     export: "Buchungen als CSV", selectDate: "Tag im Verlauf auswählen", allTypes: "Alle Buchungen",
-    cashChart: "Verrechnungskonto separat anzeigen", cashScale: "Eigene Skala; derselbe Zeitraum wie oben",
+    cashChart: "Verrechnungskonto separat anzeigen", cashScale: "Eigene Skala; derselbe Zeitraum wie oben", autoScale: "Skala an den sichtbaren Zeitraum angepasst",
     hideHint: "Hinweis ausblenden", showHint: "Hinweis zu geschätzten Anteilen anzeigen",
     performance: "Performance", profit: "Gewinn / Verlust", annualReturn: "Geldgewichtete Rendite p. a.",
     targetComparison: "Soll-Ist-Vergleich", expectedReturn: "Vorgaberendite p. a.", targetValue: "Zinseszins-Sollwert",
@@ -139,7 +139,7 @@ const WORDS = {
     unitsInput: "Actual units", previewExpires: "The preview expires after ten minutes. A previously imported file cannot be booked again.",
     enabled: "active", disabled: "paused", ended: "ended", from: "from", until: "until", monthly: "monthly",
     export: "Export transactions as CSV", selectDate: "Select a history date", allTypes: "All transactions",
-    cashChart: "Show settlement cash separately", cashScale: "Independent scale; the same dates as above",
+    cashChart: "Show settlement cash separately", cashScale: "Independent scale; the same dates as above", autoScale: "Scale fitted to the visible period",
     hideHint: "Hide notice", showHint: "Show notice about estimated units",
     performance: "Performance", profit: "Gain / loss", annualReturn: "Money-weighted return p.a.",
     targetComparison: "Target comparison", expectedReturn: "Expected return p.a.", targetValue: "Compound target",
@@ -1144,6 +1144,7 @@ class MyWalletPanel extends HTMLElement {
     const colors = { value: "#157bc0", projected: "#55a2d9", invested: "#269e81", target: "#8b67c8", cash: "#c48925" };
     const legend = node("div", null, "legend");
     for (const key of mainKeys) { const item = node("span", keyLabel(key), ["projected", "target"].includes(key) ? "target" : ""); item.style.setProperty("--line", colors[key]); legend.append(item); }
+    if (intraday) legend.append(node("small", this.t("autoScale"), "hint"));
     section.append(legend);
     if (!points.length) { this._notice(section, this.t("noRows")); parent.append(section); return; }
     parent.append(section);
@@ -1153,7 +1154,7 @@ class MyWalletPanel extends HTMLElement {
     const groups = [{ keys: mainKeys, height: width < 500 ? 260 : 310 }];
     if (showCash) groups.push({ keys: ["cash"], height: width < 500 ? 155 : 175 });
     for (const group of groups) {
-      group.scale = currencyScale(points.flatMap(point => group.keys.map(key => point[key])), currency);
+      group.scale = currencyScale(points.flatMap(point => group.keys.map(key => point[key])), currency, 4, { includeZero: !intraday });
       group.labels = axisLabels(group.scale, this._lang, currency);
     }
     const canvas = document.createElement("canvas").getContext("2d");

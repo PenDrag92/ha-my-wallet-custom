@@ -5,10 +5,22 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.10.0 requires **Home Assistant 2026.8 or newer**.
+Version 1.10.1 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.10.1: readable day and week charts
+
+The **1 day** and **1 week** views fit their vertical scale to the visible
+values, with a little space above and below and rounded currency steps. Small
+price changes remain visible without forcing the axis to start at zero. A
+note beside the legend identifies the automatic scale. Selecting a different
+position or period adjusts it again; settlement cash keeps its own scale.
+Missing samples remain gaps and do not pull the scale toward zero.
+
+The month range and longer views keep their existing zero-based scales.
+This changes only the chart display, not stored values or performance.
 
 ## 1.10.0: shorter history ranges and period performance
 

@@ -1,14 +1,24 @@
-/* Currency axes include zero and use readable, whole minor-unit intervals. */
-export function currencyScale(values, currency = "EUR", intervals = 4) {
+/* Currency axes use readable minor-unit intervals; history can fit its data. */
+export function currencyScale(values, currency = "EUR", intervals = 4, { includeZero = true } = {}) {
   const digits = new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits;
   const quantum = 10 ** -digits;
-  let low = 0, high = 0;
+  let low = includeZero ? 0 : Infinity, high = includeZero ? 0 : -Infinity;
   for (const value of values) {
     if (Number.isFinite(value)) { low = Math.min(low, value); high = Math.max(high, value); }
   }
-  if (low === high) high = 1;
-  low *= 1.05;
-  high *= 1.05;
+  if (!Number.isFinite(low) || !Number.isFinite(high)) { low = 0; high = 1; }
+  if (includeZero) {
+    if (low === high) high = 1;
+    low *= 1.05;
+    high *= 1.05;
+  } else {
+    const minimum = low, maximum = high;
+    const padding = high > low ? Math.max(quantum, (high - low) * .1) : Math.max(quantum * 2, Math.abs(low) * .001);
+    low -= padding; high += padding;
+    // Padding must not suggest a negative balance for nonnegative holdings.
+    if (minimum >= 0) low = Math.max(0, low);
+    else if (maximum <= 0) high = Math.min(0, high);
+  }
   const rough = Math.max(quantum, (high - low) / intervals);
   const magnitude = 10 ** Math.floor(Math.log10(rough));
   const step = [1, 2, 2.5, 5, 10].map(factor => factor * magnitude).find(value =>
@@ -26,5 +36,12 @@ export function axisLabels(scale, locale, currency) {
     maximumFractionDigits: compact ? Math.max(2, scale.digits) : scale.digits,
     ...(compact ? { notation: "compact" } : {}),
   });
-  return scale.ticks.map(value => formatter.format(value));
+  const labels = scale.ticks.map(value => formatter.format(value));
+  if (new Set(labels).size === labels.length) return labels;
+  // A tight axis around a large portfolio must not repeat the same "1M" label.
+  const precise = new Intl.NumberFormat(locale, {
+    style: "currency", currency, minimumFractionDigits: 0,
+    maximumFractionDigits: scale.digits,
+  });
+  return scale.ticks.map(value => precise.format(value));
 }

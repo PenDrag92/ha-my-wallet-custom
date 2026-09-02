@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.10.1
+
+- Fit the day and week chart axes to the visible wallet or position values,
+  with padding and readable currency steps so small changes remain visible.
+  Apply the same behavior to the independent settlement-cash chart.
+- Identify the automatic scale beside the legend. Keep missing samples as
+  gaps, handle constant values and retain distinct labels for small changes
+  in large portfolios. Month and longer ranges keep their zero-based scales.
+- Leave recorded history, balances and performance calculations unchanged.
+
 ## 1.10.0
 
 - Add 1-day (last 24 hours) and 1-week (last 7 days) history from Home
