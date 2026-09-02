@@ -5,10 +5,48 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.8.0 requires **Home Assistant 2026.8 or newer**.
+Version 1.9.0 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.9.0: future deposits and zero allocation targets
+
+Use **My Wallet → Planning → Plan a deposit** to enter a future one-off amount,
+date and optional note. Pending deposits can be edited or cancelled there.
+Alternatively use **Configure → Plan a future deposit**; the regular deposit
+form also accepts future cash deposits, without immediate purchases.
+
+A planned deposit is excluded from today's capital, cash, performance, booked
+transactions and CSV until its date. On that date it enters the cash ledger
+automatically, once, using its original ID. It is not a separate recurring
+payment. My Wallet records this schedule; it does not transfer money or send
+broker orders. Change or cancel the plan before the date if the payment will
+not happen. Due deposits can be corrected through the existing options, with
+checks that prevent recorded purchases from losing their funding.
+
+Enable **Reinvest available settlement cash** on the savings plan that should
+invest the additional money. Its next eligible execution invests the one-off
+deposit plus the normal monthly rate using its allocation, retaining any
+rounding remainder in cash. The Planning tab shows the currently expected plan
+and schedule date. If no eligible plan uses cash, the amount stays on the cash
+account. With multiple eligible plans, the first execution consumes available
+cash; plans on the same day use a stable order. Actual purchases still wait for
+confirmed market closes and may occur later than the calendar schedule.
+
+The target curve includes the deposit from its chosen date. Forecast allocation
+now also simulates cash reinvestment in chronological order, including current
+cash, same-day deposits, pauses, skipped months and plan end dates. Transfers
+from cash into securities never count as a second external contribution. The
+existing uniform expected-return assumption still applies to the projected
+portfolio, including cash. Complete JSON backups retain planned deposits.
+
+An explicit **0% allocation target** is now distinct from an empty target.
+Dashboard tables and deviation sensors report the difference from zero;
+dashboard deviations are labelled in percentage points. Zero-value positions
+remain visible in the allocation table. Targets discarded by older versions
+cannot be distinguished from intentionally empty targets and must be entered
+again once after updating.
 
 ## 1.8.0: purchasing power and consistent position names
 

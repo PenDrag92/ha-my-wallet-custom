@@ -1,5 +1,5 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.8.0";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.9.0";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -32,7 +32,7 @@ const WORDS = {
     targetDeviation: "Abweichung zum Soll", targetLine: "Sollkurve anzeigen", forecast: "Prognosehorizont",
     forecastToday: "heute", forecastYear: "Jahr", forecastYears: "Jahre", forecastCustom: "Benutzerdefiniert", forecastCustomYears: "Jahre (1–50)", apply: "Anwenden", perYear: "p. a.", forecastValue: "Prognostizierter Sollwert", forecastDate: "Prognosedatum",
     targetContributions: "Einzahlungen bis dahin", futureContributions: "Davon ab heute geplant", targetGrowth: "Erwarteter Wertzuwachs", currentTargetDeviation: "Aktuelle Abweichung zum Soll", portfolioForecast: "Depotprognose", forecastInvested: "Einzahlungen inkl. Planung",
-    targetHint: "Die Einzahlungen kombinieren gebuchte Einmalzahlungen mit den jeweils vorgesehenen Sparraten. Der erwartete Wertzuwachs ist der Sollwert abzüglich dieser Einzahlungen.",
+    targetHint: "Die Einzahlungen kombinieren gebuchte und geplante Einmalzahlungen mit den jeweils vorgesehenen Sparraten. Der erwartete Wertzuwachs ist der Sollwert abzüglich dieser Einzahlungen.",
     targetUnavailable: "Der Sollwert ist nicht verfügbar, weil Depotstart oder Anfangsbestand nicht vollständig dokumentiert sind.",
     positions: "Positionen", position: "Position", allPositions: "Gesamtes Depot", currentPrice: "Aktueller Kurs",
     analysis: "Kennzahlen und Verlauf", analysisFor: "Auswahl", analysisHint: "Kennzahlen, Wertentwicklung, Monats-/Jahresübersicht und Buchungen folgen dieser Auswahl.",
@@ -83,6 +83,11 @@ const WORDS = {
     purchasingPower: "Kaufkraftbereinigt", expectedInflation: "Erwartete Inflation p. a.", inflationEffect: "Inflationseffekt",
     inflationHint: "Historische Werte werden mit dem offiziellen deutschen HVPI von Eurostat bereinigt; Zukunftswerte verwenden die eingestellte Inflation.",
     inflationAsOf: "Offizielle Inflationsdaten bis", inflationStale: "Letzter gespeicherter Datenstand (Abruf derzeit nicht möglich)",
+    navPlanning: "Planung", plannedDeposits: "Geplante Einzahlungen", planDeposit: "Einzahlung planen", editPlannedDeposit: "Einzahlung bearbeiten", savePlannedDeposit: "Planung speichern", deletePlannedDeposit: "Planung löschen", edit: "Bearbeiten", actions: "Aktionen", percentagePointUnit: "PP",
+    planningHint: "Künftige Einmalzahlungen zählen erst ab ihrem Datum zum eingezahlten Kapital und zum Verrechnungskonto. Die Prognose berücksichtigt sie schon jetzt. Der nächste aktive Sparplan mit „Restguthaben mit anlegen“ verteilt das verfügbare Guthaben zusätzlich zu seiner Monatsrate.",
+    planningExecutionHint: "Die angezeigte Anlage folgt dem aktuellen Sparplan-Termin; tatsächliche Kauftranchen warten auf bestätigte Kurse. Sind mehrere Pläne am selben Tag fällig, entscheidet ihre feste Reihenfolge. My Wallet führt keine Banküberweisungen oder Brokeraufträge aus.",
+    plannedInvestment: "Vorgesehene Anlage", plannedCashOnly: "Bleibt vorerst auf dem Verrechnungskonto", noPlannedDeposits: "Noch keine künftige Einmalzahlung geplant.", cashReuseOn: "Legt verfügbares Restguthaben zusätzlich an", cashReuseOff: "Legt nur die Monatsrate an", openPlanning: "Planung öffnen", plannedTotal: "Einmalzahlungen in Planung",
+    invalid_planned_deposit: "Bitte Datum, Betrag und Notiz prüfen. Der Betrag muss mindestens 0,01 betragen.", planned_date_required: "Wähle für die Planung einen Tag nach heute.", planned_deposit_locked: "Diese Einzahlung ist bereits fällig oder gebucht. Bitte die Seite aktualisieren und bei Bedarf unter „Verwalten“ korrigieren.",
   },
   en: {
     subtitle: "Portfolio history", wallet: "Wallet", refresh: "Refresh", settings: "Manage",
@@ -115,7 +120,7 @@ const WORDS = {
     targetDeviation: "Difference from target", targetLine: "Show target curve", forecast: "Forecast horizon",
     forecastToday: "today", forecastYear: "year", forecastYears: "years", forecastCustom: "Custom", forecastCustomYears: "Years (1–50)", apply: "Apply", perYear: "p.a.", forecastValue: "Forecast target", forecastDate: "Forecast date",
     targetContributions: "Contributions through this date", futureContributions: "Planned from today", targetGrowth: "Expected growth", currentTargetDeviation: "Current difference from target", portfolioForecast: "Portfolio forecast", forecastInvested: "Contributions including plan",
-    targetHint: "Contributions combine booked one-off deposits with the applicable planned savings rates. Expected growth is the target value minus those contributions.",
+    targetHint: "Contributions combine booked and planned one-off deposits with the applicable planned savings rates. Expected growth is the target value minus those contributions.",
     targetUnavailable: "The target is unavailable because the portfolio start or opening holdings are not fully documented.",
     positions: "Positions", position: "Position", allPositions: "Whole wallet", currentPrice: "Current price",
     analysis: "Metrics and history", analysisFor: "Selection", analysisHint: "Metrics, value history, monthly/yearly summaries and transactions follow this selection.",
@@ -166,6 +171,11 @@ const WORDS = {
     purchasingPower: "Inflation adjusted", expectedInflation: "Expected inflation p.a.", inflationEffect: "Inflation effect",
     inflationHint: "Historical values use Eurostat's official German HICP; future values use the configured inflation assumption.",
     inflationAsOf: "Official inflation data through", inflationStale: "Last cached data (refresh currently unavailable)",
+    navPlanning: "Planning", plannedDeposits: "Planned deposits", planDeposit: "Plan a deposit", editPlannedDeposit: "Edit deposit", savePlannedDeposit: "Save plan", deletePlannedDeposit: "Cancel planned deposit", edit: "Edit", actions: "Actions", percentagePointUnit: "pp",
+    planningHint: "Future one-off deposits enter contributed capital and settlement cash only on their date. Forecasts already include them. The next active savings plan with cash reinvestment enabled allocates available cash in addition to its monthly rate.",
+    planningExecutionHint: "The expected investment follows the current plan schedule; actual lots wait for confirmed prices. Plans due on the same date use a stable order. My Wallet does not make bank transfers or place broker orders.",
+    plannedInvestment: "Expected investment", plannedCashOnly: "Remains in settlement cash for now", noPlannedDeposits: "No future one-off deposits planned yet.", cashReuseOn: "Also invests available settlement cash", cashReuseOff: "Invests the monthly rate only", openPlanning: "Open planning", plannedTotal: "Planned one-off deposits",
+    invalid_planned_deposit: "Check the date, amount and note. The amount must be at least 0.01.", planned_date_required: "Choose a future date for this planned deposit.", planned_deposit_locked: "This deposit is already due or booked. Refresh the page and use Manage if a correction is needed.",
   },
 };
 
@@ -180,6 +190,7 @@ const CSS = `
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:14px;margin:18px 0}.target-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.overview-stats{grid-template-columns:repeat(8,minmax(0,1fr))}.overview-stats .stat{padding:16px}.overview-stats .stat strong{font-size:21px;white-space:nowrap}.stat,.card{background:var(--card-background-color,#fff);border:1px solid var(--divider-color,#dce3eb);border-radius:12px;padding:20px}.stat{display:flex;flex-direction:column}.stat strong{display:block;font-size:24px;letter-spacing:-.5px;margin-top:4px;font-variant-numeric:tabular-nums}.stat>span{display:block;min-height:3em;color:var(--secondary-text-color,#57667a);font-size:13px}.card{margin-bottom:18px}
   .selection-card{display:flex;align-items:center;gap:24px}.selection-card h2{margin:0}.selection-copy{min-width:0}.selection-copy p{margin:4px 0 0}.selection-control{display:grid;gap:5px;min-width:min(100%,300px)}.selection-control span{font-size:13px;color:var(--secondary-text-color,#57667a)}.real-toggle{display:flex;align-items:center;gap:8px;white-space:nowrap}.real-toggle input{width:20px;height:20px}
   .tabs{display:flex;gap:8px;overflow-x:auto;margin:0 0 18px;padding:4px 0}.tabs button{white-space:nowrap}.tabs button[aria-selected=true]{background:var(--primary-color,#1878b5);color:#fff;border-color:var(--primary-color,#1878b5)}.forecast-custom{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.forecast-custom input{width:125px}
+  .planning-form{margin:16px 0;padding:16px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px}.planning-form input{padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}.planning-form .controls{margin:16px 0 0}.planning-actions{display:flex;gap:8px;flex-wrap:wrap}
   .alias-editor{margin:0 0 18px;padding:14px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px;background:color-mix(in srgb,var(--primary-color,#1878b5) 4%,var(--card-background-color,#fff))}.alias-editor h3{margin:0}.alias-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px 18px;margin:12px 0}.alias-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(120px,1fr);align-items:center;gap:10px}.alias-row input{width:100%;padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}tr.selected td{background:color-mix(in srgb,var(--primary-color,#1878b5) 8%,transparent)}
   .allocation-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);align-items:center;gap:24px}.donut{width:min(100%,280px);margin:auto}.allocation-name{display:inline-flex;align-items:center;gap:8px}.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;flex:0 0 auto}.details-title{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}.details-title .hint{font-weight:400}
   .notice{padding:12px 16px;background:color-mix(in srgb,var(--primary-color,#1878b5) 9%,var(--card-background-color,#fff));border-left:3px solid var(--primary-color,#1878b5);border-radius:5px;margin:12px 0}.warning{border-color:#c4851b;background:color-mix(in srgb,#e6ac37 12%,var(--card-background-color,#fff))}.error{border-color:#c63c45;background:color-mix(in srgb,#c63c45 9%,var(--card-background-color,#fff))}
@@ -231,6 +242,7 @@ class MyWalletPanel extends HTMLElement {
     this._importOpen = false;
     this._aliasOpen = false;
     this._aliasDraft = null;
+    this._depositDraft = null;
   }
   set hass(value) {
     this._hass = value;
@@ -244,13 +256,13 @@ class MyWalletPanel extends HTMLElement {
     this._started = true;
     try {
       const saved = localStorage.getItem(`my-wallet:section:${this._hass.user?.id || "admin"}`);
-      if (["overview", "positions", "history", "data"].includes(saved)) this._section = saved;
+      if (["overview", "planning", "positions", "history", "data"].includes(saved)) this._section = saved;
     } catch { /* Browser storage may be disabled. */ }
     this._resize = () => { if (this._history && !this._busy && !this._importOpen) this._render(); };
     window.addEventListener("resize", this._resize);
     this._refresh();
     this._timer = setInterval(() => {
-      if (!this._busy && !this._importOpen && document.visibilityState !== "hidden") this._refresh(true);
+      if (!this._busy && !this._importOpen && !this._depositDraft && document.visibilityState !== "hidden") this._refresh(true);
     }, 60000);
   }
   t(key) { return WORDS[this._lang || "en"][key] || WORDS.en[key] || key; }
@@ -315,7 +327,7 @@ class MyWalletPanel extends HTMLElement {
     const tabs = node("nav", null, "tabs");
     tabs.setAttribute("role", "tablist");
     tabs.setAttribute("aria-label", "My Wallet");
-    for (const [section, label] of [["overview", "navOverview"], ["positions", "navPositions"], ["history", "navHistory"], ["data", "navData"]]) {
+    for (const [section, label] of [["overview", "navOverview"], ["planning", "navPlanning"], ["positions", "navPositions"], ["history", "navHistory"], ["data", "navData"]]) {
       const tab = button(this.t(label), () => this._setSection(section));
       tab.setAttribute("role", "tab");
       tab.setAttribute("aria-selected", String(this._section === section));
@@ -382,6 +394,7 @@ class MyWalletPanel extends HTMLElement {
       this._customForecastOpen = false;
       this._aliasOpen = false;
       this._aliasDraft = null;
+      this._depositDraft = null;
       this._history = null;
       this._refresh();
     });
@@ -411,13 +424,19 @@ class MyWalletPanel extends HTMLElement {
       main.append(warning);
     }
     this._renderNavigation(main);
-    this._renderPositionSelection(main, wallet);
+    if (this._section !== "planning") this._renderPositionSelection(main, wallet);
     const position = wallet.positions.find(item => item.symbol === this._position);
     if (wallet.pending?.length) this._notice(main, this.t("pending"), "warning");
     if (this._section === "overview") {
       this._renderStats(main, wallet, position);
       if (!position) this._renderTargetSummary(main, wallet);
+      const planning = node("div", null, "controls");
+      if (wallet.planned_deposits?.length) planning.append(node("span", `${this.t("plannedTotal")}: ${this.money(wallet.planned_deposits.reduce((sum, item) => sum + item.amount, 0))}`));
+      planning.append(button(this.t("openPlanning"), () => this._setSection("planning"))); main.append(planning);
       this._renderAllocation(main, wallet);
+    } else if (this._section === "planning") {
+      this._renderPlannedDeposits(main, wallet);
+      this._renderPlans(main, wallet.plans, wallet.currency);
     } else if (this._section === "positions") {
       if (position) this._renderStats(main, wallet, position);
       this._renderPositions(main, wallet);
@@ -431,7 +450,6 @@ class MyWalletPanel extends HTMLElement {
       this._renderChart(main);
       this._renderSummary(main);
     } else if (this._section === "data") {
-      this._renderPlans(main, wallet.plans, wallet.currency);
       if (this._history) this._renderLedger(main);
       this._renderExport(main);
     }
@@ -540,14 +558,15 @@ class MyWalletPanel extends HTMLElement {
       return;
     }
     const palette = ["#157bc0", "#269e81", "#8b67c8", "#d9822b", "#d34f68", "#4d9ca8", "#8d7445", "#6c83d5"];
-    const segments = wallet.positions.filter(item => positionValue(item) > 0).map((item, index) => ({
+    const rows = wallet.positions.map((item, index) => ({
       symbol: item.symbol,
       label: this._positionLabel(item.symbol),
       value: positionValue(item),
       target: item.target,
       color: palette[index % palette.length],
     }));
-    if (cash > 0) segments.push({ symbol: null, label: this.t("cash"), value: cash, target: null, color: "#98a3af" });
+    if (cash > 0) rows.push({ symbol: null, label: this.t("cash"), value: cash, target: null, color: "#98a3af" });
+    const segments = rows.filter(item => item.value > 0);
     if (total <= 0) {
       this._notice(section, this.t("emptyValue"));
       parent.append(section);
@@ -568,9 +587,9 @@ class MyWalletPanel extends HTMLElement {
     centerLabel.textContent = this.t("all"); svg.append(centerValue, centerLabel);
 
     const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr");
-    for (const key of ["position", forecast ? "projectedValue" : "currentValue", forecast ? "forecastShare" : "actualShare", "target", "deviation"]) hr.append(node("th", this.t(key), key === "position" ? "" : "num"));
+    for (const key of ["position", forecast ? "projectedValue" : "currentValue", forecast ? "forecastShare" : "actualShare", "target", "deviation"]) hr.append(node("th", key === "deviation" ? `${this.t(key)} (${this.t("percentagePointUnit")})` : this.t(key), key === "position" ? "" : "num"));
     head.append(hr); table.append(head); const body = node("tbody");
-    for (const item of segments) {
+    for (const item of rows) {
       const actual = item.value / total * 100, difference = item.target == null ? null : actual - item.target;
       const tr = node("tr"); if (item.symbol === this._position) tr.className = "selected";
       const first = node("td"), swatch = node("span", null, "swatch"); swatch.style.background = item.color;
@@ -581,7 +600,7 @@ class MyWalletPanel extends HTMLElement {
         const label = node("span", item.label, "allocation-name"); label.prepend(swatch); first.append(label);
       }
       const cls = value => `num ${value > 0 ? "positive" : value < 0 ? "negative" : ""}`;
-      tr.append(first, node("td", this.money(item.value, wallet.currency), "num"), node("td", this.ratio(actual), "num"), node("td", this.ratio(item.target), "num"), node("td", this.percent(difference), cls(difference)));
+      tr.append(first, node("td", this.money(item.value, wallet.currency), "num"), node("td", this.ratio(actual), "num"), node("td", this.ratio(item.target), "num"), node("td", this.percent(difference).replace(" %", ` ${this.t("percentagePointUnit")}`), cls(difference)));
       body.append(tr);
     }
     table.append(body); wrap.append(table); layout.append(svg, wrap); section.append(layout); parent.append(section);
@@ -778,6 +797,73 @@ class MyWalletPanel extends HTMLElement {
       parent.append(notice);
     }
   }
+  _editPlannedDeposit(item = null) {
+    const today = this._wallet()?.as_of || new Date().toLocaleDateString("sv-SE");
+    const tomorrow = new Date(`${today}T12:00:00`); tomorrow.setDate(tomorrow.getDate() + 1);
+    const id = item?.id || globalThis.crypto?.randomUUID?.() || Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("");
+    this._depositDraft = item ? { ...item } : { id, date: tomorrow.toLocaleDateString("sv-SE"), amount: "", note: "" };
+    this._render();
+    this.shadowRoot.querySelector(".planning-form input")?.focus();
+  }
+  async _changePlannedDeposit(action, item) {
+    if (this._busy) return;
+    this._busy = true; this._error = null; this._render();
+    let saved = false;
+    try {
+      const values = action === "save" ? { date: item.date, amount: Number(item.amount), note: item.note || "" } : {};
+      await this._call("planned_deposit", { entry_id: this._selected, deposit_id: item.id, action, ...values });
+      this._depositDraft = null; saved = true;
+    } catch (err) { this._error = this._errorText(err); }
+    finally { this._busy = false; }
+    if (saved) await this._refresh();
+    else this._render();
+  }
+  _renderPlannedDeposits(parent, wallet) {
+    const section = node("section", null, "card"), controls = node("div", null, "controls");
+    const add = button(this.t("planDeposit"), () => this._editPlannedDeposit(), "primary"); add.disabled = this._busy || Boolean(this._depositDraft);
+    controls.append(node("h2", this.t("plannedDeposits")), node("div", null, "grow"), add);
+    section.append(controls, node("p", this.t("planningHint"), "hint"));
+    if (this._depositDraft) {
+      const draft = this._depositDraft, form = node("form", null, "planning-form");
+      const editing = wallet.planned_deposits?.some(item => item.id === draft.id);
+      form.append(node("h3", this.t(editing ? "editPlannedDeposit" : "planDeposit")));
+      const field = (key, label, type) => {
+        const wrap = node("label", null, "field"), input = node("input");
+        input.type = type; input.value = String(draft[key] ?? ""); input.disabled = this._busy;
+        input.addEventListener("input", () => { draft[key] = input.value; });
+        wrap.append(node("span", label), input); form.append(wrap); return input;
+      };
+      const date = field("date", this.t("date"), "date"); date.required = true;
+      const minimum = new Date(`${wallet.as_of || new Date().toLocaleDateString("sv-SE")}T12:00:00`); minimum.setDate(minimum.getDate() + 1); date.min = minimum.toLocaleDateString("sv-SE");
+      const amount = field("amount", `${this.t("amount")} (${wallet.currency})`, "number"); amount.min = "0.01"; amount.max = "10000000000"; amount.step = "0.01"; amount.required = true;
+      field("note", this.t("reason"), "text").maxLength = 500;
+      const actions = node("div", null, "controls"), save = node("button", this.t("savePlannedDeposit"), "primary"); save.type = "submit"; save.disabled = this._busy;
+      const cancel = button(this.t("cancel"), () => { this._depositDraft = null; this._render(); }); cancel.disabled = this._busy;
+      actions.append(save, cancel); form.append(actions);
+      form.addEventListener("submit", event => { event.preventDefault(); this._changePlannedDeposit("save", draft); });
+      section.append(form);
+    }
+    const rows = wallet.planned_deposits || [];
+    if (!rows.length) this._notice(section, this.t("noPlannedDeposits"));
+    else {
+      const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr"), body = node("tbody");
+      for (const key of ["date", "amount", "plannedInvestment", "actions"]) hr.append(node("th", this.t(key), key === "amount" ? "num" : ""));
+      head.append(hr); table.append(head);
+      for (const item of rows) {
+        const tr = node("tr"), day = node("td", this.day(item.date));
+        if (item.note) day.append(node("span", item.note, "hint"));
+        const investment = node("td", item.investment ? item.investment.plan_name : this.t("plannedCashOnly"));
+        if (item.investment) investment.append(node("span", this.day(item.investment.date), "hint"));
+        const actions = node("td"), buttons = node("div", null, "planning-actions");
+        const edit = button(this.t("edit"), () => this._editPlannedDeposit(item), "inline-action"); edit.disabled = this._busy;
+        const remove = button(this.t("deletePlannedDeposit"), () => this._changePlannedDeposit("delete", item), "inline-action"); remove.disabled = this._busy;
+        buttons.append(edit, remove); actions.append(buttons);
+        tr.append(day, node("td", this.money(item.amount, wallet.currency), "num"), investment, actions); body.append(tr);
+      }
+      table.append(body); wrap.append(table); section.append(wrap);
+    }
+    section.append(node("p", this.t("planningExecutionHint"), "hint")); parent.append(section);
+  }
   _renderPlans(parent, plans, currency) {
     if (!plans?.length) return;
     const card = node("section", null, "card");
@@ -790,6 +876,7 @@ class MyWalletPanel extends HTMLElement {
       const status = !plan.enabled ? "disabled" : plan.end_date && plan.end_date < today ? "ended" : "enabled";
       item.append(node("div", `${this.money(plan.amount, currency)} ${this.t("monthly")} · ${this.t(status)}`));
       item.append(node("div", `${this.t("from")} ${this.day(plan.first_date)}${plan.end_date ? ` · ${this.t("until")} ${this.day(plan.end_date)}` : ""}`, "hint"));
+      item.append(node("div", this.t(plan.use_cash_balance !== false ? "cashReuseOn" : "cashReuseOff"), "hint"));
       for (const row of plan.allocations) item.append(node("div", `${this._positionLabel(row.symbol)}: ${plan.allocation_mode === "percentage" ? `${row.value} %` : this.money(row.value, currency)}`, "hint"));
       list.append(item);
     }
@@ -1072,6 +1159,7 @@ class MyWalletPanel extends HTMLElement {
       const summary = this._preview.summary;
       section.append(node("h3", summary.backup ? `${this.t("backupRestore")}: ${summary.wallet_name}` : this._importMode === "followup" ? `${this.t("followup")}: ${this._wallet().name}` : `${this.t("newWallet")}: ${summary.wallet_name}`));
       section.append(node("p", `${this.t("counts")}: ${summary.deposits} / ${summary.purchases} / ${summary.dividends}`));
+      if (summary.planned_deposits) section.append(node("p", `${this.t("plannedDeposits")}: ${summary.planned_deposits}`));
       const stats = node("div", null, "stats");
       for (const [key, value] of [["invested", summary.capital], ["spending", summary.spending], ["dividends", summary.dividend_total], ["cash", summary.cash]]) this._stat(stats, this.t(key), this.money(value, summary.currency));
       section.append(stats);

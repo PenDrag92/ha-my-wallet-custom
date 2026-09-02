@@ -19,6 +19,7 @@ from .contributions import (
 )
 from .plans import (
     allocation_amounts,
+    cash_allocation_amounts,
     execution_rules,
     normalize_plan,
     rule_for_date,
@@ -41,6 +42,7 @@ class TargetCashFlow:
     source: str
     plan_id: str | None = None
     allocations: tuple[tuple[str, float], ...] = ()
+    cash_weights: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -177,6 +179,7 @@ def _planned_flows(
         skipped = set(plan[c.PLAN_SKIPPED_PERIODS])
         for rule in execution_rules(plan):
             allocations = tuple(sorted(allocation_amounts(rule).items()))
+            cash_weights = _cash_weights(rule)
             for scheduled in _dates_for_rule(rule, through):
                 period = schedule_period(scheduled)
                 if period in skipped:
@@ -187,6 +190,7 @@ def _planned_flows(
                     "savings_plan",
                     plan[c.PLAN_ID],
                     allocations,
+                    cash_weights,
                 )
 
     # Retired plans have no reliable retirement timestamp. Preserve only their
@@ -209,16 +213,35 @@ def _planned_flows(
             continue
         amount = float(row[c.CONTRIBUTION_AMOUNT])
         allocations: tuple[tuple[str, float], ...] = ()
+        cash_weights: tuple[tuple[str, float], ...] = ()
         if plan is not None:
             with suppress(ValueError):
                 rule = rule_for_date(plan, scheduled)
                 amount = float(rule[c.PLAN_AMOUNT])
                 allocations = tuple(sorted(allocation_amounts(rule).items()))
+                cash_weights = _cash_weights(rule)
         if amount > 0:
             result[key] = TargetCashFlow(
-                scheduled, amount, "savings_plan", str(plan_id), allocations
+                scheduled,
+                amount,
+                "savings_plan",
+                str(plan_id),
+                allocations,
+                cash_weights,
             )
     return result
+
+
+def _cash_weights(rule: Mapping[str, Any]) -> tuple[tuple[str, float], ...]:
+    """Keep the exact configured weights for projecting cash reinvestment."""
+    if not rule[c.PLAN_USE_CASH_BALANCE]:
+        return ()
+    return tuple(
+        sorted(
+            (item[c.ALLOCATION_SYMBOL], float(item[c.ALLOCATION_VALUE]))
+            for item in rule[c.PLAN_ALLOCATIONS]
+        )
+    )
 
 
 def target_cash_flows(
@@ -245,7 +268,15 @@ def target_cash_flows(
             )
         )
     return tuple(
-        sorted(flows, key=lambda item: (item.date, item.source, item.plan_id or ""))
+        sorted(
+            flows,
+            key=lambda item: (
+                item.date,
+                item.plan_id is not None,
+                item.plan_id or "",
+                item.source,
+            ),
+        )
     )
 
 
@@ -411,16 +442,25 @@ def target_allocation_forecast(
         for symbol, value in positions.items()
         if value is not None
     }
-    projected_cash = cash * horizon_factor
+    projected_cash = cash
+    previous = current_date
     for flow in projection.cash_flows:
         if not current_date < flow.date <= through:
             continue
+        projected_cash *= projection.daily_factor ** (flow.date - previous).days
+        amounts = dict(flow.allocations)
+        if flow.cash_weights:
+            bonus = cash_allocation_amounts(
+                flow.cash_weights, round(max(0.0, projected_cash), 10)
+            )
+            for symbol, amount in bonus.items():
+                amounts[symbol] = amounts.get(symbol, 0.0) + amount
         flow_factor = projection.daily_factor ** (through - flow.date).days
-        allocated = 0.0
-        for symbol, amount in flow.allocations:
+        for symbol, amount in amounts.items():
             projected[symbol] = projected.get(symbol, 0.0) + amount * flow_factor
-            allocated += amount
-        projected_cash += max(0.0, flow.amount - allocated) * flow_factor
+        projected_cash = max(0.0, projected_cash + flow.amount - sum(amounts.values()))
+        previous = flow.date
+    projected_cash *= projection.daily_factor ** (through - previous).days
 
     rounded_positions = {
         symbol: round(value, 2) for symbol, value in sorted(projected.items())

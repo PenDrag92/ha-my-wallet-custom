@@ -52,6 +52,7 @@ from .inflation import (
     expected_annual_inflation,
     future_inflation_factor,
 )
+from .planning import change_planned_deposit, planned_deposit_summaries
 from .target import (
     FORECAST_YEARS,
     MAX_FORECAST_YEARS,
@@ -142,6 +143,7 @@ async def async_setup_panel(hass):
     for command in (
         ws_wallets,
         ws_position_aliases,
+        ws_planned_deposit,
         ws_backup,
         ws_history,
         ws_import_preview,
@@ -156,7 +158,7 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.8.0",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.9.0",
         embed_iframe=False,
         require_admin=True,
     )
@@ -477,6 +479,7 @@ def ws_wallets(hass, connection, msg):
         wallets.append(
             {
                 "entry_id": entry.entry_id,
+                "as_of": today.isoformat(),
                 "name": entry.title or entry.data.get(c.CONF_WALLET_NAME, "My Wallet"),
                 "currency": entry.data[c.CONF_BASE_CURRENCY],
                 "start_date": start_date,
@@ -537,10 +540,56 @@ def ws_wallets(hass, connection, msg):
                 "correction_choices": correction_choices(entry.data, today=today),
                 "pending": current.pending_executions if current is not None else [],
                 "plans": entry.data.get(c.CONF_SAVINGS_PLANS, []),
+                "planned_deposits": planned_deposit_summaries(entry.data, today=today),
                 "opening_conflicts": opening_balance_conflicts(entry.data),
             }
         )
     connection.send_result(msg["id"], {"wallets": wallets})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "my_wallet/planned_deposit",
+        vol.Required("entry_id"): str,
+        vol.Required("deposit_id"): str,
+        vol.Required("action"): vol.Any("save", "delete"),
+        vol.Optional("amount"): vol.Any(int, float),
+        vol.Optional("date"): str,
+        vol.Optional("note"): str,
+    }
+)
+@callback
+def ws_planned_deposit(hass, connection, msg):
+    """Create, edit or cancel a future deposit without changing past bookings."""
+    if not _admin(connection, msg):
+        return
+    entry = next(
+        (item for item in _entries(hass) if item.entry_id == msg["entry_id"]), None
+    )
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", "Wallet not found")
+        return
+    try:
+        data = change_planned_deposit(
+            entry.data,
+            today=dt_util.now().date(),
+            deposit_id=msg["deposit_id"],
+            action=msg["action"],
+            amount=msg.get("amount"),
+            deposit_date=msg.get("date"),
+            note=msg.get("note", ""),
+        )
+    except ValueError as err:
+        connection.send_error(
+            msg["id"], str(err), "The planned deposit was not changed"
+        )
+        return
+    if data != entry.data:
+        changed = hass.config_entries.async_update_entry(entry, data=data)
+        _state(hass)["cache"].pop(entry.entry_id, None)
+        if changed:
+            hass.config_entries.async_schedule_reload(entry.entry_id)
+    connection.send_result(msg["id"], {"saved": True})
 
 
 def _normalize_alias(value) -> str:

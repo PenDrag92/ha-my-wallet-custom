@@ -203,7 +203,11 @@ def build_history(
     inflation: InflationSeries | None = None,
 ) -> dict[str, Any]:
     """Price only dated holdings; an unknown opening position leaves gaps."""
-    events = ledger_rows(data)
+    events = [
+        row
+        for row in ledger_rows(data)
+        if not row["date"] or row["date"] <= today.isoformat()
+    ]
     expected_inflation = expected_annual_inflation(data)
     real_events_complete = inflation is not None
     for row in events:
@@ -548,7 +552,11 @@ async def async_history(
     inflation: InflationSeries | None = None,
 ) -> dict[str, Any]:
     events = ledger_rows(data)
-    days = [date.fromisoformat(row["date"]) for row in events if row["date"]]
+    days = [
+        date.fromisoformat(row["date"])
+        for row in events
+        if row["date"] and row["date"] <= today.isoformat()
+    ]
     start = max(min(days, default=today), today - timedelta(days=MAX_HISTORY_DAYS))
     symbols = sorted({lot[c.LOT_SYMBOL] for lot in all_lots(data)})
     histories = await fetch_histories(

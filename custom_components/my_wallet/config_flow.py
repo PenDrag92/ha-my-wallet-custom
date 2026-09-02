@@ -104,8 +104,10 @@ from .dividends import (
     make_dividend,
     normalize_dividends,
 )
+from .executions import _worsened_cash_history
 from .investment_options import InvestmentOptionsMixin
 from .plan_options import PlanOptionsMixin
+from .planning import is_plannable_deposit
 from .plans import (
     is_scheduled_period,
     normalize_plan,
@@ -344,13 +346,13 @@ def _valor_fields_schema(amount: Any, target_share: Any) -> vol.Schema:
 
 
 def _normalize_target_share(value: Any) -> float | None:
-    """Return a target share in (0, 100] or None when no target is set."""
-    if value is None:
+    """Preserve an explicit zero target; only an empty field removes it."""
+    if value is None or value == "":
         return None
     target = _finite_number(value, minimum=0, maximum=100)
     if target is None:
         raise ValueError("Target share must be finite and between 0 and 100")
-    return target if target > 0 else None
+    return target
 
 
 def _targets_sum(valors: Iterable[dict[str, Any]]) -> float:
@@ -839,6 +841,7 @@ class MyWalletOptionsFlow(
         menu_options = [
             "settings",
             "add_contribution",
+            "plan_contribution",
             "add_lot",
             "add_dividend",
         ]
@@ -976,6 +979,11 @@ class MyWalletOptionsFlow(
             else item[CONTRIBUTION_AMOUNT]
         )
         label = f"{name} · {item[CONTRIBUTION_DATE] or '—'} · {amount:.2f} {currency}"
+        if (
+            item[CONTRIBUTION_DATE]
+            and item[CONTRIBUTION_DATE] > dt_util.now().date().isoformat()
+        ):
+            label = f"{self._text('planned_deposit')} · {label}"
         if item.get(CONTRIBUTION_MANUALLY_EDITED):
             label += f" · {self._text('corrected')}"
         return label
@@ -1375,7 +1383,9 @@ class MyWalletOptionsFlow(
             except ValueError:
                 errors[CONTRIBUTION_DATE] = "invalid_input"
             else:
-                if execution_date > dt_util.now().date():
+                if execution_date > dt_util.now().date() and not is_plannable_deposit(
+                    current
+                ):
                     errors[CONTRIBUTION_DATE] = "future_date"
                 elif any(
                     date.fromisoformat(str(lot[LOT_DATE])) < execution_date
@@ -1409,9 +1419,16 @@ class MyWalletOptionsFlow(
                             for item in contributions
                         ]
                     )
-                    return await self._save(
-                        self._valors(), **{CONF_CONTRIBUTIONS: updated}
-                    )
+                    if _worsened_cash_history(
+                        self.config_entry.data,
+                        {**self.config_entry.data, CONF_CONTRIBUTIONS: updated},
+                        dt_util.now().date(),
+                    ):
+                        errors["base"] = "cash_conflict"
+                    else:
+                        return await self._save(
+                            self._valors(), **{CONF_CONTRIBUTIONS: updated}
+                        )
         shown = user_input if user_input is not None else current
         return self.async_show_form(
             step_id="edit_contribution_fields",
@@ -1480,6 +1497,28 @@ class MyWalletOptionsFlow(
                 for item in contributions
                 if item[CONTRIBUTION_ID] != contribution_id
             ]
+            if _worsened_cash_history(
+                self.config_entry.data,
+                {**self.config_entry.data, CONF_CONTRIBUTIONS: updated},
+                dt_util.now().date(),
+            ):
+                return self.async_show_form(
+                    step_id="confirm_remove_contribution",
+                    data_schema=vol.Schema(
+                        {vol.Required("confirm", default=False): bool}
+                    ),
+                    errors={"base": "cash_conflict"},
+                    description_placeholders={
+                        "contribution": self._contribution_label(removed),
+                        "count": str(len(removed[CONTRIBUTION_LOTS])),
+                        "lots": "\n".join(
+                            f"- {self._position_label(lot[LOT_SYMBOL])} · "
+                            f"{lot[LOT_DATE]} · {lot[LOT_AMOUNT]:.2f}"
+                            for lot in removed[CONTRIBUTION_LOTS]
+                        )
+                        or "—",
+                    },
+                )
             extra: dict[str, Any] = {CONF_CONTRIBUTIONS: updated}
             if removed.get(CONTRIBUTION_PLAN_ID) and removed.get(
                 CONTRIBUTION_SCHEDULED_DATE

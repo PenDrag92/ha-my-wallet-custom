@@ -16,6 +16,7 @@ from .corrections import UNIT_CORRECTIONS
 from .dividends import cash_balance, dividend_total, normalize_dividends
 from .followup_import import IMPORT_LINKS, IMPORT_RECORDS
 from .history_import import IMPORT_BATCH, MAX_IMPORT_ITEMS
+from .planning import is_plannable_deposit, planned_contributions
 from .plans import normalize_plan
 
 BACKUP_FORMAT = "my_wallet_backup"
@@ -231,7 +232,11 @@ def prepare_backup(
 
     plan_ids = {item[c.PLAN_ID] for item in [*plans, *retired]}
     for row in contributions:
-        if row[c.CONTRIBUTION_DATE] and row[c.CONTRIBUTION_DATE] > today.isoformat():
+        if (
+            row[c.CONTRIBUTION_DATE]
+            and row[c.CONTRIBUTION_DATE] > today.isoformat()
+            and not is_plannable_deposit(row)
+        ):
             raise ValueError("future_date")
         if row.get(c.CONTRIBUTION_PLAN_ID) not in (None, *plan_ids):
             raise ValueError("invalid_backup")
@@ -274,7 +279,15 @@ def prepare_backup(
         "backup": True,
         "wallet_name": name,
         "currency": currency,
-        "deposits": len(contributions),
+        "deposits": sum(
+            row[c.CONTRIBUTION_AMOUNT] > 0
+            and (
+                not row[c.CONTRIBUTION_DATE]
+                or row[c.CONTRIBUTION_DATE] <= today.isoformat()
+            )
+            for row in contributions
+        ),
+        "planned_deposits": len(planned_contributions(result, today=today)),
         "purchases": len(all_lots(result, through=today)),
         "dividends": len(dividends),
         "capital": round(capital, 2),

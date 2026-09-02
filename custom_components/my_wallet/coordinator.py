@@ -169,7 +169,7 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
                 self.entry.data, symbol, through=today
             )
             target = valor.get(VALOR_TARGET_SHARE)
-            target = float(target) if target is not None and float(target) > 0 else None
+            target = float(target) if target is not None else None
             quote = quotes.get(symbol)
             item = ValorData(
                 symbol=symbol,

@@ -36,8 +36,8 @@ class ValorData:
 
     @property
     def has_target(self) -> bool:
-        """Return whether a positive target allocation is configured."""
-        return self.target_share is not None and self.target_share > 0
+        """Return whether an allocation target, including zero, is configured."""
+        return self.target_share is not None
 
 
 @dataclass

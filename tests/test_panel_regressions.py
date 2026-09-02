@@ -63,6 +63,7 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         for command in (
             panel.ws_wallets,
             panel.ws_position_aliases,
+            panel.ws_planned_deposit,
             panel.ws_backup,
             panel.ws_history,
             panel.ws_import_preview,

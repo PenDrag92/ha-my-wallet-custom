@@ -133,6 +133,7 @@ from .dividends import (
 )
 from .inflation import adjusted_flows, expected_annual_inflation
 from .models import ValorData, WalletData
+from .planning import planned_contributions
 from .plans import next_due_date, normalize_plan
 from .target import target_contributed_capital, target_deviation, target_projection
 
@@ -213,10 +214,12 @@ def _invested_amount(entry: ConfigEntry) -> float | None:
 
 
 def _contribution_attributes(entry: ConfigEntry) -> dict[str, Any]:
+    today = dt_util.now().date()
     contributions = [
         row
         for row in contributions_from_data(entry.data)
         if row[CONTRIBUTION_AMOUNT] > 0
+        and (not row[CONTRIBUTION_DATE] or row[CONTRIBUTION_DATE] <= today.isoformat())
     ]
     dates = [
         item[CONTRIBUTION_DATE]
@@ -224,6 +227,13 @@ def _contribution_attributes(entry: ConfigEntry) -> dict[str, Any]:
         if item[CONTRIBUTION_DATE] is not None
     ]
     return {
+        "planned_contributions": [
+            {
+                CONTRIBUTION_DATE: row[CONTRIBUTION_DATE],
+                CONTRIBUTION_AMOUNT: row[CONTRIBUTION_AMOUNT],
+            }
+            for row in planned_contributions(entry.data, today=today)
+        ],
         ATTR_CONTRIBUTION_COUNT: len(contributions),
         ATTR_CONTRIBUTIONS: [
             {

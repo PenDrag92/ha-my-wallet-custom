@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.9.0
+
+- Preserve explicit zero allocation targets in configuration, computed state,
+  deviation sensors and dashboard tables. Keep zero-value positions in the
+  allocation table and label deviations in percentage points.
+- Add a Planning dashboard tab to create, edit and cancel future one-off
+  deposits, with the expected cash-reinvesting plan and schedule date. Show
+  whether each savings plan reinvests settlement cash.
+- Accept future standalone deposits in integration options and add a dedicated
+  planning form. Keep purchases and dividend bookings restricted to past dates.
+- Exclude future deposits from current capital, cash, performance, contribution
+  counts, calendar summaries and transaction exports. Apply them automatically
+  on their date and retain them in complete JSON backups.
+- Simulate cash reinvestment in allocation forecasts, including one-off deposits
+  on the plan date, multiple plans, pauses, skips and end dates. Reuse the same
+  proportional cent-rounding rules as actual plan executions without counting
+  reinvested cash as an additional deposit.
+- Protect past bookings from the planning editor and reject deposit corrections
+  or deletions that would leave existing purchases unfunded.
+
 ## 1.8.0
 
 - Add a persistent nominal/purchasing-power switch to the administrator

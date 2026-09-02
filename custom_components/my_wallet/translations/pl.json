@@ -19,7 +19,7 @@
         "data": {
           "symbol": "Symbol (Yahoo Finance)",
           "amount": "Ilość (liczba jednostek)",
-          "target_share": "Udział docelowy (%; opcjonalnie — jaki procent portfela powinien stanowić ten walor; włącza sensor odchylenia)",
+          "target_share": "Udział docelowy (%; 0 jest celem, wyczyść pole, aby go usunąć)",
           "add_another": "Po tym walorze dodaj kolejny"
         }
       }
@@ -56,7 +56,8 @@
           "restore_execution": "Przywróć pominiętą realizację",
           "add_valor": "Dodaj walor",
           "remove_valor": "Usuń walor",
-          "edit_valor": "Edytuj walor (ilość, udział docelowy)"
+          "edit_valor": "Edytuj walor (ilość, udział docelowy)",
+          "plan_contribution": "Zaplanuj przyszłą wpłatę"
         },
         "description": "{opening_conflict}"
       },
@@ -73,7 +74,7 @@
       },
       "add_contribution": {
         "title": "Dodaj wpłatę",
-        "description": "Zapisz wpłatę w walucie bazowej. Możesz ją od razu zainwestować; ta opcja ma pierwszeństwo przed kolejną wpłatą. Przyszłe wpłaty nie są dozwolone.",
+        "description": "Zapisz wpłatę w walucie portfela. Przyszła data tworzy planowaną wpłatę uwzględnianą w prognozie, ale jeszcze nie w bieżącym kapitale. Natychmiastowa inwestycja jest możliwa tylko do dziś. Aktywny plan z reinwestowaniem salda może później zainwestować tę gotówkę.",
         "data": {
           "date": "Data wpłaty",
           "amount": "Kwota",
@@ -229,7 +230,7 @@
         "data": {
           "symbol": "Symbol (Yahoo Finance)",
           "amount": "Ilość (liczba jednostek)",
-          "target_share": "Udział docelowy (%; opcjonalnie — jaki procent portfela powinien stanowić ten walor)"
+          "target_share": "Udział docelowy (%; 0 jest celem, wyczyść pole, aby go usunąć)"
         }
       },
       "remove_valor": {
@@ -249,7 +250,7 @@
         "description": "Walor: {symbol}",
         "data": {
           "amount": "Nowa ilość (liczba jednostek)",
-          "target_share": "Udział docelowy (%; wyczyść, aby usunąć cel)"
+          "target_share": "Udział docelowy (%; 0 jest celem, wyczyść pole, aby go usunąć)"
         }
       },
       "plan_opening": {
@@ -320,6 +321,16 @@
         "data": {
           "confirm": "Potwierdź tę operację"
         }
+      },
+      "plan_contribution": {
+        "title": "Zaplanuj przyszłą wpłatę",
+        "description": "Zaplanuj przyszłą jednorazową wpłatę. Do wskazanej daty jest widoczna tylko w planach i prognozach. W tym dniu staje się gotówką, którą najbliższy aktywny plan z reinwestowaniem salda zainwestuje oprócz miesięcznej wpłaty. My Wallet nie wykonuje przelewów ani zleceń maklerskich.",
+        "data": {
+          "date": "Data wpłaty",
+          "amount": "Kwota",
+          "add_another": "Następnie dodaj kolejną wpłatę",
+          "note": "Notatka (opcjonalnie)"
+        }
       }
     },
     "error": {
@@ -341,12 +352,15 @@
       "legacy_opening_required": "Transza starego salda początkowego musi pozostać oznaczona jako już uwzględniona w saldzie początkowym.",
       "funding_contribution_invalid": "Wybrana wpłata jest niedostępna lub nie może sfinansować zakupu z tą datą.",
       "opening_cutoff_future": "Data graniczna salda początkowego nie może przypadać w przyszłości.",
-      "future_date": "Ręczne wpisy nie mogą mieć przyszłej daty.",
+      "future_date": "Przyszłe daty są dozwolone tylko dla pojedynczych wpłat, a nie zakupów, dywidend ani wykonanych planów.",
       "price_or_units": "Wpisz cenę albo jednostki, nie oba pola.",
       "confirmation_required": "Potwierdź wskazaną operację.",
       "allocation_total_mismatch": "Procenty muszą dawać 100; stałe kwoty muszą odpowiadać sumie.",
       "insufficient_cash": "Podział nie ma pokrycia we wpłacie i dostępnej gotówce w każdym dniu zakupu.",
-      "booking_failed": "Obliczenie nie powiodło się; dotychczasowe wpisy pozostają."
+      "booking_failed": "Obliczenie nie powiodło się; dotychczasowe wpisy pozostają.",
+      "planned_date_required": "Dla planowanej wpłaty wybierz datę późniejszą niż dzisiaj.",
+      "planned_investment": "Przyszłej wpłaty nie można jeszcze zainwestować. Wyłącz natychmiastową inwestycję; aktywny plan może zainwestować gotówkę po jej terminie.",
+      "cash_conflict": "Zmiana pozbawiłaby zapisany zakup pokrycia. Sprawdź datę i kwotę wpłaty. Dotychczasowe wpisy zachowano."
     },
     "abort": {
       "no_valors": "Portfel nie ma jeszcze żadnych walorów.",

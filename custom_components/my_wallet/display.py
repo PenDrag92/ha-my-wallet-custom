@@ -7,6 +7,7 @@ from . import const as c
 
 MESSAGES = {
     "en": {
+        "planned_deposit": "Planned deposit",
         "deposit": "Deposit",
         "purchase": "Purchase",
         "opening": "Opening balance",
@@ -37,6 +38,7 @@ MESSAGES = {
         "included_units": "units marked included",
     },
     "de": {
+        "planned_deposit": "Geplante Einzahlung",
         "deposit": "Einzahlung",
         "purchase": "Kauf",
         "opening": "Anfangsbestand",
@@ -71,6 +73,7 @@ MESSAGES = {
         "included_units": "als enthalten markierte Anteile",
     },
     "pl": {
+        "planned_deposit": "Planowana wpłata",
         "deposit": "Wpłata",
         "purchase": "Zakup",
         "opening": "Saldo początkowe",
@@ -100,6 +103,7 @@ MESSAGES = {
         "included_units": "jednostki oznaczone jako uwzględnione",
     },
     "cs": {
+        "planned_deposit": "Plánovaný vklad",
         "deposit": "Vklad",
         "purchase": "Nákup",
         "opening": "Počáteční zůstatek",

@@ -19,7 +19,7 @@
         "data": {
           "symbol": "Yahoo-Finance-Symbol",
           "amount": "Bereits vorhandener Anfangsbestand in Anteilen (Sparplankäufe werden automatisch addiert)",
-          "target_share": "Zielanteil (%; optional)",
+          "target_share": "Zielanteil (%; 0 ist ein Ziel, zum Entfernen leeren)",
           "add_another": "Anschließend ein weiteres Wertpapier hinzufügen"
         }
       }
@@ -56,7 +56,8 @@
           "restore_execution": "Übersprungene Ausführung wiederherstellen",
           "add_valor": "Wertpapier hinzufügen",
           "remove_valor": "Wertpapier entfernen",
-          "edit_valor": "Wertpapier bearbeiten"
+          "edit_valor": "Wertpapier bearbeiten",
+          "plan_contribution": "Künftige Einzahlung planen"
         },
         "description": "{opening_conflict}"
       },
@@ -73,7 +74,7 @@
       },
       "add_contribution": {
         "title": "Einzahlung hinzufügen",
-        "description": "Erfasse eine Einzahlung in der Basiswährung. Du kannst sie direkt investieren; diese Auswahl hat Vorrang vor „weitere Einzahlung hinzufügen“. Einzahlungen in der Zukunft sind nicht erlaubt.",
+        "description": "Erfasse eine Einzahlung in der Depotwährung. Ein Datum in der Zukunft erstellt eine geplante Einzahlung: Sie zählt bereits zur Prognose, aber noch nicht zum heutigen Kapital. Sofort anlegen ist nur bis heute möglich. Der nächste aktive Sparplan mit Restguthaben-Anlage kann die geplante Einzahlung ab ihrem Datum mit anlegen.",
         "data": {
           "date": "Einzahlungsdatum",
           "amount": "Betrag",
@@ -176,7 +177,7 @@
           "end_date": "Letzte geplante Ausführung (optional)",
           "allocation_mode": "Art der Aufteilung",
           "amount": "Gesamter Monatsbetrag (nur bei prozentualer Aufteilung erforderlich)",
-          "use_cash_balance": "Vorhandenes Cash und Ausschüttungen anteilig mitinvestieren",
+          "use_cash_balance": "Restguthaben mit anlegen (inkl. Ausschüttungen)",
           "opening_included": "Bisherige Sparplankäufe sind bereits im Anfangsbestand enthalten"
         }
       },
@@ -196,7 +197,7 @@
           "end_date": "Letzte geplante Ausführung (optional)",
           "allocation_mode": "Art der Aufteilung",
           "amount": "Gesamter Monatsbetrag (nur bei prozentualer Aufteilung erforderlich)",
-          "use_cash_balance": "Vorhandenes Cash und Ausschüttungen anteilig mitinvestieren",
+          "use_cash_balance": "Restguthaben mit anlegen (inkl. Ausschüttungen)",
           "keep_allocations": "Bisherige Aufteilung beibehalten",
           "opening_included": "Bisherige Sparplankäufe sind bereits im Anfangsbestand enthalten",
           "update_scope": "Änderung anwenden auf"
@@ -229,7 +230,7 @@
         "data": {
           "symbol": "Yahoo-Finance-Symbol",
           "amount": "Bereits vorhandener Anfangsbestand in Anteilen",
-          "target_share": "Zielanteil (%; optional)"
+          "target_share": "Zielanteil (%; 0 ist ein Ziel, zum Entfernen leeren)"
         }
       },
       "remove_valor": {
@@ -249,7 +250,7 @@
         "description": "Wertpapier: {symbol}",
         "data": {
           "amount": "Neuer Anfangsbestand (erfasste Sparplankäufe werden automatisch addiert)",
-          "target_share": "Zielanteil (%; zum Entfernen leeren)"
+          "target_share": "Zielanteil (%; 0 ist ein Ziel, zum Entfernen leeren)"
         }
       },
       "plan_opening": {
@@ -320,6 +321,16 @@
         "data": {
           "confirm": "Diese Aktion bestätigen"
         }
+      },
+      "plan_contribution": {
+        "title": "Künftige Einzahlung planen",
+        "description": "Plane eine künftige Einmalzahlung. Bis zu ihrem Datum erscheint sie nur in Planung und Prognose. Ab diesem Tag steht sie auf dem Verrechnungskonto zur Verfügung und wird vom nächsten aktiven Sparplan mit Restguthaben-Anlage zusätzlich zur Monatsrate angelegt. My Wallet führt keine Überweisungen oder Brokeraufträge aus.",
+        "data": {
+          "date": "Einzahlungsdatum",
+          "amount": "Betrag",
+          "add_another": "Anschließend eine weitere Einzahlung hinzufügen",
+          "note": "Notiz (optional)"
+        }
       }
     },
     "error": {
@@ -341,12 +352,15 @@
       "legacy_opening_required": "Eine Kauftranche des alten Anfangsbestands muss als bereits im Anfangsbestand enthalten markiert bleiben.",
       "funding_contribution_invalid": "Die gewählte Einzahlung ist nicht verfügbar oder kann diesen Kaufzeitpunkt nicht finanzieren.",
       "opening_cutoff_future": "Der Stichtag für den Anfangsbestand darf nicht in der Zukunft liegen.",
-      "future_date": "Manuelle Buchungen dürfen nicht in der Zukunft liegen.",
+      "future_date": "Künftige Daten sind nur für einzelne Bareinzahlungen möglich, nicht für Käufe, Dividenden oder Sparplanbuchungen.",
       "price_or_units": "Entweder Stückpreis oder Anteile eingeben, nicht beides.",
       "confirmation_required": "Bitte die angezeigte Aktion ausdrücklich bestätigen.",
       "allocation_total_mismatch": "Prozentwerte müssen zusammen 100 ergeben; feste Beträge müssen der angegebenen Gesamtrate entsprechen.",
       "insufficient_cash": "Die Aufteilung ist nicht zu jedem Kaufdatum durch Einzahlung und gegebenenfalls verfügbares Cash gedeckt.",
-      "booking_failed": "Berechnung fehlgeschlagen; bestehende Buchungen bleiben unverändert."
+      "booking_failed": "Berechnung fehlgeschlagen; bestehende Buchungen bleiben unverändert.",
+      "planned_date_required": "Wähle für eine geplante Einzahlung ein Datum nach heute.",
+      "planned_investment": "Eine künftige Einzahlung kann noch nicht sofort angelegt werden. Deaktiviere die Sofortanlage; ein aktiver Sparplan kann das Guthaben ab dem geplanten Datum mit anlegen.",
+      "cash_conflict": "Die Änderung würde einen erfassten Kauf ungedeckt lassen. Prüfe Datum und Betrag der Einzahlung. Bestehende Buchungen wurden beibehalten."
     },
     "abort": {
       "no_valors": "Das Depot enthält noch keine Wertpapiere.",

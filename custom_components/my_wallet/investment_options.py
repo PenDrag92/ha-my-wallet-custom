@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -44,8 +44,16 @@ class InvestmentOptionsMixin:
     _lot_to_confirm: dict[str, Any] | None = None
 
     async def async_step_add_contribution(self, user_input=None):
+        return await self._async_contribution(user_input, planned=False)
+
+    async def async_step_plan_contribution(self, user_input=None):
+        return await self._async_contribution(user_input, planned=True)
+
+    async def _async_contribution(self, user_input=None, *, planned=False):
         from . import config_flow as ui
 
+        today = dt_util.now().date()
+        default_date = today + timedelta(days=1) if planned else today
         currency = self.config_entry.data[c.CONF_BASE_CURRENCY]
         if self._pending_base_currency is None:
             self._pending_base_currency = currency
@@ -58,13 +66,12 @@ class InvestmentOptionsMixin:
             )
             try:
                 day = date.fromisoformat(
-                    str(
-                        user_input.get(c.CONTRIBUTION_DATE)
-                        or dt_util.now().date().isoformat()
-                    )
+                    str(user_input.get(c.CONTRIBUTION_DATE) or default_date.isoformat())
                 )
-                if day > dt_util.now().date():
-                    errors[c.CONTRIBUTION_DATE] = "future_date"
+                if planned and day <= today:
+                    errors[c.CONTRIBUTION_DATE] = "planned_date_required"
+                if day > today and user_input.get("invest_now"):
+                    errors["invest_now"] = "planned_investment"
             except ValueError:
                 errors[c.CONTRIBUTION_DATE] = "invalid_input"
             if amount is None:
@@ -87,7 +94,7 @@ class InvestmentOptionsMixin:
                     row,
                 ]
                 if user_input.get("add_another"):
-                    return await self.async_step_add_contribution()
+                    return await self._async_contribution(planned=planned)
                 rows = normalize_contributions(
                     [*self._contributions(), *self._pending_contributions]
                 )
@@ -96,17 +103,23 @@ class InvestmentOptionsMixin:
                 return await self._save(self._valors(), **{c.CONF_CONTRIBUTIONS: rows})
         values = user_input or {}
         schema = ui._contribution_schema(
-            values.get(c.CONTRIBUTION_DATE),
+            values.get(c.CONTRIBUTION_DATE, default_date.isoformat()),
             values.get(c.CONTRIBUTION_AMOUNT),
             values.get(c.CONTRIBUTION_NOTE),
         ).extend(
             {
-                vol.Optional("invest_now", default=False): bool,
+                **(
+                    {vol.Optional("invest_now", default=False): bool}
+                    if not planned
+                    else {}
+                ),
                 vol.Optional("add_another", default=False): bool,
             }
         )
         return self.async_show_form(
-            step_id="add_contribution", data_schema=schema, errors=errors
+            step_id="plan_contribution" if planned else "add_contribution",
+            data_schema=schema,
+            errors=errors,
         )
 
     async def async_step_contribution_investment(self, user_input=None):

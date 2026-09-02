@@ -387,8 +387,8 @@ class InvestmentFlow133Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(invested_total(entry.data), 100)
         self.assertEqual(cash_balance(entry.data), 70)
 
-    async def test_future_manual_deposit_and_purchase_are_rejected(self):
-        flow, _, manager = _flow(wallet())
+    async def test_future_deposit_is_planned_but_future_purchase_is_rejected(self):
+        flow, entry, manager = _flow(wallet())
         deposit = await flow.async_step_add_contribution(
             {"amount": 20, "date": "2026-09-01"}
         )
@@ -401,9 +401,10 @@ class InvestmentFlow133Tests(unittest.IsolatedAsyncioTestCase):
                 "included_in_opening": False,
             }
         )
-        self.assertEqual(deposit["errors"]["date"], "future_date")
+        self.assertEqual(deposit["type"], "create_entry")
+        self.assertEqual(cash_balance(entry.data, through=date(2026, 8, 31)), 0)
         self.assertEqual(purchase["errors"]["date"], "future_date")
-        self.assertEqual(manager.updates, 0)
+        self.assertEqual(manager.updates, 1)
 
     async def test_deposit_edit_marks_correction_and_preserves_lots(self):
         row = execution("2026-01-20")

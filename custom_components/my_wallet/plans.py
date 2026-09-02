@@ -274,6 +274,25 @@ def reactivate_matching_plan(
     return normalized, retired
 
 
+def cash_allocation_amounts(
+    weights: Sequence[tuple[str, float]], amount: float
+) -> dict[str, float]:
+    """Split additional cash pro rata, keeping the rounding remainder in cash."""
+    available = Decimal(str(amount))
+    if not available.is_finite() or available < 0:
+        raise ValueError("Cash amount must be finite and non-negative")
+    values = [(symbol, Decimal(str(weight))) for symbol, weight in weights]
+    if not values or any(not weight.is_finite() or weight <= 0 for _, weight in values):
+        raise ValueError("Cash allocation weights must be positive")
+    total = sum(weight for _, weight in values)
+    return {
+        symbol: float(
+            (available * weight / total).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        )
+        for symbol, weight in values
+    }
+
+
 def allocation_amounts(
     plan: Mapping[str, Any], *, available_amount: float | None = None
 ) -> dict[str, float]:
@@ -346,12 +365,12 @@ def allocation_amounts(
 
     extra = max(Decimal(0), available - plan_total)
     if extra:
-        weight_total = sum(Decimal(str(item[ALLOCATION_VALUE])) for item in allocations)
-        for item in allocations:
-            bonus = (
-                extra * Decimal(str(item[ALLOCATION_VALUE])) / weight_total
-            ).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-            result[item[ALLOCATION_SYMBOL]] += bonus
+        bonus = cash_allocation_amounts(
+            [(item[ALLOCATION_SYMBOL], item[ALLOCATION_VALUE]) for item in allocations],
+            float(extra),
+        )
+        for symbol, amount in bonus.items():
+            result[symbol] += Decimal(str(amount))
     return {symbol: float(value) for symbol, value in result.items()}
 
 

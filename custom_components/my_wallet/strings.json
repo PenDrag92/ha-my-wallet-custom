@@ -19,7 +19,7 @@
         "data": {
           "symbol": "Symbol (Yahoo Finance)",
           "amount": "Opening units already held (tracked savings-plan purchases are added automatically)",
-          "target_share": "Target share (%; optional — percent of the wallet this valor should hold; enables the deviation sensor)",
+          "target_share": "Target share (%; 0 is a target, clear the field to remove it)",
           "add_another": "Add another valor after this one"
         }
       }
@@ -56,7 +56,8 @@
           "restore_execution": "Restore a skipped execution",
           "add_valor": "Add a valor",
           "remove_valor": "Remove a valor",
-          "edit_valor": "Edit a valor (amount, target share)"
+          "edit_valor": "Edit a valor (amount, target share)",
+          "plan_contribution": "Plan a future deposit"
         },
         "description": "{opening_conflict}"
       },
@@ -73,7 +74,7 @@
       },
       "add_contribution": {
         "title": "Add a contribution",
-        "description": "Record a deposit in the base currency. You may invest it immediately; this choice takes priority over adding another deposit. Future deposits are not accepted.",
+        "description": "Record a deposit in the base currency. Future dates create planned cash deposits, included in today's forecast but not today's capital. Immediate investment is available only up to today. The next active plan with cash reinvestment enabled can invest a planned deposit when due.",
         "data": {
           "date": "Deposit date",
           "amount": "Amount",
@@ -229,7 +230,7 @@
         "data": {
           "symbol": "Symbol (Yahoo Finance)",
           "amount": "Opening units already held",
-          "target_share": "Target share (%; optional — percent of the wallet this valor should hold)"
+          "target_share": "Target share (%; 0 is a target, clear the field to remove it)"
         }
       },
       "remove_valor": {
@@ -249,7 +250,7 @@
         "description": "Valor: {symbol}",
         "data": {
           "amount": "New opening balance (tracked plan purchases are added automatically)",
-          "target_share": "Target share (%; clear to remove the target)"
+          "target_share": "Target share (%; 0 is a target, clear the field to remove it)"
         }
       },
       "plan_opening": {
@@ -320,6 +321,16 @@
         "data": {
           "confirm": "Confirm this action"
         }
+      },
+      "plan_contribution": {
+        "title": "Plan a future deposit",
+        "description": "Plan a future one-off deposit. Until its date it appears only in planning and forecasts. On that date it becomes settlement cash, which the next active plan with cash reinvestment enabled invests in addition to its monthly rate. My Wallet does not transfer money or place broker orders.",
+        "data": {
+          "date": "Deposit date",
+          "amount": "Amount",
+          "add_another": "Add another contribution after this one",
+          "note": "Note (optional)"
+        }
       }
     },
     "error": {
@@ -341,12 +352,15 @@
       "legacy_opening_required": "A legacy opening-balance lot must remain marked as already included in the opening balance.",
       "funding_contribution_invalid": "The selected funding contribution is unavailable or cannot fund this purchase date.",
       "opening_cutoff_future": "The opening-balance cutoff cannot be in the future.",
-      "future_date": "Manual bookings cannot be dated in the future.",
+      "future_date": "Future dates are only available for standalone cash deposits, not purchases, dividends or savings-plan bookings.",
       "price_or_units": "Enter price or units, not both.",
       "confirmation_required": "Please confirm the displayed action.",
       "allocation_total_mismatch": "Percentages must total 100; fixed amounts must match the entered total.",
       "insufficient_cash": "The allocation is not covered by the deposit and selected available cash at every purchase date.",
-      "booking_failed": "Calculation failed; existing bookings remain unchanged."
+      "booking_failed": "Calculation failed; existing bookings remain unchanged.",
+      "planned_date_required": "Choose a date after today for a planned deposit.",
+      "planned_investment": "Future deposits cannot be invested now. Leave immediate investment disabled; an active savings plan can invest the cash when due.",
+      "cash_conflict": "This change would leave a recorded purchase unfunded. Check the deposit date and amount; existing bookings were preserved."
     },
     "abort": {
       "no_valors": "The wallet has no valors yet.",
