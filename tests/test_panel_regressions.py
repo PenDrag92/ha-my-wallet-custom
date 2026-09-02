@@ -66,6 +66,7 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
             panel.ws_planned_deposit,
             panel.ws_backup,
             panel.ws_history,
+            panel.ws_recorded_history,
             panel.ws_import_preview,
             panel.ws_import_commit,
             panel.ws_correction_preview,

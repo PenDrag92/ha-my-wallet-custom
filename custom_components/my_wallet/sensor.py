@@ -135,6 +135,7 @@ from .inflation import adjusted_flows, expected_annual_inflation
 from .models import ValorData, WalletData
 from .planning import planned_contributions
 from .plans import next_due_date, normalize_plan
+from .recorded_history import SNAPSHOT_ATTRIBUTE
 from .target import target_contributed_capital, target_deviation, target_projection
 
 _REFRESH_SCHEMA: dict[str, Any] = {}
@@ -499,6 +500,7 @@ class ValorSensor(WalletBaseSensor):
         rows = _lot_rows(self._entry, valor, dt_util.now().date())
         attributes: dict[str, Any] = {
             ATTR_SYMBOL: self._symbol,
+            SNAPSHOT_ATTRIBUTE: self.data.history_snapshots.get(self._symbol),
             ATTR_AMOUNT: valor.amount,
             ATTR_OPENING_UNITS: valor.opening_amount,
             ATTR_TRACKED_UNITS: round(valor.amount - valor.opening_amount, 6),
@@ -775,6 +777,7 @@ class WalletTotalSensor(WalletBaseSensor):
         return {
             ATTR_SECURITIES_TOTAL: data.securities_total,
             ATTR_CASH_BALANCE: data.cash_balance,
+            SNAPSHOT_ATTRIBUTE: data.history_snapshots.get(None),
             "valors": {
                 symbol: {
                     "amount": valor.amount,

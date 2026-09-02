@@ -54,6 +54,8 @@ class WalletData:
     pending_executions: list[dict[str, Any]] = field(default_factory=list)
     cash_balance: float = 0.0
     inflation: InflationSeries | None = None
+    sampled_at: str | None = None
+    history_snapshots: dict[str | None, dict[str, Any]] = field(default_factory=dict)
 
     @property
     def all_available(self) -> bool:

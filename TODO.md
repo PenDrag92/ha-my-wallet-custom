@@ -1,5 +1,15 @@
 # To do
 
+- [x] Make the allocation-difference column less crowded in 1.10.0:
+  keep the signed percentage on the first line and move "too much", "too little"
+  or "on target" to a smaller, muted second line, without the inline separator.
+  Apply this to current and forecast allocation tables. Keep the short heading,
+  neutral colors, calculation and zero-target handling. Bundle with the next
+  push; included with the shorter history ranges and period metrics.
+- [x] Add 1-day and 1-week Recorder history, a 1-month daily-close range and
+  flow-adjusted period metrics for the wallet and individual positions in
+  1.10.0. Keep unknown/stale samples visible as gaps and explain missing
+  recordings without changing Recorder settings or adding Yahoo requests.
 - [x] Make allocation-target deviations easier to understand. Label positive
   and negative differences as overweight and underweight instead of using
   gain/loss colors that make an overweight position look beneficial. Include

@@ -52,6 +52,7 @@ from .executions import (
 from .inflation_client import InflationDataClient
 from .models import ValorData, WalletData
 from .plans import normalize_plan
+from .recorded_history import accounting_snapshot
 from .yahoo import (
     Quote,
     fetch_fx_rates,
@@ -161,6 +162,7 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
             pending_executions=pending,
             cash_balance=cash_balance(self.entry.data, through=today),
             inflation=inflation,
+            sampled_at=dt_util.now().isoformat(),
         )
         for valor in valors:
             symbol = valor[VALOR_SYMBOL]
@@ -187,6 +189,15 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
                 if item.fx_rate is None:
                     item.error = "fx_rate_unavailable"
             data.valors[symbol] = item
+
+        # Freeze the basis with this valuation. Later configuration edits must
+        # not pair new costs with a still-cached old price/holding sample.
+        data.history_snapshots = {
+            symbol: accounting_snapshot(
+                self.entry.data, today=today, symbol=symbol, sampled_at=data.sampled_at
+            )
+            for symbol in (None, *data.valors)
+        }
 
         if not data.all_available:
             _LOGGER.warning(

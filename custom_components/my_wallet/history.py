@@ -259,6 +259,7 @@ def build_history(
     real_position_dividends = defaultdict(float)
     cash = invested = 0.0
     real_invested = 0.0
+    total_dividends = real_dividends = 0.0
     pointer = 0
     points = []
     requested_years = forecast_years or max(FORECAST_YEARS)
@@ -293,6 +294,10 @@ def build_history(
                 position_costs[row["symbol"]] += -row["amount"]
                 if row["real_amount"] is not None:
                     real_position_costs[row["symbol"]] += -row["real_amount"]
+            if row["type"] == "dividend":
+                total_dividends += row["amount"]
+                if row["real_amount"] is not None:
+                    real_dividends += row["real_amount"]
             if row["type"] == "dividend" and row.get("symbol"):
                 position_dividends[row["symbol"]] += row["amount"]
                 if row["real_amount"] is not None:
@@ -332,6 +337,10 @@ def build_history(
             {
                 "date": day.isoformat(),
                 "invested": round(invested, 2),
+                "dividends": round(total_dividends, 2),
+                "real_dividends": round(real_dividends, 2)
+                if real_events_complete
+                else None,
                 "cash": round(cash, 2),
                 "value": round(value, 2) if complete else None,
                 "profit": round(value - invested, 2) if complete else None,

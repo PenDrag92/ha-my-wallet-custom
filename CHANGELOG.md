@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.10.0
+
+- Add 1-day (last 24 hours) and 1-week (last 7 days) history from Home
+  Assistant Recorder, using the wallet or selected position's recorded values
+  and holdings. These views do not request extra Yahoo prices. Add a calendar
+  1-month range to the existing daily-close history.
+- Show opening and closing value, deposits or purchases, dividends, gain and
+  flow-adjusted interval return for the displayed historical period. Support
+  nominal values and today's purchasing power; do not count deposits as gains
+  or portfolio dividends twice.
+- Store a small accounting snapshot and poll timestamp alongside existing
+  value sensors. Keep old recordings unchanged, accept matching legacy cost
+  data where available and withhold returns when the basis is incomplete or a
+  holding correction is detected.
+- Preserve unavailable values, stale tails and missing recordings as gaps.
+  Explain disabled or excluded sensors, paused/missing Recorder and incomplete
+  retention. Show the last recorded refresh and local timestamps.
+- Restrict Recorder reads to the selected wallet's own sensors, with bounded
+  periods, an administrator-only endpoint and short-lived request caching.
+  Existing Recorder settings and retention remain unchanged.
+- Place "too much", "too little" and "on target" on a smaller second line in
+  current and forecast allocation tables. Preserve percentages, neutral colors,
+  calculations and explicit zero targets.
+- Add flow/gap/correction regression coverage, responsive dashboard checks and
+  an integration check against the real Home Assistant 2026.8.3 Recorder.
+
 ## 1.9.2
 
 - Simplify allocation differences in the current and forecast views: use

@@ -55,6 +55,7 @@ from .inflation import (
 )
 from .models import ValorData
 from .planning import change_planned_deposit, planned_deposit_summaries
+from .recorded_history import PERIOD_DAYS, async_recorded_history
 from .target import (
     FORECAST_YEARS,
     MAX_FORECAST_YEARS,
@@ -148,6 +149,7 @@ async def async_setup_panel(hass):
         ws_planned_deposit,
         ws_backup,
         ws_history,
+        ws_recorded_history,
         ws_import_preview,
         ws_import_commit,
         ws_correction_preview,
@@ -160,7 +162,7 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.9.2",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.10.0",
         embed_iframe=False,
         require_admin=True,
     )
@@ -713,6 +715,74 @@ def ws_backup(hass, connection, msg):
         connection.send_error(msg["id"], "backup_too_large", "Backup exceeds 2 MB")
         return
     connection.send_result(msg["id"], {"document": document})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "my_wallet/recorded_history",
+        vol.Required("entry_id"): str,
+        vol.Required("period"): vol.Any(*PERIOD_DAYS),
+        vol.Optional("symbol"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_recorded_history(hass, connection, msg):
+    """Expose only this wallet's recorded states to an authenticated admin."""
+    if not _admin(connection, msg):
+        return
+    entry = next(
+        (entry for entry in _entries(hass) if entry.entry_id == msg["entry_id"]), None
+    )
+    if entry is None:
+        connection.send_error(msg["id"], "entry_not_found", "Wallet not found")
+        return
+    symbol, period = msg.get("symbol"), msg["period"]
+    if period not in PERIOD_DAYS or (
+        symbol is not None
+        and symbol not in {v[c.VALOR_SYMBOL] for v in entry.data[c.CONF_VALORS]}
+    ):
+        connection.send_error(
+            msg["id"], "invalid_recorded_history", "Invalid history selection"
+        )
+        return
+    state = _state(hass)
+    lock = state["locks"].setdefault(("recorded", entry.entry_id), asyncio.Lock())
+    async with lock:
+        snapshot = entry.data
+        cache = state.setdefault("recorded_cache", {})
+        cached = cache.get(entry.entry_id)
+        if (
+            cached
+            and cached["snapshot"] is snapshot
+            and cached["selection"] == (period, symbol)
+            and monotonic() < cached["expires"]
+        ):
+            connection.send_result(msg["id"], cached["result"])
+            return
+        try:
+            result = await async_recorded_history(
+                hass, entry, period=period, symbol=symbol
+            )
+        except Exception:
+            _LOGGER.exception("Could not read My Wallet Recorder history")
+            connection.send_error(
+                msg["id"],
+                "recorded_history_failed",
+                "Recorded history could not be loaded",
+            )
+            return
+        if entry.data is not snapshot:
+            connection.send_error(
+                msg["id"], "entry_changed", "Wallet changed; reload history"
+            )
+            return
+        cache[entry.entry_id] = {
+            "snapshot": snapshot,
+            "selection": (period, symbol),
+            "expires": monotonic() + 30,
+            "result": result,
+        }
+        connection.send_result(msg["id"], result)
 
 
 @websocket_api.websocket_command(

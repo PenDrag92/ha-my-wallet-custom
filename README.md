@@ -5,15 +5,61 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.9.2 requires **Home Assistant 2026.8 or newer**.
+Version 1.10.0 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
 
-## 1.9.2: simpler allocation differences
+## 1.10.0: shorter history ranges and period performance
+
+Under **My Wallet → History**, choose **1 day**, **1 week** or **1 month**.
+The first two show the last 24 hours or 7 days of recorded HA sensor states,
+including the holdings that existed at each update. They work for the whole
+wallet and for the position selected above the chart. The month range and
+longer historical ranges continue to use reconstructed daily closing prices.
+Historical range metrics exclude any future forecast points.
+
+The period cards show opening/closing value, deposits (or position purchases),
+dividends, gain and return. Gain excludes external deposits; position gain
+includes attributed dividends, while wallet gain already includes dividends
+in settlement cash. Return links the valuation intervals and treats cash flows
+as occurring at the end of their interval. It is an approximation from the
+available samples, not an annualized return or a substitute for broker trade
+timestamps. Recorded flows use the time their updated sensor state was saved;
+late entries do not rewrite old intraday recordings. The purchasing-power
+switch also adjusts these period values and flows to today's money, leaving
+uncovered results unavailable.
+
+Day/week history needs the corresponding value sensor enabled and included in
+[Home Assistant Recorder](https://www.home-assistant.io/integrations/recorder/).
+Recorder normally retains detailed states for 10 days, but your exclusions and
+retention settings take precedence. My Wallet does not enable Recorder, change
+its filters, increase retention or restore purged data. Renaming entities does
+not break the lookup. Opening these ranges reads only the selected wallet's
+sensors; it does not make additional Yahoo requests or change the normal poll
+interval. The display is a sequence of saved values, **not a real-time trading
+feed**. Timestamps use Home Assistant's configured time zone.
+
+Existing compatible recordings can be used immediately. From 1.10.0 onward,
+each successful refresh also saves the accounting basis and refresh timestamp
+on the existing value sensors, including updates with unchanged prices. This
+adds a small amount of Recorder data. Older records need a matching recorded
+profit sensor for their cost basis; value history can still be displayed when
+that basis is unavailable. Missing prices, missed new refreshes and stale ends
+remain gaps. Gain and return stay blank for incomplete periods or detected
+corrections rather than classifying edited holdings as investment performance.
+The view explains missing or excluded sensors and paused/unavailable Recorder.
+Stored history remains untouched; use the daily history for reconstruction
+from the currently corrected ledger.
+
+After updating through HACS, restart Home Assistant and reload the dashboard.
+No reconfiguration or deletion of the existing wallet is needed.
+
+## Allocation differences
 
 The current and forecast allocation tables show **Difference from target** as
-`+15.00 % · too much`, `-15.00 % · too little` or `0.00 % · on target`.
+`+15.00 %`, `-15.00 %` or `0.00 %`, with **too much**, **too little** or
+**on target** on a smaller, muted second line.
 The percentage refers to the entire portfolio value: a 25% actual share with a
 10% target means 15% of the portfolio value too much in that position. A note
 below the table explains this basis. This is the difference between the two
