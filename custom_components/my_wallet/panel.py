@@ -160,7 +160,7 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.9.1",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.9.2",
         embed_iframe=False,
         require_admin=True,
     )

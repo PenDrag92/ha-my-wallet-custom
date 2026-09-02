@@ -5,10 +5,20 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.9.1 requires **Home Assistant 2026.8 or newer**.
+Version 1.9.2 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.9.2: simpler allocation differences
+
+The current and forecast allocation tables show **Difference from target** as
+`+15.00 % · too much`, `-15.00 % · too little` or `0.00 % · on target`.
+The percentage refers to the entire portfolio value: a 25% actual share with a
+10% target means 15% of the portfolio value too much in that position. A note
+below the table explains this basis. This is the difference between the two
+shares, not a relative change from the target; zero targets work as before.
+Colors remain neutral. Stored data, calculations and sensor units are unchanged.
 
 ## 1.9.1: edit units directly in the dashboard
 
@@ -24,10 +34,6 @@ purchase when available and lets you change that assignment. The preview shows
 both the position total and the affected holding. Purchase dates, recorded
 payments, deposits and cash stay unchanged. Use a per-purchase edit only when
 you know that purchase's actual units. This does not add a PDF import feature.
-
-Allocation deviations now use neutral labels for overweight, underweight and
-on-target positions. The heading spells out percentage points rather than
-repeating an abbreviation in every cell; zero targets remain fully supported.
 
 ## 1.9.0: future deposits and zero allocation targets
 
@@ -61,11 +67,10 @@ existing uniform expected-return assumption still applies to the projected
 portfolio, including cash. Complete JSON backups retain planned deposits.
 
 An explicit **0% allocation target** is now distinct from an empty target.
-Dashboard tables and deviation sensors report the difference from zero;
-dashboard deviations are labelled in percentage points. Zero-value positions
-remain visible in the allocation table. Targets discarded by older versions
-cannot be distinguished from intentionally empty targets and must be entered
-again once after updating.
+Dashboard tables and deviation sensors report the difference from zero.
+Zero-value positions remain visible in the allocation table. Targets discarded
+by older versions cannot be distinguished from intentionally empty targets and
+must be entered again once after updating.
 
 ## 1.8.0: purchasing power and consistent position names
 

@@ -1,6 +1,6 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.9.1";
-import { parseUnits } from "./unit-input.mjs?v=1.9.1";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.9.2";
+import { parseUnits } from "./unit-input.mjs?v=1.9.2";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -41,7 +41,8 @@ const WORDS = {
     aliasPlaceholder: "z. B. Welt-ETF", saveAliases: "Namen speichern", invalid_alias: "Der Anzeigename ist ungültig oder länger als 80 Zeichen.",
     currentValue: "Aktueller Wert", purchaseCost: "Kaufbetrag", share: "Depotanteil", target: "Zielanteil",
     portfolioStart: "Depotstart", positionStart: "Positionsstart", allocation: "Depotaufteilung", forecastAllocation: "Prognostizierte Depotaufteilung", projectedValue: "Prognosewert",
-    allocationHint: "Aktuelle Verteilung inklusive Verrechnungskonto; Zielanteile gelten nur für Wertpapiere.", forecastAllocationHint: "Mathematische Hochrechnung aus den heutigen Werten, der Vorgaberendite und den bis dahin geplanten Sparplan-Zuteilungen – keine Prognose einzelner Wertpapierkurse.", actualShare: "Ist-Anteil", forecastShare: "Prognose-Anteil", deviation: "Abweichung",
+    allocationHint: "Aktuelle Verteilung inklusive Verrechnungskonto; Zielanteile gelten nur für Wertpapiere.", forecastAllocationHint: "Mathematische Hochrechnung aus den heutigen Werten, der Vorgaberendite und den bis dahin geplanten Sparplan-Zuteilungen – keine Prognose einzelner Wertpapierkurse.", actualShare: "Ist-Anteil", forecastShare: "Prognose-Anteil", deviation: "Abweichung vom Ziel",
+    allocationDeviationHint: "Die Abweichung zeigt den Unterschied zum Zielanteil, gemessen am gesamten Depotwert.",
     purchaseLots: "Kauftranchen", purchasePrice: "Einstandskurs", annualizedPerformance: "Rendite p. a.",
     includedOpening: "im Anfangsbestand", lotDetailsHint: "Dividenden werden den am Auszahlungstag gehaltenen Kauftranchen anteilig zugerechnet.",
     noLots: "Für diese Position sind keine vollständig dokumentierten Kauftranchen vorhanden.",
@@ -51,7 +52,7 @@ const WORDS = {
     decimalUnitsHint: "Komma oder Punkt als Dezimaltrennzeichen, ohne Tausendertrennzeichen.",
     invalid_units_input: "Bitte eine gültige, nicht negative Stückzahl eingeben. Das Feld darf nicht leer sein.",
     correctionAssignment: "Abweichung diesem Bestand zuordnen", correctionQuickHint: "Der Gesamtbestand wird über den ausgewählten Kauf oder Anfangsbestand angepasst. Die Vorschau zeigt beide Änderungen.",
-    deviationPoints: "Abweichung in Prozentpunkten", overweight: "Übergewichtet", underweight: "Untergewichtet", onTarget: "Im Ziel",
+    overweight: "zu viel", underweight: "zu wenig", onTarget: "im Ziel",
     correctionTarget: "Zu korrigierender Bestand", openingUnits: "Anfangsbestand", chosenLot: "Ausgewählter Kauf",
     totalPosition: "Gesamtbestand angleichen", onlyLot: "Nur diesen Bestand korrigieren", exactTotal: "Exakter Gesamtbestand",
     exactLot: "Exakte Anteile", reason: "Notiz (optional)", correctionPreview: "Korrektur prüfen",
@@ -89,7 +90,7 @@ const WORDS = {
     purchasingPower: "Kaufkraftbereinigt", expectedInflation: "Erwartete Inflation p. a.", inflationEffect: "Inflationseffekt",
     inflationHint: "Historische Werte werden mit dem offiziellen deutschen HVPI von Eurostat bereinigt; Zukunftswerte verwenden die eingestellte Inflation.",
     inflationAsOf: "Offizielle Inflationsdaten bis", inflationStale: "Letzter gespeicherter Datenstand (Abruf derzeit nicht möglich)",
-    navPlanning: "Planung", plannedDeposits: "Geplante Einzahlungen", planDeposit: "Einzahlung planen", editPlannedDeposit: "Einzahlung bearbeiten", savePlannedDeposit: "Planung speichern", deletePlannedDeposit: "Planung löschen", edit: "Bearbeiten", actions: "Aktionen", percentagePointUnit: "PP",
+    navPlanning: "Planung", plannedDeposits: "Geplante Einzahlungen", planDeposit: "Einzahlung planen", editPlannedDeposit: "Einzahlung bearbeiten", savePlannedDeposit: "Planung speichern", deletePlannedDeposit: "Planung löschen", edit: "Bearbeiten", actions: "Aktionen",
     planningHint: "Künftige Einmalzahlungen zählen erst ab ihrem Datum zum eingezahlten Kapital und zum Verrechnungskonto. Die Prognose berücksichtigt sie schon jetzt. Der nächste aktive Sparplan mit „Restguthaben mit anlegen“ verteilt das verfügbare Guthaben zusätzlich zu seiner Monatsrate.",
     planningExecutionHint: "Die angezeigte Anlage folgt dem aktuellen Sparplan-Termin; tatsächliche Kauftranchen warten auf bestätigte Kurse. Sind mehrere Pläne am selben Tag fällig, entscheidet ihre feste Reihenfolge. My Wallet führt keine Banküberweisungen oder Brokeraufträge aus.",
     plannedInvestment: "Vorgesehene Anlage", plannedCashOnly: "Bleibt vorerst auf dem Verrechnungskonto", noPlannedDeposits: "Noch keine künftige Einmalzahlung geplant.", cashReuseOn: "Legt verfügbares Restguthaben zusätzlich an", cashReuseOff: "Legt nur die Monatsrate an", openPlanning: "Planung öffnen", plannedTotal: "Einmalzahlungen in Planung",
@@ -134,7 +135,8 @@ const WORDS = {
     aliasPlaceholder: "e.g. World ETF", saveAliases: "Save names", invalid_alias: "The display name is invalid or longer than 80 characters.",
     currentValue: "Current value", purchaseCost: "Purchase cost", share: "Wallet share", target: "Target share",
     portfolioStart: "Portfolio start", positionStart: "Position start", allocation: "Portfolio allocation", forecastAllocation: "Projected portfolio allocation", projectedValue: "Projected value",
-    allocationHint: "Current allocation including settlement cash; target shares apply to securities only.", forecastAllocationHint: "Mathematical projection from today's values, the expected return and scheduled savings-plan allocations through the selected date; it is not a forecast of individual security prices.", actualShare: "Actual share", forecastShare: "Projected share", deviation: "Deviation",
+    allocationHint: "Current allocation including settlement cash; target shares apply to securities only.", forecastAllocationHint: "Mathematical projection from today's values, the expected return and scheduled savings-plan allocations through the selected date; it is not a forecast of individual security prices.", actualShare: "Actual share", forecastShare: "Projected share", deviation: "Difference from target",
+    allocationDeviationHint: "The difference from the target share is expressed as a percentage of the total portfolio value.",
     purchaseLots: "Purchase lots", purchasePrice: "Entry price", annualizedPerformance: "Return p.a.",
     includedOpening: "included in opening balance", lotDetailsHint: "Dividends are attributed proportionally to purchase lots held on the payment date.",
     noLots: "No fully documented purchase lots are available for this position.",
@@ -144,7 +146,7 @@ const WORDS = {
     decimalUnitsHint: "Use a comma or point for decimals, without thousands separators.",
     invalid_units_input: "Enter a valid, non-negative unit count. The field must not be blank.",
     correctionAssignment: "Apply the difference to this holding", correctionQuickHint: "The total is reconciled through the selected purchase or opening holding. The preview shows both changes.",
-    deviationPoints: "Deviation in percentage points", overweight: "Overweight", underweight: "Underweight", onTarget: "On target",
+    overweight: "too much", underweight: "too little", onTarget: "on target",
     correctionTarget: "Holding to correct", openingUnits: "Opening holding", chosenLot: "Selected purchase",
     totalPosition: "Reconcile total position", onlyLot: "Correct only this holding", exactTotal: "Exact total position",
     exactLot: "Exact units", reason: "Note (optional)", correctionPreview: "Preview correction",
@@ -182,7 +184,7 @@ const WORDS = {
     purchasingPower: "Inflation adjusted", expectedInflation: "Expected inflation p.a.", inflationEffect: "Inflation effect",
     inflationHint: "Historical values use Eurostat's official German HICP; future values use the configured inflation assumption.",
     inflationAsOf: "Official inflation data through", inflationStale: "Last cached data (refresh currently unavailable)",
-    navPlanning: "Planning", plannedDeposits: "Planned deposits", planDeposit: "Plan a deposit", editPlannedDeposit: "Edit deposit", savePlannedDeposit: "Save plan", deletePlannedDeposit: "Cancel planned deposit", edit: "Edit", actions: "Actions", percentagePointUnit: "pp",
+    navPlanning: "Planning", plannedDeposits: "Planned deposits", planDeposit: "Plan a deposit", editPlannedDeposit: "Edit deposit", savePlannedDeposit: "Save plan", deletePlannedDeposit: "Cancel planned deposit", edit: "Edit", actions: "Actions",
     planningHint: "Future one-off deposits enter contributed capital and settlement cash only on their date. Forecasts already include them. The next active savings plan with cash reinvestment enabled allocates available cash in addition to its monthly rate.",
     planningExecutionHint: "The expected investment follows the current plan schedule; actual lots wait for confirmed prices. Plans due on the same date use a stable order. My Wallet does not make bank transfers or place broker orders.",
     plannedInvestment: "Expected investment", plannedCashOnly: "Remains in settlement cash for now", noPlannedDeposits: "No future one-off deposits planned yet.", cashReuseOn: "Also invests available settlement cash", cashReuseOff: "Invests the monthly rate only", openPlanning: "Open planning", plannedTotal: "Planned one-off deposits",
@@ -203,7 +205,7 @@ const CSS = `
   .tabs{display:flex;gap:8px;overflow-x:auto;margin:0 0 18px;padding:4px 0}.tabs button{white-space:nowrap}.tabs button[aria-selected=true]{background:var(--primary-color,#1878b5);color:#fff;border-color:var(--primary-color,#1878b5)}.forecast-custom{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.forecast-custom input{width:125px}
   .planning-form{margin:16px 0;padding:16px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px}.planning-form input{padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}.planning-form .controls{margin:16px 0 0}.planning-actions{display:flex;gap:8px;flex-wrap:wrap}
   .unit-edit{padding:3px 5px;border:0;border-bottom:1px dashed var(--primary-color,#1878b5);border-radius:3px;background:transparent;font:inherit;white-space:nowrap}.unit-edit:hover{background:color-mix(in srgb,var(--primary-color,#1878b5) 10%,transparent)}.edit-mark{margin-left:5px;font-size:.8em;color:var(--secondary-text-color,#57667a)}
-  .correction-dialog{width:min(620px,calc(100vw - 28px));max-height:calc(100dvh - 28px);overflow:auto;margin:auto;padding:24px;border:1px solid var(--divider-color,#dce3eb);border-radius:12px;color:var(--primary-text-color,#182b42);background:var(--card-background-color,#fff);box-shadow:0 12px 48px #0004}.correction-dialog::backdrop{background:#0006}.correction-dialog .field>span{font-size:13px;color:var(--secondary-text-color,#57667a)}.correction-dialog input[type=text]{padding:10px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}.correction-dialog .controls{margin:18px 0 0}.correction-dialog h2{margin-bottom:6px}.deviation-heading{white-space:normal;min-width:120px;max-width:160px}
+  .correction-dialog{width:min(620px,calc(100vw - 28px));max-height:calc(100dvh - 28px);overflow:auto;margin:auto;padding:24px;border:1px solid var(--divider-color,#dce3eb);border-radius:12px;color:var(--primary-text-color,#182b42);background:var(--card-background-color,#fff);box-shadow:0 12px 48px #0004}.correction-dialog::backdrop{background:#0006}.correction-dialog .field>span{font-size:13px;color:var(--secondary-text-color,#57667a)}.correction-dialog input[type=text]{padding:10px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}.correction-dialog .controls{margin:18px 0 0}.correction-dialog h2{margin-bottom:6px}
   .alias-editor{margin:0 0 18px;padding:14px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px;background:color-mix(in srgb,var(--primary-color,#1878b5) 4%,var(--card-background-color,#fff))}.alias-editor h3{margin:0}.alias-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px 18px;margin:12px 0}.alias-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(120px,1fr);align-items:center;gap:10px}.alias-row input{width:100%;padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}tr.selected td{background:color-mix(in srgb,var(--primary-color,#1878b5) 8%,transparent)}
   .allocation-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);align-items:center;gap:24px}.donut{width:min(100%,280px);margin:auto}.allocation-name{display:inline-flex;align-items:center;gap:8px}.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;flex:0 0 auto}.details-title{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}.details-title .hint{font-weight:400}
   .notice{padding:12px 16px;background:color-mix(in srgb,var(--primary-color,#1878b5) 9%,var(--card-background-color,#fff));border-left:3px solid var(--primary-color,#1878b5);border-radius:5px;margin:12px 0}.warning{border-color:#c4851b;background:color-mix(in srgb,#e6ac37 12%,var(--card-background-color,#fff))}.error{border-color:#c63c45;background:color-mix(in srgb,#c63c45 9%,var(--card-background-color,#fff))}
@@ -606,7 +608,7 @@ class MyWalletPanel extends HTMLElement {
     centerLabel.textContent = this.t("all"); svg.append(centerValue, centerLabel);
 
     const wrap = node("div", null, "tablewrap"), table = node("table"), head = node("thead"), hr = node("tr");
-    for (const key of ["position", ...(!forecast ? ["units"] : []), forecast ? "projectedValue" : "currentValue", forecast ? "forecastShare" : "actualShare", "target", "deviation"]) hr.append(node("th", this.t(key === "deviation" ? "deviationPoints" : key), key === "position" ? "" : `num${key === "deviation" ? " deviation-heading" : ""}`));
+    for (const key of ["position", ...(!forecast ? ["units"] : []), forecast ? "projectedValue" : "currentValue", forecast ? "forecastShare" : "actualShare", "target", "deviation"]) hr.append(node("th", this.t(key), key === "position" ? "" : "num"));
     head.append(hr); table.append(head); const body = node("tbody");
     for (const item of rows) {
       const actual = item.value / total * 100, difference = item.target == null ? null : actual - item.target;
@@ -619,14 +621,14 @@ class MyWalletPanel extends HTMLElement {
         const label = node("span", item.label, "allocation-name"); label.prepend(swatch); first.append(label);
       }
       const displayedDifference = difference == null ? null : Math.abs(difference) < 0.005 ? 0 : difference;
-      const deviation = node("td", this.percent(displayedDifference).replace(" %", ""), "num");
-      if (displayedDifference != null) deviation.append(node("span", this.t(displayedDifference > 0 ? "overweight" : displayedDifference < 0 ? "underweight" : "onTarget"), "hint"));
+      const deviation = node("td", displayedDifference == null ? "—" : `${this.percent(displayedDifference)} · ${this.t(displayedDifference > 0 ? "overweight" : displayedDifference < 0 ? "underweight" : "onTarget")}`, "num");
       tr.append(first);
       if (!forecast) { const units = node("td", null, "num"); units.append(item.symbol ? this._unitsButton(item.symbol, item.units) : document.createTextNode("—")); tr.append(units); }
       tr.append(node("td", this.money(item.value, wallet.currency), "num"), node("td", this.ratio(actual), "num"), node("td", this.ratio(item.target), "num"), deviation);
       body.append(tr);
     }
-    table.append(body); wrap.append(table); layout.append(svg, wrap); section.append(layout); parent.append(section);
+    table.append(body); wrap.append(table); layout.append(svg, wrap);
+    section.append(layout, node("p", this.t("allocationDeviationHint"), "hint")); parent.append(section);
   }
   _renderPositionDetails(parent, position, currency) {
     const section = node("section", null, "card"), heading = node("h2", null, "details-title");

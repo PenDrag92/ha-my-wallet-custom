@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.2
+
+- Simplify allocation differences in the current and forecast views: use
+  "Difference from target" with a signed percentage and "too much", "too little"
+  or "on target" in one line, retaining neutral colors.
+- Explain that the difference is the displayed share minus target share,
+  expressed as a percentage of the total portfolio value. Calculations, zero
+  targets, stored holdings and sensor units remain unchanged.
+
 ## 1.9.1
 
 - Make current unit counts clickable in the allocation overview, positions,

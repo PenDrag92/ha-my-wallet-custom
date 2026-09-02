@@ -2,10 +2,10 @@
 
 - [x] Make allocation-target deviations easier to understand. Label positive
   and negative differences as overweight and underweight instead of using
-  gain/loss colors that make an overweight position look beneficial. Explain
-  percentage points clearly and avoid repeating the cryptic `PP` abbreviation
-  in every cell. Include positions with a 0% target; keep the calculation
-  unchanged. Included in 1.9.1 with direct unit editing.
+  gain/loss colors that make an overweight position look beneficial. Include
+  positions with a 0% target; keep the calculation unchanged. Included in
+  1.9.1 with direct unit editing. Refined in 1.9.2 with a percentage of the
+  whole portfolio and plain "too much" / "too little" wording in one line.
 - [ ] Monitor the HACS frontend fix for local custom-integration brand assets
   ([issue #5223](https://github.com/hacs/integration/issues/5223),
   [PR #937](https://github.com/hacs/frontend/pull/937)). My Wallet already ships

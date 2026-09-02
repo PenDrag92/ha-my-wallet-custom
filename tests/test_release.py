@@ -89,9 +89,9 @@ class ReleaseTests(unittest.TestCase):
         hacs = json.loads((ROOT / "hacs.json").read_text())
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
-        self.assertEqual(manifest["version"], "1.9.1")
-        self.assertEqual(project["project"]["version"], "1.9.1")
-        self.assertIn("## 1.9.1", changelog)
+        self.assertEqual(manifest["version"], "1.9.2")
+        self.assertEqual(project["project"]["version"], "1.9.2")
+        self.assertIn("## 1.9.2", changelog)
         self.assertEqual(hacs["homeassistant"], "2026.8.0")
         self.assertEqual(project["project"]["requires-python"], ">=3.14.2")
         self.assertEqual(manifest["codeowners"], ["@PenDrag92"])
