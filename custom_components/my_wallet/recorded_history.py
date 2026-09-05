@@ -12,6 +12,7 @@ from math import isfinite
 from homeassistant.util import dt as dt_util
 
 from . import const as c
+from .accounting import ACCOUNTING_REVISIONS, WALLET_REVISION
 from .contributions import all_lots, contributions_from_data, invested_total
 from .dividends import dividend_total, dividends_from_data
 
@@ -70,6 +71,10 @@ def accounting_snapshot(data, *, today: date, symbol=None, sampled_at=None):
             )
         ],
     }
+    # Keep old hashes stable until a historical booking really changes.
+    stored_revision = data.get(ACCOUNTING_REVISIONS, {}).get(symbol or WALLET_REVISION)
+    if stored_revision:
+        basis["event_revision"] = stored_revision
     revision = hashlib.sha256(
         json.dumps(basis, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()[:20]

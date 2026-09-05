@@ -1,5 +1,67 @@
 # Changelog
 
+## 1.11.1
+
+- Match prepared statement records to their source IDs instead of their list
+  positions. Preserve deposit, purchase and dividend links after chronological
+  normalization, including latest-first and same-day statements. Prevent valid
+  follow-up imports from failing or silently omitting new dividends.
+- Preserve low-order cash remainders across event dates so small credits can fund
+  a later purchase without a spurious historical deficit. Keep the existing
+  deficit tolerance and the single chronological pass.
+- Add six regression tests covering import ordering, overlapping confirmations,
+  dividend totals and fully funded purchases at large cash balances.
+
+## 1.11.0
+
+- Introduce a shared ledger for purchase bookings, deposit/lot corrections and
+  dividend/deposit deletion. Keep manual-correction and skipped-plan-period
+  bookkeeping alongside the corresponding transaction.
+- Route all ordinary existing-wallet writes through one Home Assistant store
+  boundary, including options, dashboard actions and automatic executions.
+  Reject stale snapshots, duplicate identifiers, new dangling references,
+  future bookings, increased opening conflicts and worsening historical cash.
+- Reuse record validation for statement imports and backup restoration. Keep the
+  explicit historical-purchase cash exception restricted to added purchases.
+  Preserve recoverable historical deficits during backup restore.
+- Calculate cash events once and walk their timeline for funding and reinvestment
+  checks instead of repeatedly rebuilding the entire history at each event date.
+- Share full-precision wallet, position and lot valuations between the dashboard
+  and sensors, including dividend attribution, XIRR and inflation adjustment.
+  Keep unknown opening costs, missing quotes and missing inflation data explicit.
+- Separate shared input schemas from flow controllers and remove their circular
+  imports. Remove obsolete sensor-side arithmetic helpers.
+- Make accounting revisions stable between transaction preview and commit, retain
+  prior revisions on metadata edits, and distinguish a later reversal.
+- Add complete transaction/restore regressions and a separate real Home Assistant
+  sensor/dashboard comparison in CI. Preserve config-entry version 7, backup
+  version 1 and existing sensor identifiers.
+
+## 1.10.2
+
+- Preserve distinct same-symbol purchases during overlapping statement imports.
+  Reserve stable purchase IDs, require a choice for ambiguous matches and count
+  added purchases correctly. Confirmed quantity changes now require a visible
+  keep/replace decision even when dates and payment amounts are unchanged.
+- Validate follow-up funding against the combined chronological ledger, including
+  existing settlement cash. Check purchase edits and dividend edits/deletions for
+  newly unfunded purchases before saving.
+- Invalidate import previews and decisions on wallet changes. Display the
+  preview's target and verify that target again on the server before committing.
+- Keep assets referenced by historical or retired savings plans. Stop automatic
+  bookings when a historical rule refers to an unconfigured asset, with a
+  translated repair message instead of creating an unvalued holding.
+- Mark revisions of existing financial events, including imported estimates and
+  recalculated plan purchases. Withhold period returns across those revisions;
+  ordinary new cash flows retain their existing return treatment. Preserve the
+  revision metadata in backups.
+- Reject future dividend booking/value dates when entered or edited, matching
+  restore validation. Validate historical plan references during restore and
+  support backup round trips for empty or cash-only wallets.
+- Stabilize XIRR over long histories and very small/large cash-flow magnitudes.
+- Add regression coverage for all nine review findings, including import target
+  checks in the frontend and at the WebSocket boundary.
+
 ## 1.10.1
 
 - Fit the day and week chart axes to the visible wallet or position values,

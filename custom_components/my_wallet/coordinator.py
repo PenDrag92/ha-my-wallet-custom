@@ -53,6 +53,7 @@ from .inflation_client import InflationDataClient
 from .models import ValorData, WalletData
 from .plans import normalize_plan
 from .recorded_history import accounting_snapshot
+from .store import commit_wallet_change
 from .yahoo import (
     Quote,
     fetch_fx_rates,
@@ -122,7 +123,14 @@ class WalletCoordinator(DataUpdateCoordinator[WalletData]):
             ]
         if data.get(CONF_CONTRIBUTIONS) != snapshot.get(CONF_CONTRIBUTIONS):
             data[CONF_LAST_PLAN_RESULT] = report
-            self.hass.config_entries.async_update_entry(self.entry, data=data)
+            commit_wallet_change(
+                self.hass,
+                self.entry,
+                data,
+                snapshot=snapshot,
+                today=today,
+                reload=False,
+            )
             _LOGGER.info(
                 "Booked %s savings-plan executions for %s", report["created"], self.name
             )

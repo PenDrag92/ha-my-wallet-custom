@@ -10,8 +10,9 @@ from uuid import NAMESPACE_URL, uuid5
 
 from . import const as c
 from .contributions import make_contribution, make_lot
-from .dividends import cash_balance, make_dividend
-from .history import historical_fx, latest_close, ledger_rows
+from .dividends import make_dividend
+from .history import historical_fx, latest_close
+from .ledger import validate_change, validate_records
 from .plans import make_plan, scheduled_dates
 from .yahoo import fetch_histories, fx_symbol
 
@@ -206,7 +207,7 @@ def validate_document(document: dict[str, Any], *, today: date) -> dict[str, Any
     }
 
 
-async def async_prepare_import(document, *, session, today: date):
+async def async_prepare_import(document, *, session, today: date, check_cash=True):
     validated = validate_document(document, today=today)
     batch = validated[IMPORT_BATCH]
     base = validated[c.CONF_BASE_CURRENCY]
@@ -319,11 +320,14 @@ async def async_prepare_import(document, *, session, today: date):
     }
     if missing:
         return None, summary
-    # Every event date must be funded, not just the final account balance.
-    for row in ledger_rows(data):
-        if (
-            row["date"]
-            and cash_balance(data, through=date.fromisoformat(row["date"])) < -0.005
-        ):
-            raise ValueError("import_cash_conflict")
+    try:
+        data = (
+            validate_change({}, data, today=today)
+            if check_cash
+            else validate_records(data, today=today)
+        )
+    except ValueError as err:
+        if str(err) == "cash_conflict":
+            raise ValueError("import_cash_conflict") from err
+        raise
     return data, summary

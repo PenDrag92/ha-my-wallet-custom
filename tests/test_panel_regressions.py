@@ -447,7 +447,8 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
                 {"symbol": "BBB", "amount": 2},
             ],
         )
-        self.assertIs(saved["contributions"], data["contributions"])
+        self.assertEqual(saved["contributions"], data["contributions"])
+        self.assertIsNot(saved["contributions"], data["contributions"])
         hass.config_entries.async_schedule_reload.assert_called_once_with("wallet")
         self.assertEqual(
             connection.results[0][1]["aliases"],

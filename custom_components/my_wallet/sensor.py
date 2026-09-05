@@ -95,7 +95,6 @@ from .const import (
     LOT_DATE,
     LOT_ESTIMATED,
     LOT_FX_RATE,
-    LOT_ID,
     LOT_INCLUDED_IN_OPENING,
     LOT_QUOTE_CURRENCY,
     LOT_UNIT_PRICE,
@@ -115,28 +114,23 @@ from .const import (
     VALOR_SYMBOL,
 )
 from .contributions import (
-    cashflows,
     contributions_from_data,
     invested_total,
-    lot_metrics,
-    lots_for_symbol,
-    money_weighted_return,
     opening_balance_conflicts,
-    xirr,
 )
 from .coordinator import WalletCoordinator
 from .display import position_label
 from .dividends import (
-    attributed_dividend_flows,
     dividend_total,
     dividends_from_data,
 )
-from .inflation import adjusted_flows, expected_annual_inflation
+from .inflation import expected_annual_inflation
 from .models import ValorData, WalletData
 from .planning import planned_contributions
 from .plans import next_due_date, normalize_plan
 from .recorded_history import SNAPSHOT_ATTRIBUTE
 from .target import target_contributed_capital, target_deviation, target_projection
+from .valuation import position_valuation, wallet_valuation
 
 _REFRESH_SCHEMA: dict[str, Any] = {}
 
@@ -160,30 +154,12 @@ def _inflation_attributes(data: WalletData, entry: ConfigEntry) -> dict[str, Any
 def _real_wallet_metrics(
     entry: ConfigEntry, data: WalletData, today: date
 ) -> dict[str, float | None]:
-    flows = cashflows(entry.data, through=today)
-    adjusted = (
-        adjusted_flows(flows, through=today, series=data.inflation)
-        if flows is not None and data.inflation is not None
-        else None
-    )
-    invested = -sum(amount for _, amount in adjusted) if adjusted is not None else None
-    total = data.total
-    profit = total - invested if total is not None and invested is not None else None
-    performance = (
-        profit / invested * 100
-        if profit is not None and invested is not None and invested > 0
-        else None
-    )
-    annualized = (
-        xirr([*adjusted, (today, total)])
-        if adjusted and total is not None and total > 0
-        else None
-    )
+    metrics = wallet_valuation(entry.data, data, today=today).real
     return {
-        "invested": invested,
-        "profit": profit,
-        "performance": performance,
-        "annualized": annualized * 100 if annualized is not None else None,
+        "invested": metrics.cost,
+        "profit": metrics.profit,
+        "performance": metrics.percentage,
+        "annualized": metrics.annualized,
     }
 
 
@@ -298,27 +274,10 @@ def _lot_rows(
     """Return display-ready performance rows for one symbol."""
     if valor is None or not valor.available:
         return []
-    current_base_price = valor.quote.price * valor.fx_rate
-    rows: list[dict[str, Any]] = []
-    lots = lots_for_symbol(entry.data, valor.symbol, through=as_of)
-    dividend_flows = attributed_dividend_flows(
-        entry.data,
-        symbol=valor.symbol,
-        opening_units=valor.opening_amount,
-        through=as_of,
-    )
-
-    for lot in lots:
-        income_flows = dividend_flows[lot[LOT_ID]]
-        income = sum(amount for _, amount in income_flows)
-        metrics = lot_metrics(lot, current_base_price, as_of, income)
-        annualized = xirr(
-            [
-                (date.fromisoformat(lot[LOT_DATE]), -float(lot[LOT_AMOUNT])),
-                *income_flows,
-                (as_of, float(metrics["current_value"])),
-            ]
-        )
+    result = position_valuation(entry.data, valor.symbol, today=as_of, valor=valor)
+    rows = []
+    for item in result.lots:
+        lot, metrics = item.lot, item.nominal
         rows.append(
             {
                 LOT_DATE: lot[LOT_DATE],
@@ -327,44 +286,19 @@ def _lot_rows(
                 LOT_UNIT_PRICE: round(lot[LOT_UNIT_PRICE], 6),
                 LOT_QUOTE_CURRENCY: lot[LOT_QUOTE_CURRENCY],
                 LOT_FX_RATE: round(lot[LOT_FX_RATE], 6),
-                "current_value": round(metrics["current_value"], 2),
-                ATTR_DIVIDEND_TOTAL: round(income, 4),
-                ATTR_PROFIT: round(metrics["profit"], 2),
-                ATTR_PERFORMANCE_PCT: round(metrics["performance_pct"], 2),
-                ATTR_ANNUALIZED_PERFORMANCE_PCT: (
-                    round(annualized * 100, 2) if annualized is not None else None
-                ),
-                "age_days": int(metrics["age_days"]),
+                "current_value": round(metrics.value, 2),
+                ATTR_DIVIDEND_TOTAL: round(metrics.income, 4),
+                ATTR_PROFIT: round(metrics.profit, 2),
+                ATTR_PERFORMANCE_PCT: round(metrics.percentage, 2),
+                ATTR_ANNUALIZED_PERFORMANCE_PCT: round(metrics.annualized, 2)
+                if metrics.annualized is not None
+                else None,
+                "age_days": item.age_days,
                 LOT_INCLUDED_IN_OPENING: lot[LOT_INCLUDED_IN_OPENING],
                 LOT_ESTIMATED: lot[LOT_ESTIMATED],
-                "_raw_amount": float(lot[LOT_AMOUNT]),
-                "_raw_value": float(metrics["current_value"]),
-                "_raw_income": income,
-                "_income_flows": income_flows,
             }
         )
     return sorted(rows, key=lambda item: item[LOT_DATE])
-
-
-def _tracked_totals(
-    rows: list[dict[str, Any]], dividends: float = 0.0
-) -> tuple[float, float, float]:
-    invested = sum(row.get("_raw_amount", row[LOT_AMOUNT]) for row in rows)
-    value = sum(row.get("_raw_value", row["current_value"]) for row in rows)
-    return invested, value, value + dividends - invested
-
-
-def _tracked_dividend_total(rows: list[dict[str, Any]]) -> float:
-    """Return dividends attributed to the tracked lots in display rows."""
-    return sum(float(row.get("_raw_income", row[ATTR_DIVIDEND_TOTAL])) for row in rows)
-
-
-def _public_lot_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Hide internal full-precision fields from Home Assistant attributes."""
-    return [
-        {key: value for key, value in row.items() if not key.startswith("_")}
-        for row in rows
-    ]
 
 
 async def async_setup_entry(
@@ -595,6 +529,17 @@ class ValorTrackedBaseSensor(WalletBaseSensor):
         self._symbol = symbol
 
     @property
+    def _valuation(self):
+        data = self.coordinator.data
+        return position_valuation(
+            self._entry.data,
+            self._symbol,
+            today=dt_util.now().date(),
+            valor=data.valors.get(self._symbol),
+            inflation=data.inflation,
+        )
+
+    @property
     def _rows(self) -> list[dict[str, Any]]:
         return _lot_rows(
             self._entry,
@@ -609,67 +554,18 @@ class ValorTrackedBaseSensor(WalletBaseSensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         rows = self._rows
-        dividends = _tracked_dividend_total(rows)
-        invested, value, profit = _tracked_totals(rows, dividends)
-        series = self.coordinator.data.inflation
-        today = dt_util.now().date()
-        real_costs = (
-            [
-                series.adjust(
-                    float(row["_raw_amount"]),
-                    date.fromisoformat(row[LOT_DATE]),
-                    today,
-                )
-                for row in rows
-            ]
-            if series is not None
-            else []
-        )
-        income_flows = [flow for row in rows for flow in row["_income_flows"]]
-        real_income_flows = (
-            adjusted_flows(income_flows, through=today, series=series)
-            if series is not None
-            else None
-        )
-        real_cost = (
-            sum(real_costs)
-            if real_costs and all(item is not None for item in real_costs)
-            else None
-        )
-        real_income = (
-            sum(amount for _, amount in real_income_flows)
-            if real_income_flows is not None
-            else None
-        )
-        real_profit = (
-            value + real_income - real_cost
-            if real_cost is not None and real_income is not None
-            else None
-        )
-        real_xirr = (
-            xirr(
-                [
-                    *[
-                        (
-                            date.fromisoformat(row[LOT_DATE]),
-                            -float(real_amount),
-                        )
-                        for row, real_amount in zip(rows, real_costs, strict=True)
-                    ],
-                    *real_income_flows,
-                    (today, value),
-                ]
-            )
-            if real_cost is not None and real_income_flows is not None
-            else None
-        )
+        result = self._valuation
+        nominal, real = result.tracked, result.tracked_real
+        invested, value, profit = nominal.cost, nominal.value, nominal.profit
+        dividends = nominal.income
+        real_cost, real_profit = real.cost, real.profit
         return {
             ATTR_SYMBOL: self._symbol,
             ATTR_TRACKED_INVESTED: round(invested, 2),
-            ATTR_TRACKED_VALUE: round(value, 2),
-            ATTR_PROFIT: round(profit, 2),
+            ATTR_TRACKED_VALUE: round(value, 2) if value is not None else None,
+            ATTR_PROFIT: round(profit, 2) if profit is not None else None,
             ATTR_DIVIDEND_TOTAL: round(dividends, 2),
-            ATTR_LOTS: _public_lot_rows(rows),
+            ATTR_LOTS: rows,
             ATTR_REAL_INVESTED: round(real_cost, 2) if real_cost is not None else None,
             ATTR_REAL_PROFIT: round(real_profit, 2)
             if real_profit is not None
@@ -677,8 +573,8 @@ class ValorTrackedBaseSensor(WalletBaseSensor):
             ATTR_REAL_PERFORMANCE_PCT: round(real_profit / real_cost * 100, 2)
             if real_profit is not None and real_cost > 0
             else None,
-            ATTR_REAL_ANNUALIZED_PERFORMANCE_PCT: round(real_xirr * 100, 2)
-            if real_xirr is not None
+            ATTR_REAL_ANNUALIZED_PERFORMANCE_PCT: round(real.annualized, 2)
+            if real.annualized is not None
             else None,
             **_inflation_attributes(self.coordinator.data, self._entry),
         }
@@ -699,8 +595,8 @@ class ValorProfitSensor(ValorTrackedBaseSensor):
     def native_value(self) -> float | None:
         if not self._rows:
             return None
-        rows = self._rows
-        return round(_tracked_totals(rows, _tracked_dividend_total(rows))[2], 2)
+        profit = self._valuation.tracked.profit
+        return round(profit, 2) if profit is not None else None
 
 
 class ValorPerformanceSensor(ValorTrackedBaseSensor):
@@ -719,9 +615,8 @@ class ValorPerformanceSensor(ValorTrackedBaseSensor):
 
     @property
     def native_value(self) -> float | None:
-        rows = self._rows
-        invested, _, profit = _tracked_totals(rows, _tracked_dividend_total(rows))
-        return round(profit / invested * 100, 2) if invested else None
+        percentage = self._valuation.tracked.percentage
+        return round(percentage, 2) if percentage is not None else None
 
 
 class ValorAnnualizedPerformanceSensor(ValorTrackedBaseSensor):
@@ -740,18 +635,8 @@ class ValorAnnualizedPerformanceSensor(ValorTrackedBaseSensor):
 
     @property
     def native_value(self) -> float | None:
-        rows = self._rows
-        if not rows:
-            return None
-        today = dt_util.now().date()
-        flows = [
-            (date.fromisoformat(row[LOT_DATE]), -float(row["_raw_amount"]))
-            for row in rows
-        ]
-        flows.extend(flow for row in rows for flow in row["_income_flows"])
-        current_value = sum(float(row["_raw_value"]) for row in rows)
-        result = xirr([*flows, (today, current_value)])
-        return round(result * 100, 2) if result is not None else None
+        result = self._valuation.tracked.annualized
+        return round(result, 2) if result is not None else None
 
 
 class WalletTotalSensor(WalletBaseSensor):
@@ -892,13 +777,10 @@ class WalletProfitSensor(WalletBaseSensor):
 
     @property
     def native_value(self) -> float | None:
-        invested = _invested_amount(self._entry)
-        total = self.coordinator.data.total
-        return (
-            round(total - invested, 2)
-            if invested is not None and total is not None
-            else None
-        )
+        result = wallet_valuation(
+            self._entry.data, self.coordinator.data, today=dt_util.now().date()
+        ).nominal.profit
+        return round(result, 2) if result is not None else None
 
     @property
     def available(self) -> bool:
@@ -936,13 +818,10 @@ class WalletProfitPctSensor(WalletBaseSensor):
 
     @property
     def native_value(self) -> float | None:
-        invested = _invested_amount(self._entry)
-        total = self.coordinator.data.total
-        return (
-            round((total - invested) / invested * 100, 2)
-            if invested and total is not None
-            else None
-        )
+        result = wallet_valuation(
+            self._entry.data, self.coordinator.data, today=dt_util.now().date()
+        ).nominal.percentage
+        return round(result, 2) if result is not None else None
 
     @property
     def available(self) -> bool:
@@ -982,10 +861,9 @@ class WalletMoneyWeightedReturnSensor(WalletBaseSensor):
 
     @property
     def native_value(self) -> float | None:
-        total = self.coordinator.data.total
-        if total is None:
-            return None
-        result = money_weighted_return(self._entry.data, total, dt_util.now().date())
+        result = wallet_valuation(
+            self._entry.data, self.coordinator.data, today=dt_util.now().date()
+        ).nominal.annualized
         return round(result, 2) if result is not None else None
 
     @property

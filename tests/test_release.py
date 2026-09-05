@@ -89,9 +89,9 @@ class ReleaseTests(unittest.TestCase):
         hacs = json.loads((ROOT / "hacs.json").read_text())
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
-        self.assertEqual(manifest["version"], "1.10.1")
-        self.assertEqual(project["project"]["version"], "1.10.1")
-        self.assertIn("## 1.10.1", changelog)
+        self.assertEqual(manifest["version"], "1.11.1")
+        self.assertEqual(project["project"]["version"], "1.11.1")
+        self.assertIn("## 1.11.1", changelog)
         self.assertEqual(hacs["homeassistant"], "2026.8.0")
         self.assertEqual(project["project"]["requires-python"], ">=3.14.2")
         self.assertEqual(manifest["codeowners"], ["@PenDrag92"])
@@ -170,7 +170,7 @@ class ReleaseTests(unittest.TestCase):
             "ruff check .",
             "ruff format --check .",
             "python -m unittest discover -v",
-            "node --test tests/chart-scales.test.mjs",
+            "node --test tests/*.test.mjs",
             "bandit -q -r custom_components/my_wallet",
             "json.loads",
             "yaml.safe_load",

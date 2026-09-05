@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import date
-from math import isfinite
+from math import fsum, isfinite
 from typing import Any
 from uuid import uuid4
 
@@ -99,46 +99,81 @@ def dividend_total(data: Mapping[str, Any], *, through: date | None = None) -> f
     return total
 
 
+def cash_events(
+    data: Mapping[str, Any], *, contributions: Sequence[Mapping[str, Any]] | None = None
+) -> list[tuple[date, float]]:
+    """One definition of cash-effective deposits, dividends and purchases.
+
+    Undated legacy capital and its included opening lots are cash-neutral.
+    """
+    events = [
+        (
+            date.fromisoformat(
+                item.get(DIVIDEND_VALUE_DATE) or item[DIVIDEND_BOOKING_DATE]
+            ),
+            float(item[DIVIDEND_AMOUNT]),
+        )
+        for item in dividends_from_data(data)
+    ]
+    rows = contributions if contributions is not None else contributions_from_data(data)
+    for row in rows:
+        legacy = row[CONTRIBUTION_SOURCE] == CONTRIBUTION_SOURCE_LEGACY
+        if not legacy and row.get(CONTRIBUTION_DATE) is not None:
+            events.append(
+                (
+                    date.fromisoformat(str(row[CONTRIBUTION_DATE])),
+                    float(row[CONTRIBUTION_AMOUNT]),
+                )
+            )
+        events.extend(
+            (date.fromisoformat(lot[LOT_DATE]), -float(lot[LOT_AMOUNT]))
+            for lot in row[CONTRIBUTION_LOTS]
+            if not (legacy and lot[LOT_INCLUDED_IN_OPENING])
+        )
+    return events
+
+
 def cash_balance(
     data: Mapping[str, Any],
     *,
     through: date | None = None,
     contributions: Sequence[Mapping[str, Any]] | None = None,
 ) -> float:
-    """Return deposits plus dividends minus purchases on the cash account.
-
-    Legacy invested amounts are cost-basis placeholders rather than known cash
-    deposits and therefore do not affect this balance.
-    """
-    balance = dividend_total(data, through=through)
-    rows = (
-        list(contributions)
-        if contributions is not None
-        else contributions_from_data(data)
+    """Return the cash balance without discarding fractional currency precision."""
+    return round(
+        fsum(
+            amount
+            for day, amount in cash_events(data, contributions=contributions)
+            if through is None or day <= through
+        ),
+        10,
     )
-    for contribution in rows:
-        contribution_date = contribution.get(CONTRIBUTION_DATE)
-        if (
-            contribution[CONTRIBUTION_SOURCE] != CONTRIBUTION_SOURCE_LEGACY
-            and contribution_date is not None
-            and (
-                through is None or date.fromisoformat(str(contribution_date)) <= through
-            )
-        ):
-            balance += float(contribution[CONTRIBUTION_AMOUNT])
 
-        for lot in contribution[CONTRIBUTION_LOTS]:
-            if (
-                contribution[CONTRIBUTION_SOURCE] == CONTRIBUTION_SOURCE_LEGACY
-                and lot[LOT_INCLUDED_IN_OPENING]
-            ):
-                continue
-            if through is None or date.fromisoformat(lot[LOT_DATE]) <= through:
-                balance -= float(lot[LOT_AMOUNT])
 
-    # Avoid display artefacts such as 0.00999999999999801 without discarding
-    # fractional currency precision used by some brokers.
-    return round(balance, 10)
+def cash_timeline(data: Mapping[str, Any]) -> dict[date, float]:
+    """Calculate all closing balances in one chronological pass."""
+    by_date: dict[date, list[float]] = {}
+    for day, amount in cash_events(data):
+        by_date.setdefault(day, []).append(amount)
+    # Keep low-order remainders across dates. Collapsing each day's balance to
+    # one float can lose small credits before a later purchase cancels it out.
+    partials: list[float] = []
+    result = {}
+    for day, amounts in sorted(by_date.items()):
+        for amount in amounts:
+            index = 0
+            for partial in partials:
+                if abs(amount) < abs(partial):
+                    amount, partial = partial, amount
+                total = amount + partial
+                remainder = partial - (total - amount)
+                if remainder:
+                    partials[index] = remainder
+                    index += 1
+                amount = total
+            partials[index:] = [amount]
+        result[day] = round(fsum(partials), 10)
+    return result
 
 
 def reinvestable_cash(
@@ -148,36 +183,18 @@ def reinvestable_cash(
     today: date,
     reserved: float = 0.0,
 ) -> float:
-    """Return cash available throughout the relevant ledger interval.
-
-    Every cash-event date is checked so a later replenishment cannot hide an
-    intervening overdraft. ``reserved`` prevents several executions prepared in
-    the same refresh from sharing the same cash.
-    """
-    event_dates = {execution_through, today}
-    if execution_through <= today:
-        for contribution in contributions_from_data(data):
-            contribution_date = contribution.get(CONTRIBUTION_DATE)
-            if contribution_date is not None:
-                effective = date.fromisoformat(str(contribution_date))
-                if execution_through <= effective <= today:
-                    event_dates.add(effective)
-            for lot in contribution[CONTRIBUTION_LOTS]:
-                effective = date.fromisoformat(lot[LOT_DATE])
-                if execution_through <= effective <= today:
-                    event_dates.add(effective)
-        for dividend in dividends_from_data(data):
-            effective = date.fromisoformat(
-                dividend.get(DIVIDEND_VALUE_DATE) or dividend[DIVIDEND_BOOKING_DATE]
-            )
-            if execution_through <= effective <= today:
-                event_dates.add(effective)
-
-    return max(
-        0.0,
-        min(cash_balance(data, through=effective) for effective in event_dates)
-        - float(reserved),
-    )
+    """Use the minimum balance throughout the execution interval, minus reserves."""
+    timeline = cash_timeline(data)
+    at_execution = at_today = 0.0
+    balances = []
+    for day, balance in timeline.items():
+        if day <= execution_through:
+            at_execution = balance
+        if day <= today:
+            at_today = balance
+        if execution_through <= day <= today:
+            balances.append(balance)
+    return max(0.0, min(at_execution, at_today, *balances) - float(reserved))
 
 
 def attributed_dividend_flows(

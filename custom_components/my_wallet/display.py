@@ -7,6 +7,8 @@ from . import const as c
 
 MESSAGES = {
     "en": {
+        "unconfigured_symbol": "A historical plan uses a removed instrument. "
+        "Restore the instrument before retrying the execution.",
         "planned_deposit": "Planned deposit",
         "deposit": "Deposit",
         "purchase": "Purchase",
@@ -38,6 +40,8 @@ MESSAGES = {
         "included_units": "units marked included",
     },
     "de": {
+        "unconfigured_symbol": "Eine historische Sparplanregel verwendet ein "
+        "entferntes Wertpapier. Füge es vor der nächsten Ausführung wieder hinzu.",
         "planned_deposit": "Geplante Einzahlung",
         "deposit": "Einzahlung",
         "purchase": "Kauf",
@@ -73,6 +77,8 @@ MESSAGES = {
         "included_units": "als enthalten markierte Anteile",
     },
     "pl": {
+        "unconfigured_symbol": "Historyczna reguła planu używa usuniętego instrumentu. "
+        "Dodaj go ponownie przed ponowieniem wykonania.",
         "planned_deposit": "Planowana wpłata",
         "deposit": "Wpłata",
         "purchase": "Zakup",
@@ -103,6 +109,8 @@ MESSAGES = {
         "included_units": "jednostki oznaczone jako uwzględnione",
     },
     "cs": {
+        "unconfigured_symbol": "Historické pravidlo plánu používá odstraněný "
+        "instrument. Před opakováním provedení jej znovu přidejte.",
         "planned_deposit": "Plánovaný vklad",
         "deposit": "Vklad",
         "purchase": "Nákup",

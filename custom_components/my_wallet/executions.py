@@ -12,7 +12,6 @@ from .const import (
     CONF_CONTRIBUTIONS,
     CONF_SAVINGS_PLANS,
     CONF_VALORS,
-    CONTRIBUTION_DATE,
     CONTRIBUTION_ID,
     CONTRIBUTION_LOTS,
     CONTRIBUTION_MANUALLY_EDITED,
@@ -21,7 +20,6 @@ from .const import (
     CONTRIBUTION_SCHEDULED_DATE,
     CONTRIBUTION_SOURCE,
     CONTRIBUTION_SOURCE_PLAN,
-    LOT_DATE,
     LOT_ESTIMATED,
     LOT_ID,
     LOT_INCLUDED_IN_OPENING,
@@ -41,7 +39,8 @@ from .contributions import (
     make_lot,
     opening_balance_conflicts,
 )
-from .dividends import cash_balance, reinvestable_cash
+from .dividends import reinvestable_cash
+from .ledger import prepare_change, worsened_cash_history
 from .plans import (
     allocation_amounts,
     due_dates,
@@ -137,35 +136,6 @@ def _merge_confirmed_quote(
     return sorted(by_date.values(), key=lambda item: item.date)
 
 
-def _worsened_cash_history(
-    before: Mapping[str, Any], after: Mapping[str, Any], today: date
-) -> bool:
-    # Both versions have the same dividend events. Include them as well as every
-    # funding/purchase date, so no intermediate deficit can hide behind a top-up.
-    from .const import CONF_DIVIDENDS, DIVIDEND_BOOKING_DATE, DIVIDEND_VALUE_DATE
-
-    dates = {today}
-    for data in (before, after):
-        for row in contributions_from_data(data):
-            if row[CONTRIBUTION_DATE]:
-                dates.add(date.fromisoformat(row[CONTRIBUTION_DATE]))
-            dates.update(
-                date.fromisoformat(lot[LOT_DATE]) for lot in row[CONTRIBUTION_LOTS]
-            )
-        for dividend in data.get(CONF_DIVIDENDS, []):
-            dates.add(
-                date.fromisoformat(
-                    dividend.get(DIVIDEND_VALUE_DATE) or dividend[DIVIDEND_BOOKING_DATE]
-                )
-            )
-    return any(
-        cash_balance(after, through=day)
-        < min(0.0, cash_balance(before, through=day)) - 1e-7
-        for day in dates
-        if day <= today
-    )
-
-
 async def async_prepare_executions(
     data: Mapping[str, Any],
     *,
@@ -219,6 +189,26 @@ async def async_prepare_executions(
     ]
     result = dict(data)
     if not due:
+        return result, report
+    configured = {valor[VALOR_SYMBOL] for valor in data.get(CONF_VALORS, [])}
+    invalid = [
+        (plan, day, sorted(set(allocation_amounts(plan)) - configured))
+        for plan, day in due
+        if set(allocation_amounts(plan)) - configured
+    ]
+    if invalid:
+        report["pending"] = [
+            {
+                "plan_id": plan[PLAN_ID],
+                "plan_name": plan[PLAN_NAME],
+                "scheduled_date": day.isoformat(),
+                "reason": "unconfigured_symbol",
+                "missing_symbols": symbols,
+                "repair_required": True,
+            }
+            for plan, day, symbols in invalid
+        ]
+        report.update(failed=len(invalid), rolled_back=bool(replacement_ids))
         return result, report
     conflicts = opening_balance_conflicts(data)
     if conflicts:
@@ -403,7 +393,7 @@ async def async_prepare_executions(
         report["recalculated" if old else "created"] += 1
     result[CONF_CONTRIBUTIONS] = contributions_from_data({CONF_CONTRIBUTIONS: rows})
     if replacement_ids and (
-        report["pending"] or _worsened_cash_history(data, result, today)
+        report["pending"] or worsened_cash_history(data, result, today)
     ):
         if not report["pending"]:
             report["pending"].append(
@@ -420,7 +410,7 @@ async def async_prepare_executions(
     report["failed"] = sum(
         bool(item.get("repair_required")) for item in report["pending"]
     )
-    return result, report
+    return prepare_change(data, result, today=today), report
 
 
 async def async_purchase_lot(

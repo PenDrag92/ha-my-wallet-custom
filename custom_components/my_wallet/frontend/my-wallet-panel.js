@@ -1,7 +1,7 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.10.1";
-import { parseUnits } from "./unit-input.mjs?v=1.10.1";
-import { dailyPeriod, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.10.1";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.11.1";
+import { parseUnits } from "./unit-input.mjs?v=1.11.1";
+import { dailyPeriod, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.11.1";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -384,7 +384,7 @@ class MyWalletPanel extends HTMLElement {
       const result = await this._call("wallets", forecast);
       this._wallets = result.wallets;
       if (!this._wallet()) this._selected = this._wallets[0]?.entry_id;
-      if (previousSelected !== this._selected) this._loadRealPreference();
+      if (previousSelected !== this._selected) { this._clearImport(); this._loadRealPreference(); }
       if (!this._wallet()?.inflation?.available) this._real = false;
       if (this._section === "history" && this._isRecordedPeriod()) await this._loadRecorded(true);
       else this._history = this._selected ? await this._call("history", { entry_id: this._selected, ...forecast }) : null;
@@ -395,6 +395,27 @@ class MyWalletPanel extends HTMLElement {
     }
   }
   _notice(parent, text, kind = "") { parent.append(node("p", text, `notice ${kind}`)); }
+  _clearImport() {
+    this._preview = null;
+    this._document = null;
+    this._importDecisions = {};
+  }
+  _selectWallet(entryId) {
+    this._selected = entryId;
+    this._clearImport();
+    this._loadRealPreference();
+    this._position = "all";
+    this._forecastYears = 0;
+    this._customForecastOpen = false;
+    this._aliasOpen = false;
+    this._aliasDraft = null;
+    this._depositDraft = null;
+    this._correctionOpen = false;
+    this._correction = null;
+    this._correctionPreview = null;
+    this._history = null;
+    this._refresh();
+  }
   _stat(parent, label, value, control = null) {
     const card = node("div", null, "stat");
     const content = node("strong"); content.append(control || document.createTextNode(value));
@@ -471,21 +492,7 @@ class MyWalletPanel extends HTMLElement {
       select.append(option);
     }
     select.disabled = this._busy || !this._wallets.length;
-    select.addEventListener("change", () => {
-      this._selected = select.value;
-      this._loadRealPreference();
-      this._position = "all";
-      this._forecastYears = 0;
-      this._customForecastOpen = false;
-      this._aliasOpen = false;
-      this._aliasDraft = null;
-      this._depositDraft = null;
-      this._correctionOpen = false;
-      this._correction = null;
-      this._correctionPreview = null;
-      this._history = null;
-      this._refresh();
-    });
+    select.addEventListener("change", () => this._selectWallet(select.value));
     selectLabel.append(select);
     const refresh = button(this.t("refresh"), () => this._refresh());
     refresh.disabled = this._busy;
@@ -1355,7 +1362,7 @@ class MyWalletPanel extends HTMLElement {
     section.append(file);
     if (this._preview) {
       const summary = this._preview.summary;
-      section.append(node("h3", summary.backup ? `${this.t("backupRestore")}: ${summary.wallet_name}` : this._importMode === "followup" ? `${this.t("followup")}: ${this._wallet().name}` : `${this.t("newWallet")}: ${summary.wallet_name}`));
+      section.append(node("h3", summary.backup ? `${this.t("backupRestore")}: ${summary.wallet_name}` : this._importMode === "followup" ? `${this.t("followup")}: ${this._preview.target_name}` : `${this.t("newWallet")}: ${summary.wallet_name}`));
       section.append(node("p", `${this.t("counts")}: ${summary.deposits} / ${summary.purchases} / ${summary.dividends}`));
       if (summary.planned_deposits) section.append(node("p", `${this.t("plannedDeposits")}: ${summary.planned_deposits}`));
       const stats = node("div", null, "stats");
@@ -1426,9 +1433,12 @@ class MyWalletPanel extends HTMLElement {
   }
   async _commitImport() {
     if (this._busy || !this._preview?.token) return;
+    if (this._importMode === "followup" && this._preview.entry_id !== this._selected) {
+      this._clearImport(); this._error = this.t("entry_changed"); this._render(); return;
+    }
     this._busy = this._importBusy = true; this._error = null; this._render();
     try {
-      const result = await this._call("import_commit", { token: this._preview.token, confirm: true });
+      const result = await this._call("import_commit", { token: this._preview.token, confirm: true, ...(this._preview.entry_id ? { entry_id: this._preview.entry_id } : {}) });
       this._selected = result.entry_id; this._document = this._preview = null; this._importDecisions = {}; this._importOpen = false;
     } catch (err) { this._error = this._errorText(err); }
     finally { this._busy = this._importBusy = false; this._render(); }

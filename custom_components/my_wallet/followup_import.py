@@ -11,7 +11,6 @@ from typing import Any
 from . import const as c
 from .contributions import contributions_from_data, normalize_contributions
 from .dividends import cash_balance, dividends_from_data
-from .history import ledger_rows
 from .history_import import (
     IMPORT_BATCH,
     MAX_IMPORT_ITEMS,
@@ -19,6 +18,7 @@ from .history_import import (
     async_prepare_import,
     validate_document,
 )
+from .ledger import prepare_change, worsened_cash_history
 
 IMPORT_RECORDS = "import_records"
 IMPORT_LINKS = "import_links"
@@ -54,24 +54,38 @@ def has_import(data, batch: str | None, fingerprint: str | None = None) -> bool:
     )
 
 
+def _source_pairs(raw_rows, prepared_rows, batch: str):
+    """Join source records to prepared IDs independently of normalization order."""
+    sources = {_uid(batch, row["id"]): row for row in raw_rows}
+    prepared = {row["id"]: row for row in prepared_rows}
+    if (
+        len(sources) != len(raw_rows)
+        or len(prepared) != len(prepared_rows)
+        or sources.keys() != prepared.keys()
+    ):
+        raise ValueError("invalid_import_format")
+    return [(raw, prepared[identifier]) for identifier, raw in sources.items()]
+
+
 def add_initial_import_metadata(document, data, *, today: date):
     """Add source links needed for later statement reconciliation."""
     result = deepcopy(data)
+    batch = result[IMPORT_BATCH]
     links = {"plans": {}, "contributions": {}, "lots": {}, "dividends": {}}
-    for raw, plan in zip(
-        document.get("plans", []), result[c.CONF_SAVINGS_PLANS], strict=True
+    for raw, plan in _source_pairs(
+        document.get("plans", []), result[c.CONF_SAVINGS_PLANS], batch
     ):
         links["plans"][raw["id"]] = plan[c.PLAN_ID]
-    for raw, row in zip(
-        document.get("deposits", []), result[c.CONF_CONTRIBUTIONS], strict=True
+    for raw, row in _source_pairs(
+        document.get("deposits", []), result[c.CONF_CONTRIBUTIONS], batch
     ):
         links["contributions"][raw["id"]] = row[c.CONTRIBUTION_ID]
-        for raw_lot, lot in zip(
-            raw.get("purchases", []), row[c.CONTRIBUTION_LOTS], strict=True
+        for raw_lot, lot in _source_pairs(
+            raw.get("purchases", []), row[c.CONTRIBUTION_LOTS], batch
         ):
             links["lots"][raw_lot["id"]] = lot[c.LOT_ID]
-    for raw, item in zip(
-        document.get("dividends", []), result[c.CONF_DIVIDENDS], strict=True
+    for raw, item in _source_pairs(
+        document.get("dividends", []), result[c.CONF_DIVIDENDS], batch
     ):
         links["dividends"][raw["id"]] = item[c.DIVIDEND_ID]
     result[IMPORT_LINKS] = links
@@ -123,27 +137,38 @@ def _protected(row) -> bool:
     )
 
 
-def _find_lot(existing, incoming, linked_id, batches, raw_id):
+def _lot_content(lot):
+    return (
+        lot[c.LOT_DATE],
+        lot[c.LOT_SYMBOL],
+        round(lot[c.LOT_AMOUNT], 8),
+        round(lot[c.LOT_UNITS], 12),
+    )
+
+
+def _contribution_content(row):
+    """Compare quantities as well as the fields used to locate a booking."""
+    return (
+        _contribution_signature(row),
+        tuple(sorted(_lot_content(lot) for lot in row[c.CONTRIBUTION_LOTS])),
+    )
+
+
+def _lot_matches(existing, incoming, linked_id, batches, raw_id):
     direct = {
         linked_id,
         *(_uid(batch, raw_id) for batch in batches),
     } - {None}
     matches = [lot for lot in existing if lot[c.LOT_ID] in direct]
-    if len(matches) == 1:
-        return matches[0]
-    exact = [
+    if matches:
+        return matches
+    return [
         lot
         for lot in existing
         if lot[c.LOT_SYMBOL] == incoming[c.LOT_SYMBOL]
         and lot[c.LOT_DATE] == incoming[c.LOT_DATE]
         and abs(lot[c.LOT_AMOUNT] - incoming[c.LOT_AMOUNT]) <= 0.005
     ]
-    if len(exact) == 1:
-        return exact[0]
-    same_symbol = [
-        lot for lot in existing if lot[c.LOT_SYMBOL] == incoming[c.LOT_SYMBOL]
-    ]
-    return same_symbol[0] if len(same_symbol) == 1 else None
 
 
 def _merge_contribution(
@@ -153,7 +178,10 @@ def _merge_contribution(
     links,
     batches,
     *,
+    incoming_batch: str,
     overwrite_protected: bool,
+    decisions,
+    choices,
 ):
     protected = _protected(existing)
     result = deepcopy(existing)
@@ -172,15 +200,81 @@ def _merge_contribution(
                 result.pop(key, None)
     lots = list(result[c.CONTRIBUTION_LOTS])
     lot_links = links.setdefault("lots", {})
-    for raw_lot, incoming_lot in zip(
-        raw["purchases"], incoming[c.CONTRIBUTION_LOTS], strict=True
+    # Match only pre-existing lots. New purchases in this file must never match
+    # each other, nor consume a lot reserved by another purchase's stable ID.
+    original_lots = list(lots)
+    reserved = set(lot_links.values()) | {
+        lot_id
+        for raw_lot in raw["purchases"]
+        for lot_id in (
+            lot_links.get(raw_lot["id"]),
+            *(_uid(batch, raw_lot["id"]) for batch in batches),
+        )
+        if lot_id is not None
+    }
+    used = set()
+    unresolved = False
+    for raw_lot, incoming_lot in _source_pairs(
+        raw["purchases"], incoming[c.CONTRIBUTION_LOTS], incoming_batch
     ):
         raw_id = raw_lot["id"]
-        current = _find_lot(lots, incoming_lot, lot_links.get(raw_id), batches, raw_id)
+        matches = _lot_matches(
+            original_lots, incoming_lot, lot_links.get(raw_id), batches, raw_id
+        )
+        direct = {
+            lot_links.get(raw_id),
+            *(_uid(batch, raw_id) for batch in batches),
+        } - {None}
+        if any(lot[c.LOT_ID] in direct and lot[c.LOT_ID] in used for lot in matches):
+            raise ValueError("invalid_import_duplicate_match")
+        matches = [
+            lot
+            for lot in matches
+            if lot[c.LOT_ID] not in used
+            and (lot[c.LOT_ID] not in reserved or lot[c.LOT_ID] in direct)
+        ]
+        if len(matches) > 1:
+            choice = decisions.get(raw_id)
+            selected = [lot for lot in matches if lot[c.LOT_ID] == choice]
+            if choice != "add" and len(selected) != 1:
+                choices.append(
+                    {
+                        "id": raw_id,
+                        "kind": "ambiguous",
+                        "options": [
+                            {
+                                "id": lot[c.LOT_ID],
+                                "date": lot[c.LOT_DATE],
+                                "amount": lot[c.LOT_AMOUNT],
+                            }
+                            for lot in matches
+                        ],
+                    }
+                )
+                unresolved = True
+                continue
+            matches = selected
+        current = matches[0] if matches else None
         if current is None:
             lots.append(incoming_lot)
             lot_links[raw_id] = incoming_lot[c.LOT_ID]
         else:
+            if (
+                protected
+                and not overwrite_protected
+                and _lot_content(current) != _lot_content(incoming_lot)
+            ):
+                choices.append(
+                    {
+                        "id": raw["id"],
+                        "kind": "protected",
+                        "options": ["keep", "merge"],
+                        "existing": _contribution_content(existing),
+                        "incoming": _contribution_content(incoming),
+                    }
+                )
+                return None
+            used.add(current[c.LOT_ID])
             lot_links[raw_id] = current[c.LOT_ID]
             if current.get(c.LOT_ESTIMATED, True) or overwrite_protected:
                 replacement = {
@@ -196,15 +290,7 @@ def _merge_contribution(
     result[c.CONTRIBUTION_SOURCE] = "import"
     if existing.get(c.CONTRIBUTION_MANUALLY_EDITED) or overwrite_protected:
         result[c.CONTRIBUTION_MANUALLY_EDITED] = True
-    return result
-
-
-def _minimum_cash(data) -> float:
-    minimum = balance = 0.0
-    for row in ledger_rows(data):
-        balance += row["cash_delta"]
-        minimum = min(minimum, balance)
-    return minimum
+    return None if unresolved else result
 
 
 async def async_prepare_followup(
@@ -230,7 +316,7 @@ async def async_prepare_followup(
         raise ValueError("already_imported")
     validated = validate_document(document, today=today)
     incoming, original_summary = await async_prepare_import(
-        document, session=session, today=today
+        document, session=session, today=today, check_cash=False
     )
     if incoming is None:
         return None, {**original_summary, "mode": "followup"}
@@ -238,6 +324,7 @@ async def async_prepare_followup(
         raise ValueError("import_currency_mismatch")
 
     candidate = deepcopy(dict(existing))
+    incoming_batch = incoming[IMPORT_BATCH]
     batches = imported_batches(existing)
     links = deepcopy(
         existing.get(
@@ -277,8 +364,8 @@ async def async_prepare_followup(
         *candidate.get(c.CONF_RETIRED_SAVINGS_PLANS, []),
     ]
     plan_map = {}
-    for raw, plan in zip(
-        document.get("plans", []), incoming[c.CONF_SAVINGS_PLANS], strict=True
+    for raw, plan in _source_pairs(
+        document.get("plans", []), incoming[c.CONF_SAVINGS_PLANS], incoming_batch
     ):
         raw_id = raw["id"]
         candidates = [
@@ -313,7 +400,7 @@ async def async_prepare_followup(
     current_rows = contributions_from_data(candidate)
     raw_rows = validated["deposits"]
     unresolved = False
-    for raw, row in zip(raw_rows, incoming_rows, strict=True):
+    for raw, row in _source_pairs(raw_rows, incoming_rows, incoming_batch):
         raw_id = raw["id"]
         if row.get(c.CONTRIBUTION_PLAN_ID) in plan_map:
             row[c.CONTRIBUTION_PLAN_ID] = plan_map[row[c.CONTRIBUTION_PLAN_ID]]
@@ -373,8 +460,8 @@ async def async_prepare_followup(
         if not matches or (decisions.get(raw_id) == "add" and not authoritative):
             current_rows.append(row)
             links["contributions"][raw_id] = row[c.CONTRIBUTION_ID]
-            for raw_lot, lot in zip(
-                raw["purchases"], row[c.CONTRIBUTION_LOTS], strict=True
+            for raw_lot, lot in _source_pairs(
+                raw["purchases"], row[c.CONTRIBUTION_LOTS], incoming_batch
             ):
                 links["lots"][raw_lot["id"]] = lot[c.LOT_ID]
             summary["added"]["deposits"] += 1
@@ -382,8 +469,8 @@ async def async_prepare_followup(
             continue
         current = matches[0]
         links["contributions"][raw_id] = current[c.CONTRIBUTION_ID]
-        same = _contribution_signature(current) == _contribution_signature(row)
-        if _protected(current) and authoritative and not same:
+        same = _contribution_content(current) == _contribution_content(row)
+        if _protected(current) and not same:
             choice = decisions.get(raw_id)
             if choice not in {"keep", "merge"}:
                 unresolved = True
@@ -392,8 +479,8 @@ async def async_prepare_followup(
                         "id": raw_id,
                         "kind": "protected",
                         "options": ["keep", "merge"],
-                        "existing": _contribution_signature(current),
-                        "incoming": _contribution_signature(row),
+                        "existing": _contribution_content(current),
+                        "incoming": _contribution_content(row),
                     }
                 )
                 continue
@@ -407,7 +494,16 @@ async def async_prepare_followup(
             raw,
             links,
             batches,
+            incoming_batch=incoming_batch,
             overwrite_protected=decisions.get(raw_id) == "merge",
+            decisions=decisions,
+            choices=summary["choices"],
+        )
+        if merged is None:
+            unresolved = True
+            continue
+        summary["added"]["purchases"] += len(merged[c.CONTRIBUTION_LOTS]) - len(
+            current[c.CONTRIBUTION_LOTS]
         )
         current_rows = [
             merged if item[c.CONTRIBUTION_ID] == current[c.CONTRIBUTION_ID] else item
@@ -417,8 +513,8 @@ async def async_prepare_followup(
     candidate[c.CONF_CONTRIBUTIONS] = normalize_contributions(current_rows)
 
     dividends = dividends_from_data(candidate)
-    for raw, row in zip(
-        document.get("dividends", []), incoming[c.CONF_DIVIDENDS], strict=True
+    for raw, row in _source_pairs(
+        document.get("dividends", []), incoming[c.CONF_DIVIDENDS], incoming_batch
     ):
         raw_id = raw["id"]
         ids = {
@@ -472,7 +568,9 @@ async def async_prepare_followup(
             "date": today.isoformat(),
         },
     ]
-    if _minimum_cash(candidate) < min(-0.005, _minimum_cash(existing) - 0.005):
+    if worsened_cash_history(existing, candidate, today):
         raise ValueError("import_cash_conflict")
+    if not unresolved:
+        candidate = prepare_change(existing, candidate, today=today)
     summary["cash_change"] = round(cash_balance(candidate) - cash_balance(existing), 2)
     return (None if unresolved else candidate), summary

@@ -39,13 +39,15 @@ jobs:
         run: python -m unittest discover -v
       - name: Required date defaults
         run: python -m tests.schema_defaults
+      - name: Real Home Assistant sensor and dashboard parity
+        run: python -m tests.valuation_smoke
       - name: Real Home Assistant Recorder
         timeout-minutes: 3
         run: python -m tests.recorder_smoke
       - name: Frontend syntax
         run: node --check custom_components/my_wallet/frontend/my-wallet-panel.js
       - name: Frontend calculation and input tests
-        run: node --test tests/chart-scales.test.mjs tests/unit-input.test.mjs tests/history-series.test.mjs
+        run: node --test tests/*.test.mjs
       - name: Bandit security scan
         run: bandit -q -r custom_components/my_wallet
       - name: Validate JSON and YAML

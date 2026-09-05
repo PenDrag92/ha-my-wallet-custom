@@ -13,9 +13,9 @@ from .contributions import (
     all_lots,
     contributions_from_data,
     normalize_lot,
-    opening_balance_conflicts,
 )
 from .history_import import _number
+from .ledger import prepare_change
 
 UNIT_CORRECTIONS = "unit_corrections"
 
@@ -98,16 +98,6 @@ def prepare_correction(data, request, *, today: date):
                 raise ValueError("correction_negative_units")
     if isclose(before, after, abs_tol=1e-12, rel_tol=1e-12):
         raise ValueError("correction_unchanged")
-    previous_conflicts = {
-        row["symbol"]: row["included_units"] - row["configured_units"]
-        for row in opening_balance_conflicts(data)
-    }
-    for row in opening_balance_conflicts(candidate):
-        if (
-            row["included_units"] - row["configured_units"]
-            > previous_conflicts.get(row["symbol"], 0) + 1e-9
-        ):
-            raise ValueError("included_units_exceeded")
     summary = {
         "symbol": symbol,
         "target": target,
@@ -126,7 +116,7 @@ def prepare_correction(data, request, *, today: date):
         *data.get(UNIT_CORRECTIONS, []),
         {**summary, "id": uuid4().hex, "recorded_date": today.isoformat()},
     ]
-    return candidate, summary
+    return prepare_change(data, candidate, today=today), summary
 
 
 def correction_choices(data, *, today: date):

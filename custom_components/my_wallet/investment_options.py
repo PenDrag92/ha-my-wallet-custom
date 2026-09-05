@@ -13,8 +13,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
 from . import const as c
+from . import flow_schemas as ui
 from .contributions import (
-    attach_lot,
     make_contribution,
     make_lot,
     normalize_contributions,
@@ -22,9 +22,9 @@ from .contributions import (
 from .dividends import cash_balance, reinvestable_cash
 from .executions import (
     _included_opening_overflows,
-    _worsened_cash_history,
     async_purchase_lot,
 )
+from .ledger import CashPolicy, book_purchase, prepare_change, worsened_cash_history
 from .plans import allocation_amounts, make_plan
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,8 +50,6 @@ class InvestmentOptionsMixin:
         return await self._async_contribution(user_input, planned=True)
 
     async def _async_contribution(self, user_input=None, *, planned=False):
-        from . import config_flow as ui
-
         today = dt_util.now().date()
         default_date = today + timedelta(days=1) if planned else today
         currency = self.config_entry.data[c.CONF_BASE_CURRENCY]
@@ -123,8 +121,6 @@ class InvestmentOptionsMixin:
         )
 
     async def async_step_contribution_investment(self, user_input=None):
-        from . import config_flow as ui
-
         if self._investment_deposit is None:
             return self.async_abort(reason="stale_selection")
         symbols = [valor[c.VALOR_SYMBOL] for valor in self._valors()]
@@ -201,8 +197,6 @@ class InvestmentOptionsMixin:
         )
 
     async def async_step_contribution_allocation(self, user_input=None):
-        from . import config_flow as ui
-
         fields = self._investment_fields
         if not fields:
             return self.async_abort(reason="stale_selection")
@@ -427,10 +421,12 @@ class InvestmentOptionsMixin:
             **data,
             c.CONF_CONTRIBUTIONS: normalize_contributions([*base_rows, combined]),
         }
-        if _worsened_cash_history(base_data, proposed, dt_util.now().date()):
+        if worsened_cash_history(base_data, proposed, dt_util.now().date()):
             return "insufficient_cash"
         self._investment_deposit = combined
-        self._investment_proposal = proposed
+        self._investment_proposal = prepare_change(
+            data, proposed, today=dt_util.now().date()
+        )
         return None
 
     async def async_step_investment_progress(self, user_input=None):
@@ -501,8 +497,6 @@ class InvestmentOptionsMixin:
         )
 
     async def async_step_add_lot(self, user_input=None):
-        from . import config_flow as ui
-
         symbols = [valor[c.VALOR_SYMBOL] for valor in self._valors()]
         if not symbols:
             return self.async_abort(reason="no_valors")
@@ -571,20 +565,12 @@ class InvestmentOptionsMixin:
                     else:
                         funding = user_input.get("funding_contribution")
                         try:
-                            rows = (
-                                attach_lot(self._contributions(), funding, lot)
-                                if funding
-                                else normalize_contributions(
-                                    [
-                                        *self._contributions(),
-                                        make_contribution(
-                                            0,
-                                            lot[c.LOT_DATE],
-                                            source=c.CONTRIBUTION_SOURCE_PURCHASE,
-                                            lots=[lot],
-                                        ),
-                                    ]
-                                )
+                            proposal = book_purchase(
+                                snapshot,
+                                lot,
+                                funding_id=funding,
+                                today=dt_util.now().date(),
+                                cash_policy=CashPolicy.CONFIRMED_PURCHASE,
                             )
                         except ValueError:
                             errors["funding_contribution"] = (
@@ -593,10 +579,7 @@ class InvestmentOptionsMixin:
                         else:
                             self._lot_snapshot = snapshot
                             self._lot_to_confirm = lot
-                            self._lot_proposal = {
-                                **snapshot,
-                                c.CONF_CONTRIBUTIONS: rows,
-                            }
+                            self._lot_proposal = proposal
                             return await self.async_step_lot_confirm()
         return self.async_show_form(
             step_id="add_lot",
@@ -617,6 +600,7 @@ class InvestmentOptionsMixin:
                 return self.async_abort(reason="entry_changed")
             return await self._save(
                 self._valors(),
+                cash_policy=CashPolicy.CONFIRMED_PURCHASE,
                 **{c.CONF_CONTRIBUTIONS: self._lot_proposal[c.CONF_CONTRIBUTIONS]},
             )
         cash = cash_balance(self._lot_proposal, through=dt_util.now().date())
@@ -640,7 +624,7 @@ class InvestmentOptionsMixin:
                 ),
                 "cash": f"{cash:.2f} {self.config_entry.data[c.CONF_BASE_CURRENCY]}",
                 "warning": self._text("cash_history_warning")
-                if _worsened_cash_history(
+                if worsened_cash_history(
                     self._lot_snapshot, self._lot_proposal, dt_util.now().date()
                 )
                 else "",

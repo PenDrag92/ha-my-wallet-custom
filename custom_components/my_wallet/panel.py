@@ -6,7 +6,6 @@ import asyncio
 import json
 import logging
 from dataclasses import replace
-from datetime import date
 from pathlib import Path
 from time import monotonic
 from uuid import uuid4
@@ -25,21 +24,11 @@ from .backup import (
     prepare_backup,
 )
 from .contributions import (
-    all_lots,
-    cashflows,
-    invested_total,
-    lot_metrics,
-    lots_for_symbol,
-    money_weighted_return,
     opening_balance_conflicts,
-    xirr,
 )
 from .corrections import correction_choices, position_units, prepare_correction
 from .dividends import (
-    attributed_dividend_flows,
     cash_balance,
-    dividend_total,
-    dividends_from_data,
 )
 from .followup_import import (
     add_initial_import_metadata,
@@ -49,13 +38,13 @@ from .followup_import import (
 from .history import async_history
 from .history_import import IMPORT_BATCH, async_prepare_import
 from .inflation import (
-    adjusted_flows,
     expected_annual_inflation,
     future_inflation_factor,
 )
 from .models import ValorData
 from .planning import change_planned_deposit, planned_deposit_summaries
 from .recorded_history import PERIOD_DAYS, async_recorded_history
+from .store import commit_wallet_change
 from .target import (
     FORECAST_YEARS,
     MAX_FORECAST_YEARS,
@@ -66,6 +55,7 @@ from .target import (
     target_deviation,
     target_projection,
 )
+from .valuation import position_valuation, wallet_valuation
 
 _LOGGER = logging.getLogger(__name__)
 _STATE = "my_wallet_panel"
@@ -162,7 +152,7 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.10.1",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.11.1",
         embed_iframe=False,
         require_admin=True,
     )
@@ -188,6 +178,68 @@ def _wallet_with_saved_units(data, current, *, today):
     )
 
 
+def _position_payload(data, configured, current, *, today, total):
+    """Serialize shared full-precision results for the panel contract."""
+    symbol = configured[c.VALOR_SYMBOL]
+    valor = current.valors.get(symbol) if current is not None else None
+    result = position_valuation(
+        data,
+        symbol,
+        today=today,
+        valor=valor,
+        inflation=current.inflation if current is not None else None,
+    )
+    value = result.nominal.value
+    return {
+        "symbol": symbol,
+        "alias": configured.get(c.VALOR_ALIAS),
+        "units": position_units(data, symbol, today),
+        "price": valor.quote.price * valor.fx_rate
+        if valor is not None and valor.available
+        else None,
+        "value": value,
+        "cost": result.nominal.cost,
+        "dividends": result.nominal.income,
+        "profit": result.nominal.profit,
+        "performance": result.nominal.percentage,
+        "real_cost": result.real.cost,
+        "real_dividends": result.real.income,
+        "real_profit": result.real.profit,
+        "real_performance": result.real.percentage,
+        "share": value / total * 100
+        if value is not None and total and total > 0
+        else None,
+        "target": configured.get(c.VALOR_TARGET_SHARE),
+        "cost_complete": result.cost_complete,
+        "start_date": result.start_date,
+        "lots": [_lot_payload(item) for item in result.lots],
+    }
+
+
+def _lot_payload(item):
+    lot = item.lot
+    return {
+        "id": lot[c.LOT_ID],
+        "date": lot[c.LOT_DATE],
+        "price_date": lot.get("price_date", lot[c.LOT_DATE]),
+        "amount": lot[c.LOT_AMOUNT],
+        "units": lot[c.LOT_UNITS],
+        "purchase_price": lot[c.LOT_AMOUNT] / lot[c.LOT_UNITS],
+        "current_value": item.nominal.value,
+        "dividends": item.nominal.income,
+        "profit": item.nominal.profit,
+        "performance": item.nominal.percentage,
+        "annualized_performance": item.nominal.annualized,
+        "real_cost": item.real.cost,
+        "real_dividends": item.real.income,
+        "real_profit": item.real.profit,
+        "real_performance": item.real.percentage,
+        "real_annualized_performance": item.real.annualized,
+        "included_in_opening": lot[c.LOT_INCLUDED_IN_OPENING],
+        "estimated": lot[c.LOT_ESTIMATED],
+    }
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "my_wallet/wallets",
@@ -207,262 +259,21 @@ def ws_wallets(hass, connection, msg):
         current = _wallet_with_saved_units(
             entry.data, getattr(coordinator, "data", None), today=today
         )
-        invested = invested_total(entry.data, through=today)
-        total = (
-            current.total
-            if current is not None and getattr(coordinator, "last_update_success", True)
-            else None
+        valuation = wallet_valuation(
+            entry.data,
+            current,
+            today=today,
+            available=getattr(coordinator, "last_update_success", True),
         )
+        total = valuation.nominal.value
         inflation = current.inflation if current is not None else None
         expected_inflation = expected_annual_inflation(entry.data)
-        external_flows = cashflows(entry.data, through=today)
-        real_external_flows = (
-            adjusted_flows(external_flows, through=today, series=inflation)
-            if inflation is not None and external_flows is not None
-            else None
-        )
-        real_invested = (
-            -sum(amount for _, amount in real_external_flows)
-            if real_external_flows is not None
-            else None
-        )
-        real_mwr = (
-            xirr([*real_external_flows, (today, total)])
-            if real_external_flows and total is not None and total > 0
-            else None
-        )
-        positions = []
-        included = {}
-        costs = {}
-        real_costs = {}
-        incomplete_real_costs = set()
-        for lot in all_lots(entry.data, through=today):
-            symbol = lot[c.LOT_SYMBOL]
-            costs[symbol] = costs.get(symbol, 0.0) + lot[c.LOT_AMOUNT]
-            adjusted_cost = (
-                inflation.adjust(
-                    float(lot[c.LOT_AMOUNT]),
-                    date.fromisoformat(lot[c.LOT_DATE]),
-                    today,
-                )
-                if inflation is not None
-                else None
-            )
-            if adjusted_cost is not None:
-                real_costs[symbol] = real_costs.get(symbol, 0.0) + adjusted_cost
-            elif inflation is not None:
-                incomplete_real_costs.add(symbol)
-            if lot[c.LOT_INCLUDED_IN_OPENING]:
-                included[symbol] = included.get(symbol, 0.0) + lot[c.LOT_UNITS]
         start = documented_wallet_start_date(entry.data, through=today)
         start_date = start.isoformat() if start else None
-        income = {}
-        real_income = {}
-        incomplete_real_income = set()
-        real_dividend_total = 0.0 if inflation is not None else None
-        for dividend in dividends_from_data(entry.data):
-            symbol = dividend.get(c.DIVIDEND_SYMBOL)
-            effective = date.fromisoformat(
-                dividend.get(c.DIVIDEND_VALUE_DATE) or dividend[c.DIVIDEND_BOOKING_DATE]
-            )
-            if effective > today:
-                continue
-            adjusted_income = (
-                inflation.adjust(float(dividend[c.DIVIDEND_AMOUNT]), effective, today)
-                if inflation is not None
-                else None
-            )
-            if inflation is not None:
-                if adjusted_income is None or real_dividend_total is None:
-                    real_dividend_total = None
-                else:
-                    real_dividend_total += adjusted_income
-            if symbol:
-                income[symbol] = income.get(symbol, 0.0) + dividend[c.DIVIDEND_AMOUNT]
-                if adjusted_income is not None:
-                    real_income[symbol] = real_income.get(symbol, 0.0) + adjusted_income
-                elif inflation is not None:
-                    incomplete_real_income.add(symbol)
-        for valor in entry.data[c.CONF_VALORS]:
-            symbol = valor[c.VALOR_SYMBOL]
-            item = current.valors.get(symbol) if current is not None else None
-            value = item.value if item is not None else None
-            opening = float(valor[c.VALOR_AMOUNT])
-            cost_complete = abs(included.get(symbol, 0.0) - opening) <= 1e-8
-            symbol_lots = lots_for_symbol(entry.data, symbol, through=today)
-            position_start = (
-                min(lot[c.LOT_DATE] for lot in symbol_lots)
-                if symbol_lots and cost_complete
-                else None
-            )
-            profit = (
-                value + income.get(symbol, 0.0) - costs.get(symbol, 0.0)
-                if value is not None and cost_complete
-                else None
-            )
-            real_cost = (
-                real_costs.get(symbol, 0.0)
-                if cost_complete
-                and inflation is not None
-                and symbol not in incomplete_real_costs
-                else None
-            )
-            real_dividends = (
-                real_income.get(symbol, 0.0)
-                if inflation is not None and symbol not in incomplete_real_income
-                else None
-            )
-            real_profit = (
-                value + real_dividends - real_cost
-                if value is not None
-                and real_cost is not None
-                and real_dividends is not None
-                else None
-            )
-            details = []
-            dividend_flows = attributed_dividend_flows(
-                entry.data, symbol=symbol, opening_units=opening, through=today
-            )
-            current_base_price = (
-                item.quote.price * item.fx_rate
-                if item is not None and item.available
-                else None
-            )
-            for lot in symbol_lots:
-                income_flows = dividend_flows.get(lot[c.LOT_ID], [])
-                lot_income = sum(amount for _, amount in income_flows)
-                real_lot_cost = (
-                    inflation.adjust(
-                        float(lot[c.LOT_AMOUNT]),
-                        date.fromisoformat(lot[c.LOT_DATE]),
-                        today,
-                    )
-                    if inflation is not None
-                    else None
-                )
-                real_income_flows = (
-                    adjusted_flows(income_flows, through=today, series=inflation)
-                    if inflation is not None
-                    else None
-                )
-                real_lot_income = (
-                    sum(amount for _, amount in real_income_flows)
-                    if real_income_flows is not None
-                    else None
-                )
-                metrics = (
-                    lot_metrics(lot, current_base_price, today, lot_income)
-                    if current_base_price is not None
-                    else None
-                )
-                annualized = (
-                    xirr(
-                        [
-                            (
-                                date.fromisoformat(lot[c.LOT_DATE]),
-                                -float(lot[c.LOT_AMOUNT]),
-                            ),
-                            *income_flows,
-                            (today, float(metrics["current_value"])),
-                        ]
-                    )
-                    if metrics is not None
-                    else None
-                )
-                real_lot_profit = (
-                    float(metrics["current_value"]) + real_lot_income - real_lot_cost
-                    if metrics is not None
-                    and real_lot_income is not None
-                    and real_lot_cost is not None
-                    else None
-                )
-                real_annualized = (
-                    xirr(
-                        [
-                            (
-                                date.fromisoformat(lot[c.LOT_DATE]),
-                                -real_lot_cost,
-                            ),
-                            *real_income_flows,
-                            (today, float(metrics["current_value"])),
-                        ]
-                    )
-                    if metrics is not None
-                    and real_lot_cost is not None
-                    and real_income_flows is not None
-                    else None
-                )
-                details.append(
-                    {
-                        "id": lot[c.LOT_ID],
-                        "date": lot[c.LOT_DATE],
-                        "price_date": lot.get("price_date", lot[c.LOT_DATE]),
-                        "amount": lot[c.LOT_AMOUNT],
-                        "units": lot[c.LOT_UNITS],
-                        "purchase_price": lot[c.LOT_AMOUNT] / lot[c.LOT_UNITS],
-                        "current_value": metrics["current_value"]
-                        if metrics is not None
-                        else None,
-                        "dividends": lot_income,
-                        "profit": metrics["profit"] if metrics is not None else None,
-                        "performance": metrics["performance_pct"]
-                        if metrics is not None
-                        else None,
-                        "annualized_performance": annualized * 100
-                        if annualized is not None
-                        else None,
-                        "real_cost": real_lot_cost,
-                        "real_dividends": real_lot_income,
-                        "real_profit": real_lot_profit,
-                        "real_performance": (
-                            real_lot_profit / real_lot_cost * 100
-                            if real_lot_profit is not None and real_lot_cost > 0
-                            else None
-                        ),
-                        "real_annualized_performance": (
-                            real_annualized * 100
-                            if real_annualized is not None
-                            else None
-                        ),
-                        "included_in_opening": lot[c.LOT_INCLUDED_IN_OPENING],
-                        "estimated": lot[c.LOT_ESTIMATED],
-                    }
-                )
-            positions.append(
-                {
-                    "symbol": symbol,
-                    "alias": valor.get(c.VALOR_ALIAS),
-                    "units": position_units(entry.data, symbol, today),
-                    "price": item.quote.price * item.fx_rate
-                    if item is not None and item.available
-                    else None,
-                    "value": value,
-                    "cost": costs.get(symbol, 0.0) if cost_complete else None,
-                    "dividends": income.get(symbol, 0.0),
-                    "profit": profit,
-                    "performance": profit / costs[symbol] * 100
-                    if profit is not None and costs.get(symbol, 0.0) > 0
-                    else None,
-                    "real_cost": real_cost,
-                    "real_dividends": real_dividends,
-                    "real_profit": real_profit,
-                    "real_performance": (
-                        real_profit / real_cost * 100
-                        if real_profit is not None and real_cost > 0
-                        else None
-                    ),
-                    "share": value / total * 100
-                    if value is not None and total and total > 0
-                    else None,
-                    "target": valor.get(c.VALOR_TARGET_SHARE),
-                    "cost_complete": cost_complete,
-                    "start_date": position_start,
-                    "lots": details,
-                }
-            )
-        profit = (
-            total - invested if total is not None and invested is not None else None
-        )
+        positions = [
+            _position_payload(entry.data, valor, current, today=today, total=total)
+            for valor in entry.data[c.CONF_VALORS]
+        ]
         current_cash = cash_balance(entry.data, through=today)
         target = target_projection(entry.data, through=today)
         target_absolute, target_percentage = target_deviation(total, target.value)
@@ -496,11 +307,6 @@ def ws_wallets(hass, connection, msg):
             forecast["inflation_effect"] = round(
                 forecast["total"] - forecast["real_total"], 2
             )
-        real_profit = (
-            total - real_invested
-            if total is not None and real_invested is not None
-            else None
-        )
         wallets.append(
             {
                 "entry_id": entry.entry_id,
@@ -508,28 +314,18 @@ def ws_wallets(hass, connection, msg):
                 "name": entry.title or entry.data.get(c.CONF_WALLET_NAME, "My Wallet"),
                 "currency": entry.data[c.CONF_BASE_CURRENCY],
                 "start_date": start_date,
-                "invested": invested,
+                "invested": valuation.nominal.cost,
                 "cash": current_cash,
-                "dividends": dividend_total(entry.data, through=today),
-                "real_dividends": real_dividend_total,
+                "dividends": valuation.dividends,
+                "real_dividends": valuation.real_dividends,
                 "total": total,
-                "profit": profit,
-                "performance": profit / invested * 100
-                if profit is not None and invested and invested > 0
-                else None,
-                "money_weighted_return": money_weighted_return(entry.data, total, today)
-                if total is not None
-                else None,
-                "real_invested": real_invested,
-                "real_profit": real_profit,
-                "real_performance": (
-                    real_profit / real_invested * 100
-                    if real_profit is not None and real_invested and real_invested > 0
-                    else None
-                ),
-                "real_money_weighted_return": (
-                    real_mwr * 100 if real_mwr is not None else None
-                ),
+                "profit": valuation.nominal.profit,
+                "performance": valuation.nominal.percentage,
+                "money_weighted_return": valuation.nominal.annualized,
+                "real_invested": valuation.real.cost,
+                "real_profit": valuation.real.profit,
+                "real_performance": valuation.real.percentage,
+                "real_money_weighted_return": valuation.real.annualized,
                 "inflation": {
                     "available": inflation is not None,
                     "source": inflation.source if inflation is not None else None,
@@ -610,10 +406,14 @@ def ws_planned_deposit(hass, connection, msg):
         )
         return
     if data != entry.data:
-        changed = hass.config_entries.async_update_entry(entry, data=data)
+        try:
+            commit_wallet_change(
+                hass, entry, data, snapshot=entry.data, today=dt_util.now().date()
+            )
+        except ValueError as err:
+            connection.send_error(msg["id"], str(err), "Wallet was not changed")
+            return
         _state(hass)["cache"].pop(entry.entry_id, None)
-        if changed:
-            hass.config_entries.async_schedule_reload(entry.entry_id)
     connection.send_result(msg["id"], {"saved": True})
 
 
@@ -673,10 +473,14 @@ def ws_position_aliases(hass, connection, msg):
         valors.append(item)
     data = {**entry.data, c.CONF_VALORS: valors}
     if data != entry.data:
-        changed = hass.config_entries.async_update_entry(entry, data=data)
+        try:
+            commit_wallet_change(
+                hass, entry, data, snapshot=entry.data, today=dt_util.now().date()
+            )
+        except ValueError as err:
+            connection.send_error(msg["id"], str(err), "Wallet was not changed")
+            return
         _state(hass)["cache"].pop(entry.entry_id, None)
-        if changed:
-            hass.config_entries.async_schedule_reload(entry.entry_id)
     connection.send_result(
         msg["id"],
         {
@@ -935,7 +739,15 @@ async def ws_import_preview(hass, connection, msg):
             "entry_id": target.entry_id if target is not None else None,
             "snapshot": snapshot,
         }
-    connection.send_result(msg["id"], {"token": token, "summary": summary})
+    connection.send_result(
+        msg["id"],
+        {
+            "token": token,
+            "summary": summary,
+            "entry_id": target.entry_id if target is not None else None,
+            "target_name": target.title if target is not None else None,
+        },
+    )
 
 
 @websocket_api.websocket_command(
@@ -943,6 +755,7 @@ async def ws_import_preview(hass, connection, msg):
         vol.Required("type"): "my_wallet/import_commit",
         vol.Required("token"): str,
         vol.Required("confirm"): bool,
+        vol.Optional("entry_id"): str,
     }
 )
 @websocket_api.async_response
@@ -965,6 +778,11 @@ async def ws_import_commit(hass, connection, msg):
         )
         return
     if preview.get("kind") == "followup":
+        if msg.get("entry_id") != preview["entry_id"]:
+            connection.send_error(
+                msg["id"], "entry_changed", "Import target differs from the preview"
+            )
+            return
         entry = next(
             (item for item in _entries(hass) if item.entry_id == preview["entry_id"]),
             None,
@@ -974,9 +792,18 @@ async def ws_import_commit(hass, connection, msg):
                 msg["id"], "entry_changed", "Wallet changed; preview again"
             )
             return
+        try:
+            commit_wallet_change(
+                hass,
+                entry,
+                preview["data"],
+                snapshot=preview["snapshot"],
+                today=dt_util.now().date(),
+            )
+        except ValueError as err:
+            connection.send_error(msg["id"], str(err), "Wallet was not changed")
+            return
         _state(hass)["previews"].pop(msg["token"], None)
-        hass.config_entries.async_update_entry(entry, data=preview["data"])
-        hass.config_entries.async_schedule_reload(entry.entry_id)
         _state(hass)["cache"].pop(entry.entry_id, None)
         connection.send_result(msg["id"], {"entry_id": entry.entry_id})
         return
@@ -1066,8 +893,17 @@ def ws_correction_commit(hass, connection, msg):
             msg["id"], "entry_changed", "Wallet changed; preview again"
         )
         return
+    try:
+        commit_wallet_change(
+            hass,
+            entry,
+            preview["data"],
+            snapshot=preview["snapshot"],
+            today=dt_util.now().date(),
+        )
+    except ValueError as err:
+        connection.send_error(msg["id"], str(err), "Wallet was not changed")
+        return
     _state(hass)["previews"].pop(msg["token"], None)
-    hass.config_entries.async_update_entry(entry, data=preview["data"])
-    hass.config_entries.async_schedule_reload(entry.entry_id)
     _state(hass)["cache"].pop(entry.entry_id, None)
     connection.send_result(msg["id"], {"entry_id": entry.entry_id})

@@ -11,12 +11,14 @@ from typing import Any
 from uuid import uuid4
 
 from . import const as c
+from .accounting import ACCOUNTING_REVISIONS
 from .contributions import all_lots, invested_total, normalize_contributions
 from .corrections import UNIT_CORRECTIONS
 from .dividends import cash_balance, dividend_total, normalize_dividends
 from .followup_import import IMPORT_LINKS, IMPORT_RECORDS
 from .history_import import IMPORT_BATCH, MAX_IMPORT_ITEMS
-from .planning import is_plannable_deposit, planned_contributions
+from .ledger import validate_records
+from .planning import planned_contributions
 from .plans import normalize_plan
 
 BACKUP_FORMAT = "my_wallet_backup"
@@ -83,6 +85,19 @@ def _validate_preserved_metadata(
     raw: Mapping[str, Any], result: dict[str, Any]
 ) -> None:
     """Keep reconciliation/correction audit data after basic shape validation."""
+    if ACCOUNTING_REVISIONS in raw:
+        revisions = raw[ACCOUNTING_REVISIONS]
+        if not isinstance(revisions, Mapping) or len(revisions) > MAX_IMPORT_ITEMS:
+            raise ValueError("invalid_backup")
+        for symbol, revision in revisions.items():
+            if (
+                not isinstance(symbol, str)
+                or not 1 <= len(symbol) <= 32
+                or not isinstance(revision, str)
+                or not re.fullmatch(r"[0-9a-f]{32}", revision)
+            ):
+                raise ValueError("invalid_backup")
+        result[ACCOUNTING_REVISIONS] = _json_copy(revisions)
     if IMPORT_BATCH in raw:
         result[IMPORT_BATCH] = _identifier(raw[IMPORT_BATCH])
     if IMPORT_RECORDS in raw:
@@ -173,7 +188,7 @@ def prepare_backup(
         raise ValueError("invalid_backup")
 
     raw_valors = raw.get(c.CONF_VALORS)
-    if not isinstance(raw_valors, list) or not 1 <= len(raw_valors) <= 100:
+    if not isinstance(raw_valors, list) or len(raw_valors) > 100:
         raise ValueError("invalid_backup")
     valors: list[dict[str, Any]] = []
     symbols: set[str] = set()
@@ -230,34 +245,6 @@ def prepare_backup(
     for rows in (contributions, lots, dividends, plans, retired):
         _unique_ids(rows)
 
-    plan_ids = {item[c.PLAN_ID] for item in [*plans, *retired]}
-    for row in contributions:
-        if (
-            row[c.CONTRIBUTION_DATE]
-            and row[c.CONTRIBUTION_DATE] > today.isoformat()
-            and not is_plannable_deposit(row)
-        ):
-            raise ValueError("future_date")
-        if row.get(c.CONTRIBUTION_PLAN_ID) not in (None, *plan_ids):
-            raise ValueError("invalid_backup")
-        for lot in row[c.CONTRIBUTION_LOTS]:
-            if lot[c.LOT_SYMBOL] not in symbols or lot[c.LOT_DATE] > today.isoformat():
-                raise ValueError("invalid_backup")
-    for item in dividends:
-        if item.get(c.DIVIDEND_SYMBOL) not in (None, *symbols):
-            raise ValueError("invalid_backup")
-        if (
-            item[c.DIVIDEND_BOOKING_DATE] > today.isoformat()
-            or (item.get(c.DIVIDEND_VALUE_DATE) or "") > today.isoformat()
-        ):
-            raise ValueError("future_date")
-    for plan in [*plans, *retired]:
-        if any(
-            allocation[c.ALLOCATION_SYMBOL] not in symbols
-            for allocation in plan[c.PLAN_ALLOCATIONS]
-        ):
-            raise ValueError("invalid_backup")
-
     result: dict[str, Any] = {
         c.CONF_WALLET_NAME: name,
         c.CONF_BASE_CURRENCY: currency,
@@ -273,6 +260,12 @@ def prepare_backup(
         BACKUP_RESTORE_ID: backup_id,
     }
     _validate_preserved_metadata(raw, result)
+    try:
+        result = validate_records(result, today=today)
+    except ValueError as err:
+        if str(err) == "future_date":
+            raise
+        raise ValueError("invalid_backup") from err
     capital = invested_total(result, through=today) or 0.0
     summary = {
         "mode": "backup",

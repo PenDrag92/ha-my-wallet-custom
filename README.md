@@ -5,10 +5,57 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.10.1 requires **Home Assistant 2026.8 or newer**.
+Version 1.11.1 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.11.1: fixes from the refactor review
+
+Statement source links now follow stable record IDs when normalization sorts
+bookings and dividends. Latest-first statements and several bookings on the same
+day keep their correct identity during initial and overlapping imports.
+Chronological cash checks retain small credits across dates, including when a
+later purchase offsets a much larger balance.
+
+See [REVIEW-1.11.1.md](REVIEW-1.11.1.md) for the findings and verification.
+
+## 1.11.0: shared booking and valuation core
+
+Options, dashboard actions, statement reconciliation and automatic savings-plan
+bookings now share a validated transaction boundary. Purchases, deposit edits,
+dividend edits and deletions use common ledger operations. Every commit checks
+references, dates, opening quantities and intermediate cash balances against the
+snapshot that was used to prepare it.
+
+Sensors and the dashboard use the same full-precision profit, return and
+inflation calculations. Whole-position and tracked-purchase results retain their
+explicitly different scopes when opening costs are incomplete. Shared form
+schemas no longer depend on the configuration-flow controller.
+
+The stored config-entry version, backup format and existing entity identifiers
+remain unchanged. Existing historical cash deficits and opening discrepancies
+can still be repaired incrementally; confirmed historical purchases keep their
+separate confirmation workflow. Cash balances are calculated from a common event
+stream, with one chronological pass for funding checks.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries and validation commands.
+
+## 1.10.2: reliable reconciliation and accounting corrections
+
+Overlapping statement imports keep distinct purchases and ask before changing
+confirmed quantities. Existing settlement cash is included when checking a new
+statement. Changing the selected wallet clears the import preview; confirmation
+is checked against the preview's original target on the server.
+
+Changes to purchases and dividends cannot silently leave recorded purchases
+unfunded. Historical savings-plan references protect their instruments from
+removal. Corrections to existing holdings, including confirmed estimates and
+recalculations, are identified as accounting changes in day/week returns.
+
+Dividend booking and value dates must not be in the future. Backups retain the
+accounting revision and support empty or cash-only wallets. XIRR supports long
+investment histories without a numerical division-by-zero error.
 
 ## 1.10.1: readable day and week charts
 

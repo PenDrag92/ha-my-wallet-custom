@@ -13,6 +13,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
 from . import const as c
+from . import flow_schemas as ui
 from .contributions import contributions_from_data
 from .executions import (
     async_prepare_executions,
@@ -45,8 +46,6 @@ class PlanOptionsMixin:
     _plan_opening_review: bool = False
 
     async def async_step_add_plan(self, user_input=None):
-        from . import config_flow as ui
-
         if not self._valors():
             return self.async_abort(reason="no_valors")
         if self._working_base_currency is None:
@@ -91,8 +90,6 @@ class PlanOptionsMixin:
         )
 
     async def async_step_edit_plan_fields(self, user_input=None):
-        from . import config_flow as ui
-
         current = next(
             (
                 plan
@@ -170,8 +167,6 @@ class PlanOptionsMixin:
         )
 
     async def async_step_plan_opening(self, user_input=None):
-        from . import config_flow as ui
-
         fields = self._working_plan_fields
         errors = {}
         default = fields.get(c.PLAN_OPENING_CUTOFF_DATE)
@@ -259,8 +254,6 @@ class PlanOptionsMixin:
         )
 
     async def async_step_plan_allocation(self, user_input=None):
-        from . import config_flow as ui
-
         fields = self._working_plan_fields or {}
         selected = self._selected_plan_symbols or [
             valor[c.VALOR_SYMBOL] for valor in self._valors()

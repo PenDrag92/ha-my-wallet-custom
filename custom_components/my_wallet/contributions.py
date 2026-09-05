@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
-from math import isfinite
+from math import exp, fsum, isfinite, log, log1p
 from typing import Any
 from uuid import uuid4
 
@@ -439,11 +439,25 @@ def xirr(flows: Sequence[tuple[date, float]]) -> float | None:
     ):
         return None
     origin = min(flow_date for flow_date, _ in flows)
+    # Scale all discounted terms by their largest magnitude. The sign and roots
+    # of NPV are preserved without dividing by an underflowed discount factor.
+    terms = [
+        (
+            1 if value > 0 else -1,
+            log(abs(value)),
+            (flow_date - origin).days / _DAYS_PER_YEAR,
+        )
+        for flow_date, value in flows
+        if value
+    ]
 
     def npv(rate: float) -> float:
-        return sum(
-            value / (1 + rate) ** ((flow_date - origin).days / _DAYS_PER_YEAR)
-            for flow_date, value in flows
+        discount = log1p(rate)
+        exponents = [magnitude - years * discount for _, magnitude, years in terms]
+        scale = max(exponents)
+        return fsum(
+            sign * exp(exponent - scale)
+            for (sign, _, _), exponent in zip(terms, exponents, strict=True)
         )
 
     low = -0.999999
@@ -459,7 +473,7 @@ def xirr(flows: Sequence[tuple[date, float]]) -> float | None:
     for _ in range(200):
         middle = (low + high) / 2
         middle_value = npv(middle)
-        if abs(middle_value) < 1e-9:
+        if middle_value == 0 or high - low <= 1e-12 * max(1.0, abs(middle)):
             return middle
         if low_value * middle_value <= 0:
             high = middle
