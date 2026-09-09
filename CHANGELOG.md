@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.3
+
+- Fit every chart period, including full history and forecasts, to the visible
+  values instead of forcing a zero baseline. Apply the existing readable currency
+  intervals and padding to all displayed portfolio, contribution and target curves.
+- Preserve actual zero values, such as the point before a first deposit, without
+  pulling an existing portfolio's scale down to zero. Keep settlement cash on a
+  separate fitted axis and label automatic scaling in every period.
+
 ## 1.11.2
 
 - Use the shared ledger's financial revision and opening holdings for new

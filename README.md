@@ -5,10 +5,18 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.11.2 requires **Home Assistant 2026.8 or newer**.
+Version 1.11.3 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.11.3: fitted axes for every period
+
+Every history period, including full history and forecasts, now fits its axes to
+the visible curves. All displayed portfolio, contribution and target values stay
+within the scale, with rounded currency ticks and padding. Zero remains visible
+when it occurs in the data, but is no longer forced for an existing portfolio.
+Settlement cash keeps its separate fitted axis.
 
 ## 1.11.2: clearer recording diagnostics
 

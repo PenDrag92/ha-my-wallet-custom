@@ -1,7 +1,7 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.11.2";
-import { parseUnits } from "./unit-input.mjs?v=1.11.2";
-import { dailyPeriod, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.11.2";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.11.3";
+import { parseUnits } from "./unit-input.mjs?v=1.11.3";
+import { dailyPeriod, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.11.3";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -1178,7 +1178,7 @@ class MyWalletPanel extends HTMLElement {
     const colors = { value: "#157bc0", projected: "#55a2d9", invested: "#269e81", target: "#8b67c8", cash: "#c48925" };
     const legend = node("div", null, "legend");
     for (const key of mainKeys) { const item = node("span", keyLabel(key), ["projected", "target"].includes(key) ? "target" : ""); item.style.setProperty("--line", colors[key]); legend.append(item); }
-    if (intraday) legend.append(node("small", this.t("autoScale"), "hint"));
+    legend.append(node("small", this.t("autoScale"), "hint"));
     section.append(legend);
     if (!points.length) { this._notice(section, this.t("noRows")); parent.append(section); return; }
     parent.append(section);
@@ -1188,7 +1188,7 @@ class MyWalletPanel extends HTMLElement {
     const groups = [{ keys: mainKeys, height: width < 500 ? 260 : 310 }];
     if (showCash) groups.push({ keys: ["cash"], height: width < 500 ? 155 : 175 });
     for (const group of groups) {
-      group.scale = currencyScale(points.flatMap(point => group.keys.map(key => point[key])), currency, 4, { includeZero: !intraday });
+      group.scale = currencyScale(points.flatMap(point => group.keys.map(key => point[key])), currency, 4, { includeZero: false });
       group.labels = axisLabels(group.scale, this._lang, currency);
     }
     const canvas = document.createElement("canvas").getContext("2d");
