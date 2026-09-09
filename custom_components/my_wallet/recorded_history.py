@@ -78,10 +78,26 @@ def accounting_snapshot(data, *, today: date, symbol=None, sampled_at=None):
     revision = hashlib.sha256(
         json.dumps(basis, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()[:20]
+    # The legacy hash above is retained for comparisons with older recordings.
+    # New recordings use the ledger revision, plus opening units (which are not
+    # booking events). Notes, aliases and correction-log metadata are irrelevant.
+    financial_revision = hashlib.sha256(
+        json.dumps(
+            {
+                "opening": {
+                    key: float(value) for key, value in basis["opening"].items()
+                },
+                "events": stored_revision,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()[:32]
     return {
         "capital": capital,
         "income": income,
         "revision": revision,
+        "financial_revision": financial_revision,
         "sampled_at": sampled_at,
     }
 
@@ -186,6 +202,7 @@ def build_recorded_history(
         "has_gaps": False,
         "partial": False,
         "accounting_changed": False,
+        "accounting_events": [],
     }
     records = sorted(
         (r for r in records if start <= r["time"] <= end), key=lambda r: r["time"]
@@ -250,6 +267,7 @@ def build_recorded_history(
                 "cash": cash,
                 "units": _number(attrs.get(c.ATTR_AMOUNT)) if symbol else None,
                 "revision": snapshot.get("revision"),
+                "financial_revision": snapshot.get("financial_revision"),
                 "factor": factor,
                 "real_value": value * factor
                 if value is not None and factor is not None
@@ -287,13 +305,19 @@ def build_recorded_history(
     legacy = any(
         p.get("revision") is None and p.get("value") is not None for p in points
     )
-    result["accounting_changed"] = legacy and any(
-        (symbol is None or row.get("symbol") == symbol)
-        and dt_util.as_local(start).date().isoformat()
-        <= row.get("recorded_date", "")
-        <= dt_util.as_local(end).date().isoformat()
-        for row in corrections
-    )
+    if legacy:
+        dates = {
+            row["recorded_date"]
+            for row in corrections
+            if (symbol is None or row.get("symbol") == symbol)
+            and dt_util.as_local(start).date().isoformat()
+            <= row.get("recorded_date", "")
+            <= dt_util.as_local(end).date().isoformat()
+        }
+        result["accounting_events"] = [
+            {"code": "legacy_correction", "date": day} for day in sorted(dates)
+        ]
+        result["accounting_changed"] = bool(dates)
     return result
 
 

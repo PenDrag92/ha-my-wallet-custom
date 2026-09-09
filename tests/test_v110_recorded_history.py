@@ -165,6 +165,40 @@ class RecordedHistoryTests(unittest.TestCase):
             corrections=[{"recorded_date": "2026-09-02", "symbol": "AAA"}],
         )
         self.assertTrue(result["accounting_changed"])
+        self.assertEqual(
+            result["accounting_events"],
+            [{"code": "legacy_correction", "date": "2026-09-02"}],
+        )
+
+    def test_legacy_details_are_scoped_deduplicated_and_have_no_invented_time(self):
+        rows = [record(START, legacy=True), record(END, legacy=True)]
+        corrections = [
+            {"recorded_date": "2026-09-02", "symbol": "AAA", "note": "Private"},
+            {"recorded_date": "2026-09-02", "symbol": "AAA"},
+            {"recorded_date": "2026-09-01", "symbol": "AAA"},
+            {"recorded_date": "2026-09-03", "symbol": "AAA"},
+        ]
+        self.assertEqual(
+            self.build(rows, corrections=corrections)["accounting_events"],
+            [{"code": "legacy_correction", "date": "2026-09-02"}],
+        )
+        self.assertFalse(
+            self.build(rows, symbol="BBB", corrections=corrections)[
+                "accounting_changed"
+            ]
+        )
+
+    def test_both_revision_formats_survive_serialization_and_boundary_extension(self):
+        rows = [record(START), record(END - timedelta(minutes=1))]
+        rows[-1]["attributes"][history.SNAPSHOT_ATTRIBUTE]["financial_revision"] = (
+            "financial-a"
+        )
+        original = copy.deepcopy(rows)
+        points = self.build(rows)["points"]
+        self.assertIsNone(points[0]["financial_revision"])
+        self.assertEqual(points[-1]["financial_revision"], "financial-a")
+        self.assertEqual(points[-1]["revision"], "basis-a")
+        self.assertEqual(rows, original)
 
     def test_stale_start_snapshot_is_not_relabelled_as_a_fresh_opening_value(self):
         first = record(START)

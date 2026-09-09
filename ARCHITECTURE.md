@@ -74,6 +74,20 @@ for their output contract; they do not calculate returns from rounded display ro
 Missing quotes cannot produce a partial wallet total. Missing inflation coverage
 remains unavailable without suppressing otherwise valid nominal results.
 
+## Recorded accounting revisions
+
+`recorded_history.accounting_snapshot` retains the legacy `revision` marker for
+old/new snapshot comparisons and adds `financial_revision` for new recordings.
+The latter combines the ledger revision (wallet or position scope) with opening
+units; it excludes descriptions, aliases and correction-log metadata. New flows
+retain the revision while edits to existing financial events change it.
+
+The frontend prefers the financial marker only when both recordings carry it;
+otherwise it falls back to the original marker and labels discrepancies as
+uncertain legacy comparisons. Observable capital, dividend and unit changes
+remain independent safeguards. Diagnostic timestamps identify the first affected
+recording, not the exact edit time. Recorder rows are never rewritten.
+
 ## Compatibility and verification
 
 Config-entry version **7**, backup format version **1**, contribution/lot nesting,

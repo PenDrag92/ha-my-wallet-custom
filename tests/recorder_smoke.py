@@ -26,7 +26,7 @@ async def exercise(hass: HomeAssistant) -> None:
     recorder = get_instance(hass)
     await recorder.async_recorder_ready.wait()
 
-    async def sample(value, capital):
+    async def sample(value, capital, financial_revision=None):
         now = datetime.now(UTC)
         hass.states.async_set(
             ENTITY,
@@ -38,6 +38,11 @@ async def exercise(hass: HomeAssistant) -> None:
                     "capital": capital,
                     "income": 0,
                     "revision": "synthetic-basis",
+                    **(
+                        {"financial_revision": financial_revision}
+                        if financial_revision
+                        else {}
+                    ),
                     "sampled_at": now.isoformat(),
                 },
             },
@@ -48,8 +53,9 @@ async def exercise(hass: HomeAssistant) -> None:
     await sample(100, 100)
     # The reader must recover the state immediately before the selected period.
     start = datetime.now(UTC)
-    await sample(100, 100)  # Same value; only the poll timestamp changes.
-    await sample(155, 150)
+    await sample(100, 100, "financial-a")  # Upgrade with unchanged accounting.
+    await sample(100, 100, "financial-a")  # Only the poll timestamp changes.
+    await sample(155, 150, "financial-a")
 
     async def read():
         state = hass.states.get(ENTITY)
@@ -70,8 +76,11 @@ async def exercise(hass: HomeAssistant) -> None:
     result = await read()
     assert result["status"] == "ok", result
     assert result["points"][0]["timestamp"] == start.isoformat(), result
-    assert [p["value"] for p in result["points"]][:3] == [100, 100, 155], result
+    assert [p["value"] for p in result["points"]][:4] == [100, 100, 100, 155], result
     assert result["points"][-1]["invested"] == 150, result
+    assert result["points"][0]["financial_revision"] is None, result
+    assert result["points"][-1]["financial_revision"] == "financial-a", result
+    assert all(p["revision"] == "synthetic-basis" for p in result["points"]), result
     assert result["last_polled_at"], result
     assert not result["has_gaps"], result
 

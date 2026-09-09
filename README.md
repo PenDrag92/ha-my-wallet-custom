@@ -5,10 +5,23 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.11.1 requires **Home Assistant 2026.8 or newer**.
+Version 1.11.2 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.11.2: clearer recording diagnostics
+
+Day/week metrics now use financial revisions from the shared ledger. Editing
+notes or aliases, or attaching an ordinary new purchase to an edited deposit,
+does not count as a correction in new recordings. Actual financial edits still
+invalidate comparisons across the affected samples.
+
+Warnings show the observable reason and first affected recording time in the
+Home Assistant time zone. Older snapshots retain their original comparison;
+they may still flag metadata changes and cannot reveal the exact historical
+cause. A date-only correction record is never displayed with an invented time.
+No recorded history or wallet bookings are rewritten.
 
 ## 1.11.1: fixes from the refactor review
 

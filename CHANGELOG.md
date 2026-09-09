@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.11.2
+
+- Use the shared ledger's financial revision and opening holdings for new
+  Recorder snapshots. Notes, aliases and ordinary purchases attached to edited
+  deposits no longer suppress day/week metrics as false accounting corrections.
+- Show the observable reason and first affected recording time for accounting
+  discrepancies, with expandable additional entries and Home Assistant time-zone
+  formatting. Distinguish decreases in recorded capital/dividends, unit changes
+  without purchases, financial revisions and uncertain legacy comparisons.
+- Preserve the original revision marker for comparisons across the update.
+  Older recordings may still flag metadata changes; show that uncertainty and
+  date-only correction evidence without inventing edit times or rewriting data.
+- Add regression coverage for metadata edits, normal cash flows, real corrections,
+  reversals, position scope, mixed snapshot versions and recording gaps.
+
 ## 1.11.1
 
 - Match prepared statement records to their source IDs instead of their list

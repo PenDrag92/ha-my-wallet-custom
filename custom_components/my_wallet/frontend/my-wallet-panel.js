@@ -1,7 +1,7 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.11.1";
-import { parseUnits } from "./unit-input.mjs?v=1.11.1";
-import { dailyPeriod, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.11.1";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.11.2";
+import { parseUnits } from "./unit-input.mjs?v=1.11.2";
+import { dailyPeriod, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.11.2";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -10,7 +10,10 @@ const WORDS = {
     all: "Gesamt", year: "1 Jahr", six: "6 Monate", three: "3 Monate", month: "1 Monat", week: "1 Woche", day: "1 Tag", date: "Datum",
     periodStats: "Im ausgewählten Zeitraum", periodStartValue: "Wert zu Beginn", periodEndValue: "Wert am Ende", periodPurchases: "Zukäufe", periodReturn: "Rendite im Zeitraum",
     periodHint: "Einzahlungen bzw. Zukäufe werden vom Gewinn abgezogen. Die Rendite verkettet die Veränderungen zwischen den verfügbaren Bewertungen; Zuflüsse werden am Ende des jeweiligen Intervalls berücksichtigt.",
-    period_insufficient: "Für die Auswertung werden mindestens zwei Bewertungen benötigt.", period_gaps: "Im Zeitraum fehlen Bewertungen. Gewinn und Rendite bleiben deshalb leer.", period_capital: "Die aufgezeichnete Zahlungsbasis ist unvollständig. Gewinn und Rendite bleiben deshalb leer.", period_accounting: "Im Zeitraum wurde die Bestands- oder Zahlungsbasis korrigiert. Die Änderung wird nicht als Gewinn oder Einzahlung ausgegeben.",
+    period_insufficient: "Für die Auswertung werden mindestens zwei Bewertungen benötigt.", period_gaps: "Im Zeitraum fehlen Bewertungen. Gewinn und Rendite bleiben deshalb leer.", period_capital: "Die aufgezeichnete Zahlungsbasis ist unvollständig. Gewinn und Rendite bleiben deshalb leer.", period_accounting: "Die Buchungsgrundlage ist in diesem Zeitraum nicht durchgängig vergleichbar. Einzahlungen, Dividenden, Gewinn und Rendite können deshalb nicht zuverlässig ausgewiesen werden.",
+    accounting_financial_revision: "Bestand oder bestehende Buchung geändert", accounting_legacy_revision: "Ältere Aufzeichnung: Vergleich der Buchungsgrundlage verändert; genaue Ursache unbekannt (auch Textänderungen möglich)",
+    accounting_capital_reduced: "Aufgezeichnete Zahlungsbasis verringert", accounting_dividends_reduced: "Aufgezeichnete Dividendensumme verringert", accounting_units_changed: "Stückzahl ohne erfassten Zukauf geändert", accounting_legacy_correction: "Anteilskorrektur vermerkt; für diese älteren Daten ist keine Uhrzeit bekannt",
+    accountingObserved: "Erstmals im Verlauf sichtbar", accountingRecordedDate: "Korrektur vermerkt am", accountingTimeHint: "Die Uhrzeit bezeichnet die erste betroffene Aufzeichnung, nicht den genauen Bearbeitungszeitpunkt.", accountingMore: "Weitere Auffälligkeiten", accountingRemaining: "Weitere nicht angezeigte Einträge",
     recordedSource: "Quelle: gespeicherte HA-Sensorstände der damaligen Bestände. Die Linie hält den zuletzt bekannten Wert bis zur nächsten Aufzeichnung; sie ist kein Echtzeit-Kursfeed. 1 Tag zeigt die letzten 24 Stunden, 1 Woche die letzten 7 Tage.",
     recordedLoading: "Gespeicherte Sensorstände werden geladen …", lastRecorded: "Letzte Zustandsänderung", lastPolled: "Letzter gespeicherter Abruf", dailySource: "Quelle: bestätigte Tages-Schlusskurse", selectMoment: "Zeitpunkt im Verlauf auswählen",
     recorded_no_history: "Für diese Auswahl liegen noch keine HA-Aufzeichnungen vor. Prüfe, ob der Wert-Sensor aktiviert ist und vom Recorder erfasst wird. Die Monatsansicht verwendet weiterhin historische Tageskurse.",
@@ -113,7 +116,10 @@ const WORDS = {
     all: "All", year: "1 year", six: "6 months", three: "3 months", month: "1 month", week: "1 week", day: "1 day", date: "Date",
     periodStats: "Selected period", periodStartValue: "Opening value", periodEndValue: "Closing value", periodPurchases: "Purchases", periodReturn: "Period return",
     periodHint: "Deposits or purchases are deducted from gains. Returns link changes between available valuations, treating contributions as occurring at the end of each interval.",
-    period_insufficient: "At least two valuations are needed for period metrics.", period_gaps: "Valuations are missing within this period. Gain and return are unavailable.", period_capital: "The recorded capital basis is incomplete. Gain and return are unavailable.", period_accounting: "Holdings or the capital basis were corrected in this period. The change is not reported as a gain or deposit.",
+    period_insufficient: "At least two valuations are needed for period metrics.", period_gaps: "Valuations are missing within this period. Gain and return are unavailable.", period_capital: "The recorded capital basis is incomplete. Gain and return are unavailable.", period_accounting: "The accounting basis is not comparable throughout this period. Deposits, dividends, gain and return cannot be reported reliably.",
+    accounting_financial_revision: "Holdings or an existing transaction changed", accounting_legacy_revision: "Older recording: the accounting comparison changed; the exact cause is unknown (text edits are also possible)",
+    accounting_capital_reduced: "Recorded capital basis decreased", accounting_dividends_reduced: "Recorded dividend total decreased", accounting_units_changed: "Units changed without a recorded purchase", accounting_legacy_correction: "Unit correction recorded; no time is available for these older records",
+    accountingObserved: "First visible in history", accountingRecordedDate: "Correction recorded on", accountingTimeHint: "The time identifies the first affected recording, not the exact time of the edit.", accountingMore: "Further discrepancies", accountingRemaining: "Additional entries not shown",
     recordedSource: "Source: recorded HA snapshots of the holdings at that time. The line holds the last known value until the next recording; it is not a real-time price feed. 1 day covers the last 24 hours; 1 week covers the last 7 days.",
     recordedLoading: "Loading recorded sensor states …", lastRecorded: "Last state change", lastPolled: "Last recorded refresh", dailySource: "Source: confirmed daily closes", selectMoment: "Select a time in the history",
     recorded_no_history: "No HA recordings are available for this selection yet. Check that the value sensor is enabled and included in Recorder. The monthly view still uses historical daily closes.",
@@ -1052,7 +1058,7 @@ class MyWalletPanel extends HTMLElement {
     parent.append(card);
   }
   _renderPeriodStats(parent, points, recorded = null) {
-    const metrics = periodMetrics(points, { position: this._position !== "all", accountingChanged: recorded?.accounting_changed });
+    const metrics = periodMetrics(points, { position: this._position !== "all", accountingChanged: recorded?.accounting_changed, accountingEvents: recorded?.accounting_events || [] });
     const title = node("h3", this.t("periodStats"));
     parent.append(title);
     const format = value => recorded ? this._moment(value) : this.day(value);
@@ -1065,7 +1071,28 @@ class MyWalletPanel extends HTMLElement {
     this._stat(stats, this.t("profit"), this.money(metrics.gain));
     this._stat(stats, this.t("periodReturn"), this.percent(metrics.return));
     parent.append(stats);
-    if (metrics.reason) this._notice(parent, this.t(`period_${metrics.reason}`), "warning");
+    if (metrics.reason === "accounting") {
+      const warning = node("div", null, "notice warning");
+      warning.append(node("p", this.t("period_accounting")));
+      const issues = metrics.accounting_issues;
+      const detail = issue => {
+        const text = node("p", this.t(`accounting_${issue.code}`));
+        text.append(node("br"), node("span", issue.date
+          ? `${this.t("accountingRecordedDate")}: ${this.day(issue.date)}`
+          : `${this.t("accountingObserved")}: ${this._moment(issue.timestamp)}`, "hint"));
+        return text;
+      };
+      if (issues.length) warning.append(detail(issues[0]));
+      if (issues.length > 1) {
+        const more = node("details");
+        more.append(node("summary", `${this.t("accountingMore")} (${issues.length - 1})`));
+        for (const issue of issues.slice(1, 10)) more.append(detail(issue));
+        if (issues.length > 10) more.append(node("p", `${this.t("accountingRemaining")}: ${issues.length - 10}`, "hint"));
+        warning.append(more);
+      }
+      if (issues.some(issue => issue.timestamp)) warning.append(node("p", this.t("accountingTimeHint"), "hint"));
+      parent.append(warning);
+    } else if (metrics.reason) this._notice(parent, this.t(`period_${metrics.reason}`), "warning");
     parent.append(node("p", this.t("periodHint"), "hint"));
   }
   _renderChart(parent) {

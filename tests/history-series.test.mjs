@@ -5,6 +5,59 @@ import { dailyPeriod, periodMetrics, recordedPoints } from "../custom_components
 const sample = (value, invested, dividends = 0, extra = {}) => ({ value, invested, dividends, ...extra });
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
 
+test("metadata-sensitive legacy hashes do not hide returns for new recordings", () => {
+  const points = [
+    sample(100, 100, 0, { revision: "old-a", financial_revision: "same" }),
+    sample(155, 150, 0, { revision: "old-b", financial_revision: "same" }),
+  ];
+  const result = periodMetrics(points);
+  assert.equal(result.reason, null); near(result.gain, 5); near(result.capital, 50);
+  assert.deepEqual(result.accounting_issues, []);
+});
+
+test("upgrades preserve legacy comparisons without inventing a correction", () => {
+  const first = sample(100, 100, 0, { revision: "old" });
+  const next = sample(101, 100, 0, { revision: "old", financial_revision: "new", timestamp: "2026-09-09T10:00:00Z" });
+  assert.equal(periodMetrics([first, next]).reason, null);
+  const changed = periodMetrics([first, { ...next, revision: "changed" }]);
+  assert.equal(changed.reason, "accounting"); assert.equal(changed.gain, null);
+  assert.deepEqual(changed.accounting_issues, [{ code: "legacy_revision", timestamp: next.timestamp }]);
+});
+
+test("financial revisions and reversals report the first affected sample, even across gaps", () => {
+  const points = [
+    sample(100, 100, 0, { financial_revision: "a", timestamp: "2026-09-09T08:00:00Z" }),
+    sample(null, null),
+    sample(120, 100, 0, { financial_revision: "b", timestamp: "2026-09-09T09:00:00Z" }),
+    sample(100, 100, 0, { financial_revision: "c", timestamp: "2026-09-09T10:00:00Z" }),
+  ];
+  const result = periodMetrics(points);
+  assert.equal(result.reason, "accounting"); assert.equal(result.gain, null);
+  assert.deepEqual(result.accounting_issues, points.slice(2).map(p => ({ code: "financial_revision", timestamp: p.timestamp })));
+});
+
+test("observable changes give specific reasons instead of an opaque revision message", () => {
+  for (const [code, changes] of [
+    ["capital_reduced", { invested: 80 }],
+    ["dividends_reduced", { dividends: 5 }],
+    ["units_changed", { units: 12 }],
+  ]) {
+    const start = sample(100, 100, 10, { units: 10, financial_revision: "a" });
+    const end = { ...start, ...changes, financial_revision: "b", timestamp: "2026-09-09T10:00:00Z" };
+    const result = periodMetrics([start, end], { position: true });
+    assert.deepEqual(result.accounting_issues, [{ code, timestamp: end.timestamp }]);
+    assert.equal(result.capital, null); assert.equal(result.dividends, null);
+  }
+});
+
+test("legacy correction dates stay date-only and cannot be mistaken for edit timestamps", () => {
+  const result = periodMetrics([sample(100, 100), sample(110, 100)], {
+    accountingEvents: [{ code: "legacy_correction", date: "2026-09-09" }],
+  });
+  assert.equal(result.reason, "accounting"); assert.equal(result.gain, null);
+  assert.deepEqual(result.accounting_issues, [{ code: "legacy_correction", date: "2026-09-09" }]);
+});
+
 test("cash deposits do not become gains, and returns compound across intervals", () => {
   const result = periodMetrics([sample(100, 100), sample(110, 100), sample(175, 150)]);
   near(result.gain, 25); near(result.return, 25); near(result.capital, 50);
