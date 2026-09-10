@@ -5,10 +5,19 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.11.3 requires **Home Assistant 2026.8 or newer**.
+Version 1.11.4 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.11.4: consistent daily curves
+
+The green deposited-capital curve now connects its daily values with straight
+segments, matching the blue portfolio and purple target curves. Position purchase
+costs and forecast contributions follow the same presentation. Only the connecting
+lines change: amounts, booking dates, metrics and automatic scaling stay intact.
+Recorded day/week values and the separate cash chart still hold each known value
+until the next recording; missing values remain gaps.
 
 ## 1.11.3: fitted axes for every period
 

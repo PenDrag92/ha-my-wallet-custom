@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.4
+
+- Connect the deposited-capital daily values with straight segments, matching the
+  portfolio and target curves instead of drawing a staircase. Apply the same
+  presentation to position purchase costs and forecast contributions.
+- Keep all values, booking dates, period calculations and automatic axes unchanged.
+  Recorded day/week values and the separate cash chart retain their held-value
+  presentation; unavailable samples still break the line.
+
 ## 1.11.3
 
 - Fit every chart period, including full history and forecasts, to the visible

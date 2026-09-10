@@ -1,7 +1,7 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.11.3";
-import { parseUnits } from "./unit-input.mjs?v=1.11.3";
-import { dailyPeriod, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.11.3";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.11.4";
+import { parseUnits } from "./unit-input.mjs?v=1.11.4";
+import { dailyPeriod, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.11.4";
 const WORDS = {
   de: {
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
@@ -1222,7 +1222,7 @@ class MyWalletPanel extends HTMLElement {
         let path = "", active = false;
         points.forEach((point, index) => {
           if (!Number.isFinite(point[key])) { active = false; return; }
-          path += !active ? `M${x(index)} ${y(point[key])}` : !intraday && ["value", "projected", "target"].includes(key) ? `L${x(index)} ${y(point[key])}` : `H${x(index)}V${y(point[key])}`;
+          path += !active ? `M${x(index)} ${y(point[key])}` : !intraday && ["value", "projected", "target", "invested"].includes(key) ? `L${x(index)} ${y(point[key])}` : `H${x(index)}V${y(point[key])}`;
           active = true;
           if (!Number.isFinite(points[index - 1]?.[key]) && !Number.isFinite(points[index + 1]?.[key])) {
             svg.append(svgNode("circle", { cx: x(index), cy: y(point[key]), r: 3, fill: colors[key] }));
