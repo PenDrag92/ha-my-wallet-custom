@@ -51,7 +51,10 @@ async def exercise(hass: HomeAssistant) -> None:
             },
         )
         await hass.async_block_till_done()
-        await recorder.async_block_till_done()
+        # The async helper may see an empty queue while its only event is still
+        # being processed. A test barrier waits for that event's commit too
+        # (this fixture uses commit_interval=0).
+        await hass.async_add_executor_job(recorder.block_till_done)
 
     await sample(100, 100)
     # The reader must recover the state immediately before the selected period.
@@ -113,6 +116,7 @@ async def exercise(hass: HomeAssistant) -> None:
         assert part["start"] == components["start"], part
         assert part["end"] == components["end"], part
     assert components["cash"]["points"][-1]["value"] == 160, components
+    assert components["positions"]["AAA"]["points"], components
     position = components["positions"]["AAA"]["points"][-1]
     assert position["value"] == 60 and position["invested"] == 50, position
     assert position["financial_revision"] == "position-a", position
