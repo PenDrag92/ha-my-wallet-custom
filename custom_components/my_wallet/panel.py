@@ -43,7 +43,11 @@ from .inflation import (
 )
 from .models import ValorData
 from .planning import change_planned_deposit, planned_deposit_summaries
-from .recorded_history import PERIOD_DAYS, async_recorded_history
+from .recorded_history import (
+    PERIOD_DAYS,
+    async_recorded_components,
+    async_recorded_history,
+)
 from .store import commit_wallet_change
 from .target import (
     FORECAST_YEARS,
@@ -152,7 +156,7 @@ async def async_setup_panel(hass):
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.11.4",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.12.0",
         embed_iframe=False,
         require_admin=True,
     )
@@ -527,6 +531,7 @@ def ws_backup(hass, connection, msg):
         vol.Required("entry_id"): str,
         vol.Required("period"): vol.Any(*PERIOD_DAYS),
         vol.Optional("symbol"): str,
+        vol.Optional("components", default=False): bool,
     }
 )
 @websocket_api.async_response
@@ -541,9 +546,14 @@ async def ws_recorded_history(hass, connection, msg):
         connection.send_error(msg["id"], "entry_not_found", "Wallet not found")
         return
     symbol, period = msg.get("symbol"), msg["period"]
-    if period not in PERIOD_DAYS or (
-        symbol is not None
-        and symbol not in {v[c.VALOR_SYMBOL] for v in entry.data[c.CONF_VALORS]}
+    components = msg.get("components", False)
+    if (
+        (components and symbol is not None)
+        or period not in PERIOD_DAYS
+        or (
+            symbol is not None
+            and symbol not in {v[c.VALOR_SYMBOL] for v in entry.data[c.CONF_VALORS]}
+        )
     ):
         connection.send_error(
             msg["id"], "invalid_recorded_history", "Invalid history selection"
@@ -558,14 +568,18 @@ async def ws_recorded_history(hass, connection, msg):
         if (
             cached
             and cached["snapshot"] is snapshot
-            and cached["selection"] == (period, symbol)
+            and cached["selection"] == (period, symbol, components)
             and monotonic() < cached["expires"]
         ):
             connection.send_result(msg["id"], cached["result"])
             return
         try:
-            result = await async_recorded_history(
-                hass, entry, period=period, symbol=symbol
+            result = (
+                await async_recorded_components(hass, entry, period=period)
+                if components
+                else await async_recorded_history(
+                    hass, entry, period=period, symbol=symbol
+                )
             )
         except Exception:
             _LOGGER.exception("Could not read My Wallet Recorder history")
@@ -582,7 +596,7 @@ async def ws_recorded_history(hass, connection, msg):
             return
         cache[entry.entry_id] = {
             "snapshot": snapshot,
-            "selection": (period, symbol),
+            "selection": (period, symbol, components),
             "expires": monotonic() + 30,
             "result": result,
         }

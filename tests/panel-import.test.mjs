@@ -68,3 +68,49 @@ test("refresh invalidates an import when its wallet is no longer present", async
   assert.equal(panel._preview, null);
   assert.equal(panel._document, null);
 });
+
+function historyFixture() {
+  const panel = fixture();
+  panel._section = "history"; panel._period = "day"; panel._position = "all";
+  return panel;
+}
+
+test("component requests are deduplicated and stale total responses cannot replace them", async () => {
+  const panel = historyFixture(), calls = [], pending = [];
+  panel._call = async (type, data) => {
+    calls.push([type, data]); return new Promise(resolve => pending.push(resolve));
+  };
+  const total = panel._loadRecorded();
+  panel._historyView = "components";
+  const split = panel._loadRecorded();
+  await panel._loadRecorded();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1][1].components, true); assert.equal(calls[1][1].symbol, undefined);
+  pending[1]({ positions: { AAA: { points: [] } } }); await split;
+  pending[0]({ points: [{ value: 999 }] }); await total;
+  assert.ok(panel._recordedHistory.positions.AAA);
+  assert.equal(panel._recordedHistory.points, undefined);
+  await panel._loadRecorded(); assert.equal(calls.length, 2);
+});
+
+test("wallet and period switches reject pending component results, including old failures", async () => {
+  const panel = historyFixture(), pending = [];
+  panel._historyView = "components";
+  panel._call = (_type, data) => new Promise((resolve, reject) => pending.push({ data, resolve, reject }));
+  const old = panel._loadRecorded();
+  panel._selectWallet("B"); panel._period = "week";
+  const current = panel._loadRecorded();
+  pending[0].reject(new Error("old wallet unavailable")); await old;
+  pending[1].resolve({ positions: { BBB: { points: [] } } }); await current;
+  assert.equal(pending[1].data.entry_id, "B"); assert.equal(pending[1].data.period, "week");
+  assert.equal(panel._recordedError, null); assert.ok(panel._recordedHistory.positions.BBB);
+});
+
+test("single-position selection uses its own recorder scope after the split view", async () => {
+  const panel = historyFixture(), calls = [];
+  panel._historyView = "components"; panel._position = "BBB";
+  panel._call = async (_type, data) => { calls.push(data); return { points: [] }; };
+  await panel._loadRecorded();
+  assert.equal(calls[0].symbol, "BBB"); assert.equal(calls[0].components, undefined);
+  assert.equal(panel._splitHistory(), false);
+});

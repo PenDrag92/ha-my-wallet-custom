@@ -1,9 +1,42 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dailyPeriod, periodMetrics, recordedPoints } from "../custom_components/my_wallet/frontend/history-series.mjs";
+import { dailyPeriod, dailyPositionPoints, periodMetrics, recordedPoints } from "../custom_components/my_wallet/frontend/history-series.mjs";
 
 const sample = (value, invested, dividends = 0, extra = {}) => ({ value, invested, dividends, ...extra });
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
+
+test("component metrics isolate purchases and dividends while keeping the same daily window", () => {
+  const rows = [
+    { date: "2026-08-01", value: 999, positions: { AAA: 100, BBB: 200 }, position_costs: { AAA: 100, BBB: 200 }, position_dividends: { AAA: 0, BBB: 0 } },
+    { date: "2026-08-02", value: 1999, positions: { AAA: 160, BBB: 198 }, position_costs: { AAA: 150, BBB: 200 }, position_dividends: { AAA: 2, BBB: 0 } },
+  ];
+  const original = structuredClone(rows);
+  const a = dailyPositionPoints(rows, "AAA"), b = dailyPositionPoints(rows, "BBB");
+  const metrics = periodMetrics(a, { position: true });
+  assert.equal(metrics.capital, 50); assert.equal(metrics.dividends, 2); assert.equal(metrics.gain, 12); near(metrics.return, 12);
+  assert.equal(periodMetrics(b, { position: true }).gain, -2);
+  assert.deepEqual(a.map(p => p.date), b.map(p => p.date));
+  assert.deepEqual(rows, original);
+});
+
+test("component history distinguishes absent holdings, missing quotes and unknown opening holdings", () => {
+  const rows = [{ date: "2026-08-01", positions: {} }, { date: "2026-08-02", positions: { AAA: null, BBB: 5 }, position_costs: { AAA: 100 } }];
+  const a = dailyPositionPoints(rows, "AAA");
+  assert.equal(a[0].value, 0); assert.equal(a[1].value, null);
+  assert.equal(periodMetrics(a, { position: true }).gain, null);
+  assert.deepEqual(dailyPositionPoints(rows, "BBB", { unknownOpening: ["BBB"] }).map(p => p.value), [null, null]);
+});
+
+test("real component history uses per-position purchasing power and leaves missing coverage blank", () => {
+  const rows = [
+    { date: "2026-08-01", inflation_factor: 1.1, positions: { AAA: 100 }, real_positions: { AAA: 110 }, real_position_costs: { AAA: 99 }, real_position_dividends: { AAA: 2 } },
+    { date: "2026-08-02", inflation_factor: null, positions: { AAA: 120 } },
+  ];
+  const points = dailyPositionPoints(rows, "AAA", { real: true });
+  assert.deepEqual(points[0], { date: "2026-08-01", value: 110, invested: 99, dividends: 2 });
+  assert.equal(points[1].value, null); assert.equal(points[1].invested, null);
+  assert.equal(dailyPositionPoints(rows, "BBB", { real: true })[1].value, null);
+});
 
 test("metadata-sensitive legacy hashes do not hide returns for new recordings", () => {
   const points = [

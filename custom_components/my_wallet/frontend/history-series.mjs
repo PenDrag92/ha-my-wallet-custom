@@ -2,6 +2,18 @@
 const finite = Number.isFinite;
 const timestamp = point => point.timestamp || point.date;
 
+export function dailyPositionPoints(points, symbol, { real = false, unknownOpening = [] } = {}) {
+  const prefix = real ? "real_" : "";
+  return points.map(point => {
+    const read = key => Object.hasOwn(point[`${prefix}${key}`] || {}, symbol) ? point[`${prefix}${key}`][symbol] : 0;
+    // An absent position before its first purchase is zero; missing quotes or
+    // inflation coverage are not. Never substitute another position's values.
+    const missing = unknownOpening.includes(symbol) || (real && !finite(point.inflation_factor));
+    return { date: point.date, value: missing ? null : read("positions"),
+      invested: missing ? null : read("position_costs"), dividends: missing ? null : read("position_dividends") };
+  });
+}
+
 export function dailyPeriod(points, period) {
   if (!points.length || period === "all") return points;
   const months = { month: 1, three: 3, six: 6, year: 12 }[period];

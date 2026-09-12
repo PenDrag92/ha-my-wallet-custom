@@ -5,10 +5,31 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.11.4 requires **Home Assistant 2026.8 or newer**.
+Version 1.12.0 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.12.0: history by position
+
+In **History**, leave the selection on **Entire portfolio** and switch **View →
+By position** (German: **Verlauf → Darstellung → Nach Positionen**). Each security
+gets a chart with its alias, beginning/end value, purchases, dividends, gain/loss
+and flow-adjusted period return. Settlement cash has its own chart and balance
+change; internal transfers are not labelled as returns.
+
+All components use the selected time window with individually fitted currency
+axes. Curve heights are therefore not directly comparable. Cards sit side by side
+on wide screens and stack on narrow screens. The existing single-position selector
+and total view remain available. Purchasing-power adjustment applies throughout.
+
+Day/week charts read each position's own Home Assistant recordings using one exact
+time window, with at most three simultaneous database reads. Missing recordings,
+quote gaps and accounting corrections remain visible for the affected position;
+they are not reconstructed from today's holdings or another position. Monthly and
+longer views use the existing daily closes and per-position purchase history.
+The split view shows historical components, not per-position future forecasts.
+No wallet data, existing entities or stored history are changed.
 
 ## 1.11.4: consistent daily curves
 

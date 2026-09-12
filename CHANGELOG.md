@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.12.0
+
+- Add **Total / By position** to the history view. Show an individual chart for
+  every security with its alias, beginning/end value, purchases, dividends,
+  gain/loss and flow-adjusted period return.
+- Give settlement cash its own chart and balance change without presenting
+  deposits, purchases, dividends or corrections as investment returns.
+- Keep the same selected time window across components with separate fitted
+  currency axes, responsive cards and purchasing-power support. Retain the total
+  chart and existing single-position selection.
+- Read day/week components from their own Recorder entities with identical time
+  boundaries and at most three concurrent reads. Preserve missing data, gaps and
+  correction diagnostics per position. Reject stale responses after selection
+  changes and keep authenticated, config-scoped caching.
+- Reuse existing daily closes and per-position cash flows for longer periods.
+  Leave wallet configuration, entities and recorded financial data unchanged.
+
 ## 1.11.4
 
 - Connect the deposited-capital daily values with straight segments, matching the

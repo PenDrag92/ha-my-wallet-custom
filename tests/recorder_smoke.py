@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from homeassistant import bootstrap, loader
 from homeassistant.components.recorder import get_instance
@@ -16,6 +18,7 @@ from custom_components.my_wallet.recorded_history import (
     SNAPSHOT_ATTRIBUTE,
     _read_recordings,
     _state_record,
+    async_recorded_components,
 )
 
 ENTITY = "sensor.synthetic_wallet_total"
@@ -26,10 +29,10 @@ async def exercise(hass: HomeAssistant) -> None:
     recorder = get_instance(hass)
     await recorder.async_recorder_ready.wait()
 
-    async def sample(value, capital, financial_revision=None):
+    async def sample(value, capital, financial_revision=None, *, entity=ENTITY):
         now = datetime.now(UTC)
         hass.states.async_set(
-            ENTITY,
+            entity,
             value,
             {
                 "unit_of_measurement": "EUR",
@@ -90,7 +93,31 @@ async def exercise(hass: HomeAssistant) -> None:
     assert result["has_gaps"], result
     assert any(p.get("value") is None for p in result["points"]), result
     assert result["points"][-1]["value"] == 160, result
-    print("Real HA Recorder: start state, poll-only updates, cash basis and gaps OK.")
+    await sample(60, 50, "position-a", entity="sensor.synthetic_position")
+    entry = SimpleNamespace(
+        entry_id="synthetic",
+        data={"base_currency": "EUR", "valors": [{"symbol": "AAA"}, {"symbol": "BBB"}]},
+    )
+
+    def entities(_hass, _entry, symbol):
+        if symbol == "BBB":
+            return None, None, "entity_missing"
+        return ENTITY if symbol is None else "sensor.synthetic_position", None, None
+
+    with patch(
+        "custom_components.my_wallet.recorded_history._history_entities",
+        side_effect=entities,
+    ):
+        components = await async_recorded_components(hass, entry, period="day")
+    for part in (components["cash"], *components["positions"].values()):
+        assert part["start"] == components["start"], part
+        assert part["end"] == components["end"], part
+    assert components["cash"]["points"][-1]["value"] == 160, components
+    position = components["positions"]["AAA"]["points"][-1]
+    assert position["value"] == 60 and position["invested"] == 50, position
+    assert position["financial_revision"] == "position-a", position
+    assert components["positions"]["BBB"]["status"] == "entity_missing", components
+    print("Real HA Recorder: snapshots, gaps and independent component windows OK.")
 
 
 async def main() -> None:

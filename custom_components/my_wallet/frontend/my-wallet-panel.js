@@ -1,9 +1,14 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.11.4";
-import { parseUnits } from "./unit-input.mjs?v=1.11.4";
-import { dailyPeriod, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.11.4";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.12.0";
+import { parseUnits } from "./unit-input.mjs?v=1.12.0";
+import { dailyPeriod, dailyPositionPoints, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.12.0";
 const WORDS = {
   de: {
+    historyView: "Darstellung", historyTotal: "Gesamt", historyComponents: "Nach Positionen",
+    componentsHint: "Alle Positionen zeigen denselben Zeitraum mit eigener Skala. Die Höhe der Kurven ist deshalb nicht direkt vergleichbar. Gewinn und Rendite berücksichtigen Zukäufe und Dividenden.",
+    cashHistoryMissing: "Für diesen Zeitraum fehlen aufgezeichnete Kontostände.",
+    cashMovement: "Saldoänderung", cashMovementHint: "Die Saldoänderung enthält Einzahlungen, Käufe, Dividenden und mögliche Korrekturen. Sie ist kein Gewinn und keine Rendite.",
+    componentCloses: "Quelle: bestätigte Tages-Schlusskurse; fehlende Bewertungen bleiben als Lücken sichtbar.",
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
     value: "Depotwert inkl. Cash", invested: "Eingezahltes Kapital", cash: "Verrechnungskonto",
     dividends: "Dividenden", history: "Wertentwicklung", ledger: "Buchungsverlauf", plans: "Sparpläne",
@@ -110,6 +115,11 @@ const WORDS = {
     invalid_planned_deposit: "Bitte Datum, Betrag und Notiz prüfen. Der Betrag muss mindestens 0,01 betragen.", planned_date_required: "Wähle für die Planung einen Tag nach heute.", planned_deposit_locked: "Diese Einzahlung ist bereits fällig oder gebucht. Bitte die Seite aktualisieren und bei Bedarf unter „Verwalten“ korrigieren.",
   },
   en: {
+    historyView: "View", historyTotal: "Total", historyComponents: "By position",
+    componentsHint: "All positions use the same period with individual scales. Curve heights cannot be compared directly. Gains and returns account for purchases and dividends.",
+    cashHistoryMissing: "No recorded cash balances are available for this period.",
+    cashMovement: "Balance change", cashMovementHint: "The balance change includes deposits, purchases, dividends and possible corrections. It is neither a gain nor a return.",
+    componentCloses: "Source: confirmed daily closing prices; missing valuations remain gaps.",
     subtitle: "Portfolio history", wallet: "Wallet", refresh: "Refresh", settings: "Manage",
     value: "Portfolio including cash", invested: "Deposited capital", cash: "Settlement cash",
     dividends: "Dividends", history: "Value history", ledger: "Transaction history", plans: "Savings plans",
@@ -239,6 +249,9 @@ const CSS = `
   .loading:before{content:'';display:inline-block;width:14px;height:14px;border:2px solid #9daec0;border-top-color:#1878b5;border-radius:50%;animation:spin .8s linear infinite;margin-right:9px;vertical-align:middle}@keyframes spin{to{transform:rotate(360deg)}}
   .negative{color:var(--error-color,#c63c45)}.inline-action{padding:4px 8px;background:transparent}.field{display:grid;gap:5px;margin:12px 0;max-width:620px}.field label{font-size:13px;color:var(--secondary-text-color,#57667a)}.field input,.field select{width:100%}.decision{padding:12px 0;border-bottom:1px solid var(--divider-color,#e4e9ef)}.decision select{margin-top:7px;min-width:min(100%,360px)}
   input[type=file]{max-width:100%;margin:12px 0} .missing-row{display:flex;align-items:center;gap:12px;justify-content:space-between;border-bottom:1px solid var(--divider-color,#e4e9ef);padding:10px 0}.missing-row input{width:155px}
+  .component-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:18px}.component-chart{min-width:0;margin:0;padding:16px}.component-chart h3{font-size:17px;margin:0 0 12px;overflow-wrap:anywhere}.component-chart .period-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.component-chart .period-stats .stat{border:0;border-radius:0;padding:0}.component-chart .stat strong{font-size:18px;letter-spacing:0}.component-chart .stat>span{font-size:12px}.component-chart .tip{display:block;font-size:13px}.component-chart .legend{font-size:13px;gap:10px}.component-chart .legend small{flex-basis:100%}
+  @media(max-width:900px){.component-grid{grid-template-columns:1fr}}
+  @media(max-width:420px){.component-chart .period-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
   .period-stats{grid-template-columns:repeat(6,minmax(0,1fr))}.period-stats .stat{padding:14px}.period-stats .stat strong{font-size:21px;overflow-wrap:anywhere}
   @media(max-width:1100px){.overview-stats{grid-template-columns:repeat(4,minmax(0,1fr))}.period-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
   @media(max-width:700px){header{padding:12px}main{padding:14px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stats>.stat:last-child:nth-child(odd){grid-column:1/-1}.stat,.card{padding:14px}.stat strong{font-size:20px}h1{font-size:20px}.toolbar{gap:8px}.toolbar label{width:100%}.toolbar select{flex:1}.tabs{margin-left:-2px;margin-right:-2px}.selection-card{align-items:stretch;flex-direction:column;gap:12px}.selection-control{width:100%}.selection-control select{width:100%}.allocation-layout{grid-template-columns:1fr;gap:14px}.donut{max-width:240px}.alias-grid{grid-template-columns:1fr}.missing-row{align-items:flex-start;flex-direction:column}.controls{gap:8px}th,td{padding:10px 7px}}
@@ -269,6 +282,8 @@ class MyWalletPanel extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._wallets = [];
     this._period = "all";
+    this._historyView = "total";
+    this._componentDates = {};
     this._type = "all";
     this._cashLine = false;
     this._targetLine = true;
@@ -334,7 +349,14 @@ class MyWalletPanel extends HTMLElement {
   }
   _call(type, data = {}) { return this._hass.callWS({ type: `my_wallet/${type}`, ...data }); }
   _isRecordedPeriod() { return ["day", "week"].includes(this._period); }
-  _recordedKey() { return `${this._selected}:${this._position}:${this._period}`; }
+  _splitHistory() { return this._historyView === "components" && this._position === "all"; }
+  _recordedKey() { return `${this._selected}:${this._position}:${this._period}:${this._splitHistory() ? "components" : "single"}`; }
+  _setHistoryView(view) {
+    this._historyView = view;
+    this._forecastYears = 0; this._customForecastOpen = false;
+    if (this._isRecordedPeriod()) this._loadRecorded();
+    else this._render();
+  }
   _moment(value, compact = false) {
     if (!value) return "—";
     return new Intl.DateTimeFormat(this._lang, {
@@ -352,7 +374,7 @@ class MyWalletPanel extends HTMLElement {
     try {
       const data = await this._call("recorded_history", {
         entry_id: this._selected, period: this._period,
-        ...(this._position !== "all" ? { symbol: this._position } : {}),
+        ...(this._splitHistory() ? { components: true } : this._position !== "all" ? { symbol: this._position } : {}),
       });
       if (request === this._recordedRequest && key === this._recordedKey()) {
         this._recordedHistory = data; this._recordedLoadedKey = key;
@@ -367,7 +389,7 @@ class MyWalletPanel extends HTMLElement {
     }
   }
   _setPeriod(period) {
-    this._period = period; this._chartDate = null;
+    this._period = period; this._chartDate = null; this._componentDates = {};
     if (period !== "all") { this._forecastYears = 0; this._customForecastOpen = false; }
     if (this._isRecordedPeriod()) this._loadRecorded();
     else if (!this._history) this._refresh();
@@ -407,7 +429,7 @@ class MyWalletPanel extends HTMLElement {
     this._importDecisions = {};
   }
   _selectWallet(entryId) {
-    this._selected = entryId;
+    this._selected = entryId; this._componentDates = {};
     this._clearImport();
     this._loadRealPreference();
     this._position = "all";
@@ -1057,16 +1079,16 @@ class MyWalletPanel extends HTMLElement {
     card.append(list);
     parent.append(card);
   }
-  _renderPeriodStats(parent, points, recorded = null) {
-    const metrics = periodMetrics(points, { position: this._position !== "all", accountingChanged: recorded?.accounting_changed, accountingEvents: recorded?.accounting_events || [] });
+  _renderPeriodStats(parent, points, recorded = null, { position = this._position !== "all", compact = false } = {}) {
+    const metrics = periodMetrics(points, { position, accountingChanged: recorded?.accounting_changed, accountingEvents: recorded?.accounting_events || [] });
     const title = node("h3", this.t("periodStats"));
-    parent.append(title);
+    if (!compact) parent.append(title);
     const format = value => recorded ? this._moment(value) : this.day(value);
-    if (metrics.start && metrics.end) parent.append(node("p", `${format(metrics.start)} – ${format(metrics.end)}`, "hint"));
+    if (!compact && metrics.start && metrics.end) parent.append(node("p", `${format(metrics.start)} – ${format(metrics.end)}`, "hint"));
     const stats = node("div", null, "stats period-stats");
     this._stat(stats, this.t("periodStartValue"), this.money(metrics.start_value));
     this._stat(stats, this.t("periodEndValue"), this.money(metrics.end_value));
-    this._stat(stats, this.t(this._position === "all" ? "depositsLabel" : "periodPurchases"), this.money(metrics.capital));
+    this._stat(stats, this.t(position ? "periodPurchases" : "depositsLabel"), this.money(metrics.capital));
     this._stat(stats, this.t("dividends"), this.money(metrics.dividends));
     this._stat(stats, this.t("profit"), this.money(metrics.gain));
     this._stat(stats, this.t("periodReturn"), this.percent(metrics.return));
@@ -1093,16 +1115,26 @@ class MyWalletPanel extends HTMLElement {
       if (issues.some(issue => issue.timestamp)) warning.append(node("p", this.t("accountingTimeHint"), "hint"));
       parent.append(warning);
     } else if (metrics.reason) this._notice(parent, this.t(`period_${metrics.reason}`), "warning");
-    parent.append(node("p", this.t("periodHint"), "hint"));
+    if (!compact) parent.append(node("p", this.t("periodHint"), "hint"));
   }
   _renderChart(parent) {
     const section = node("section", null, "card chart");
     section.append(node("h2", this._position === "all" ? this.t("history") : `${this.t("history")} · ${this._positionLabel(this._position)}`));
     const controls = node("div", null, "controls");
-    const intraday = this._isRecordedPeriod();
+    const intraday = this._isRecordedPeriod(), split = this._splitHistory();
     const recorded = intraday && this._recordedLoadedKey === this._recordedKey() ? this._recordedHistory : null;
     for (const key of ["day", "week", "month", "three", "six", "year", "all"]) controls.append(button(this.t(key), () => this._setPeriod(key), this._period === key ? "active" : ""));
     if (this._position === "all") {
+      const views = node("div", null, "controls history-views");
+      views.append(node("span", this.t("historyView")));
+      views.setAttribute("role", "group"); views.setAttribute("aria-label", this.t("historyView"));
+      for (const [key, label] of [["total", "historyTotal"], ["components", "historyComponents"]]) {
+        const choose = button(this.t(label), () => this._setHistoryView(key), this._historyView === key ? "active" : "");
+        choose.setAttribute("aria-pressed", String(this._historyView === key)); views.append(choose);
+      }
+      section.append(views);
+    }
+    if (this._position === "all" && !split) {
       const cashLabel = node("label", this.t("cashChart")), cashCheck = node("input");
       cashCheck.type = "checkbox"; cashCheck.checked = this._cashLine;
       cashCheck.addEventListener("change", () => { this._cashLine = cashCheck.checked; this._render(); });
@@ -1115,6 +1147,7 @@ class MyWalletPanel extends HTMLElement {
       }
     }
     section.append(controls);
+    if (split) { parent.append(section); this._renderComponents(section, recorded); return; }
     if (intraday) {
       if (this._recordedLoadingKey === this._recordedKey()) this._notice(section, this.t("recordedLoading"));
       if (this._recordedError) this._notice(section, this._recordedError, "error");
@@ -1173,19 +1206,67 @@ class MyWalletPanel extends HTMLElement {
     const showCash = this._cashLine && this._position === "all";
     const showTarget = !intraday && this._targetLine && this._position === "all" && source.some(point => Number.isFinite(point.target));
     const mainKeys = ["value", ...(showProjection ? ["projected"] : []), ...(!intraday ? ["invested"] : []), ...(showTarget ? ["target"] : [])];
-    const keys = [...mainKeys, ...(showCash ? ["cash"] : [])];
     const keyLabel = key => key === "target" ? `${this.t("targetValue")} · ${this.ratio(this._history.target?.annual_return)} ${this.t("perYear")}` : key === "projected" ? this.t("portfolioForecast") : key === "invested" && showProjection ? this.t("forecastInvested") : this._position === "all" ? this.t(key) : this.t(key === "value" ? "positionValue" : "purchaseCost");
+    parent.append(section);
+    this._renderSeries(section, { points, intraday, mainKeys, keyLabel, showCash, title: section.querySelector("h2").textContent });
+  }
+  _renderComponents(section, recorded) {
+    const intraday = this._isRecordedPeriod(), wallet = this._wallet();
+    const real = this._real && wallet.inflation?.available;
+    section.append(node("p", this.t("componentsHint"), "hint"));
+    if (intraday) {
+      if (this._recordedLoadingKey === this._recordedKey()) this._notice(section, this.t("recordedLoading"));
+      if (this._recordedError) this._notice(section, this._recordedError, "error");
+      if (!recorded) return;
+    } else if (!this._history) { this._notice(section, this.t("loading")); return; }
+    const daily = intraday ? [] : dailyPeriod(this._history.points, this._period);
+    const start = intraday ? recorded.start : daily[0]?.date, end = intraday ? recorded.end : daily.at(-1)?.date;
+    const format = value => intraday ? this._moment(value) : this.day(value);
+    if (start && end) section.append(node("p", `${format(start)} – ${format(end)}`, "hint"));
+    const grid = node("div", null, "component-grid"); section.append(grid);
+    for (const symbol of [...wallet.positions.map(item => item.symbol), null]) {
+      const cash = symbol === null, title = cash ? this.t("cash") : this._positionLabel(symbol);
+      const card = node("section", null, "card chart component-chart"); card.setAttribute("aria-label", title);
+      card.append(node("h3", title)); grid.append(card);
+      const recording = intraday ? cash ? recorded.cash : recorded.positions?.[symbol] : null;
+      if (intraday) {
+        if (recording?.status !== "ok") this._notice(card, this.t(`recorded_${recording?.status || "no_history"}`), "warning");
+        if (!cash && recording?.has_gaps && !recording.partial) this._notice(card, this.t("recorded_gaps"), "warning");
+        const stamp = recording?.last_polled_at || recording?.last_recorded_at;
+        if (stamp) card.append(node("p", `${this.t(recording.last_polled_at ? "lastPolled" : "lastRecorded")}: ${this._moment(stamp)}`, "hint"));
+        if (!recording?.points?.length) continue;
+      }
+      const source = intraday ? recordedPoints(recording.points, real) : daily;
+      const points = cash ? source.map(point => ({ ...point, cash: intraday ? point.cash : real ? point.real_cash : point.cash }))
+        : intraday ? source : dailyPositionPoints(source, symbol, { real, unknownOpening: this._history.unknown_opening });
+      if (cash && !points.some(point => Number.isFinite(point.cash))) { this._notice(card, this.t("cashHistoryMissing"), "warning"); continue; }
+      if (cash && points.some(point => !Number.isFinite(point.cash))) this._notice(card, this.t("recorded_gaps"), "warning");
+      if (cash) {
+        const first = points[0]?.cash, last = points.at(-1)?.cash;
+        const stats = node("div", null, "stats period-stats");
+        this._stat(stats, this.t("periodStartValue"), this.money(first));
+        this._stat(stats, this.t("periodEndValue"), this.money(last));
+        this._stat(stats, this.t("cashMovement"), this.money(Number.isFinite(first) && Number.isFinite(last) ? last - first : null));
+        card.append(stats, node("p", this.t("cashMovementHint"), "hint"));
+      } else this._renderPeriodStats(card, points, recording, { position: true, compact: true });
+      this._renderSeries(card, { points, intraday, mainKeys: cash ? ["cash"] : intraday ? ["value"] : ["value", "invested"],
+        keyLabel: key => this.t(cash ? "cash" : key === "value" ? "positionValue" : "purchaseCost"),
+        compact: true, title, chartId: symbol === null ? "cash:" : `position:${symbol}` });
+    }
+    section.append(node("p", this.t("periodHint"), "hint"), node("p", this.t(intraday ? "recordedSource" : "componentCloses"), "hint"));
+  }
+  _renderSeries(section, { points, intraday, mainKeys, keyLabel, showCash = false, compact = false, chartId = null, title = this.t("history") }) {
+    const keys = [...mainKeys, ...(showCash ? ["cash"] : [])];
     const colors = { value: "#157bc0", projected: "#55a2d9", invested: "#269e81", target: "#8b67c8", cash: "#c48925" };
     const legend = node("div", null, "legend");
     for (const key of mainKeys) { const item = node("span", keyLabel(key), ["projected", "target"].includes(key) ? "target" : ""); item.style.setProperty("--line", colors[key]); legend.append(item); }
     legend.append(node("small", this.t("autoScale"), "hint"));
     section.append(legend);
-    if (!points.length) { this._notice(section, this.t("noRows")); parent.append(section); return; }
-    parent.append(section);
+    if (!points.length) { this._notice(section, this.t("noRows")); return; }
     const padding = parseFloat(getComputedStyle(section).paddingLeft) * 2;
     const width = Math.max(240, Math.min(1000, section.clientWidth - padding));
     const currency = this._wallet().currency;
-    const groups = [{ keys: mainKeys, height: width < 500 ? 260 : 310 }];
+    const groups = [{ keys: mainKeys, height: compact ? 230 : width < 500 ? 260 : 310 }];
     if (showCash) groups.push({ keys: ["cash"], height: width < 500 ? 155 : 175 });
     for (const group of groups) {
       group.scale = currencyScale(points.flatMap(point => group.keys.map(key => point[key])), currency, 4, { includeZero: false });
@@ -1207,7 +1288,7 @@ class MyWalletPanel extends HTMLElement {
         label.append(item, node("small", this.t("cashScale"), "hint")); section.append(label);
       }
       const y = value => bottom - (value - scale.min) / (scale.max - scale.min) * (bottom - top);
-      const svg = svgNode("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": this.t(groupIndex ? "cash" : "history") });
+      const svg = svgNode("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": groupIndex ? this.t("cash") : title });
       scale.ticks.forEach((value, index) => {
         svg.append(svgNode("line", { x1: left, x2: right, y1: y(value), y2: y(value), stroke: "var(--divider-color,#e0e6ed)", "stroke-width": 1 }));
         const label = svgNode("text", { x: left - 10, y: y(value) + 4, fill: "var(--secondary-text-color,#57667a)", "font-size": 12, "text-anchor": "end" });
@@ -1236,11 +1317,12 @@ class MyWalletPanel extends HTMLElement {
     const output = node("output", null, "tip");
     const scrub = node("input", null, "scrub");
     scrub.type = "range"; scrub.min = "0"; scrub.max = String(points.length - 1); scrub.value = scrub.max;
-    scrub.setAttribute("aria-label", this.t(intraday ? "selectMoment" : "selectDate"));
+    scrub.setAttribute("aria-label", `${this.t(intraday ? "selectMoment" : "selectDate")}: ${title}`);
     const show = index => {
       const point = points[index];
-      this._chartDate = point.timestamp || point.date;
-      const visibleKeys = intraday ? keys : keys.filter(key => Number.isFinite(point[key]));
+      if (chartId) this._componentDates[chartId] = point.timestamp || point.date;
+      else this._chartDate = point.timestamp || point.date;
+      const visibleKeys = intraday || compact ? keys : keys.filter(key => Number.isFinite(point[key]));
       output.textContent = `${intraday ? this._moment(point.timestamp) : this.day(point.date)} · ${visibleKeys.map(key => `${keyLabel(key)}: ${this.money(point[key])}`).join(" · ")}`;
       for (const cursor of cursors) { cursor.setAttribute("x1", x(index)); cursor.setAttribute("x2", x(index)); }
       scrub.value = String(index); scrub.setAttribute("aria-valuetext", output.textContent);
@@ -1255,9 +1337,10 @@ class MyWalletPanel extends HTMLElement {
       const previous = Math.max(0, low - 1), nearest = Math.abs(times[low] - targetTime) < Math.abs(times[previous] - targetTime) ? low : previous;
       show(nearest);
     });
-    const selected = points.findIndex(point => (point.timestamp || point.date) === this._chartDate);
+    const selected = points.findIndex(point => (point.timestamp || point.date) === (chartId ? this._componentDates[chartId] : this._chartDate));
     show(selected < 0 ? points.length - 1 : selected);
-    section.append(output, scrub, node("p", this.t(intraday ? "recordedSource" : "closeHint"), "hint"));
+    section.append(output, scrub);
+    if (!compact) section.append(node("p", this.t(intraday ? "recordedSource" : "closeHint"), "hint"));
   }
   _renderSummary(parent) {
     const section = node("section", null, "card"), controls = node("div", null, "controls");

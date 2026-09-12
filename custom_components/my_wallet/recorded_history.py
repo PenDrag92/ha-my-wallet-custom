@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from bisect import bisect_right
 from datetime import UTC, date, datetime, timedelta
 from math import isfinite
@@ -373,9 +374,9 @@ def _read_recordings(hass, main_id, auxiliary_id, *, start, end, **kwargs):
     )
 
 
-async def async_recorded_history(hass, entry, *, period, symbol=None):
+async def async_recorded_history(hass, entry, *, period, symbol=None, end=None):
     """Read at most two entities belonging to this config entry for 1 or 7 days."""
-    end = datetime.now(UTC)
+    end = end or datetime.now(UTC)
     start = end - timedelta(days=PERIOD_DAYS[period])
     currency = entry.data[c.CONF_BASE_CURRENCY]
     empty = build_recorded_history(
@@ -424,3 +425,41 @@ async def async_recorded_history(hass, entry, *, period, symbol=None):
     if not recorder.enabled:
         result["status"] = "recorder_disabled"
     return result
+
+
+async def async_recorded_components(hass, entry, *, period):
+    """Use one time window for every component, with at most three active reads."""
+    end = datetime.now(UTC)
+    start = end - timedelta(days=PERIOD_DAYS[period])
+    symbols = iter([None, *(v[c.VALOR_SYMBOL] for v in entry.data[c.CONF_VALORS])])
+    results = {}
+
+    async def read():
+        for symbol in symbols:
+            try:
+                results[symbol] = await async_recorded_history(
+                    hass, entry, period=period, symbol=symbol, end=end
+                )
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Could not read a My Wallet history component"
+                )
+                results[symbol] = {
+                    **build_recorded_history(
+                        [],
+                        [],
+                        start=start,
+                        end=end,
+                        currency=entry.data[c.CONF_BASE_CURRENCY],
+                        symbol=symbol,
+                    ),
+                    "status": "history_failed",
+                }
+
+    await asyncio.gather(*(read() for _ in range(3)))
+    return {
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "cash": results.pop(None),
+        "positions": results,
+    }
