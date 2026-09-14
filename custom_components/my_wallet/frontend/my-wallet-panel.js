@@ -2,8 +2,10 @@
 import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.12.0";
 import { parseUnits } from "./unit-input.mjs?v=1.12.0";
 import { dailyPeriod, dailyPositionPoints, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.12.0";
+import { WalletAssistant } from "./wallet-assistant.mjs?v=1.13.0";
 const WORDS = {
   de: {
+    navAssistant: "Assistent",
     historyView: "Darstellung", historyTotal: "Gesamt", historyComponents: "Nach Positionen",
     componentsHint: "Alle Positionen zeigen denselben Zeitraum mit eigener Skala. Die Höhe der Kurven ist deshalb nicht direkt vergleichbar. Gewinn und Rendite berücksichtigen Zukäufe und Dividenden.",
     cashHistoryMissing: "Für diesen Zeitraum fehlen aufgezeichnete Kontostände.",
@@ -115,6 +117,7 @@ const WORDS = {
     invalid_planned_deposit: "Bitte Datum, Betrag und Notiz prüfen. Der Betrag muss mindestens 0,01 betragen.", planned_date_required: "Wähle für die Planung einen Tag nach heute.", planned_deposit_locked: "Diese Einzahlung ist bereits fällig oder gebucht. Bitte die Seite aktualisieren und bei Bedarf unter „Verwalten“ korrigieren.",
   },
   en: {
+    navAssistant: "Assistant",
     historyView: "View", historyTotal: "Total", historyComponents: "By position",
     componentsHint: "All positions use the same period with individual scales. Curve heights cannot be compared directly. Gains and returns account for purchases and dividends.",
     cashHistoryMissing: "No recorded cash balances are available for this period.",
@@ -315,7 +318,7 @@ class MyWalletPanel extends HTMLElement {
     this._started = true;
     try {
       const saved = localStorage.getItem(`my-wallet:section:${this._hass.user?.id || "admin"}`);
-      if (["overview", "planning", "positions", "history", "data"].includes(saved)) this._section = saved;
+      if (["overview", "planning", "positions", "history", "data", "assistant"].includes(saved)) this._section = saved;
     } catch { /* Browser storage may be disabled. */ }
     this._resize = () => { if ((this._history || this._recordedHistory) && !this._busy && !this._importOpen && !this._correctionOpen) this._render(); };
     window.addEventListener("resize", this._resize);
@@ -415,7 +418,7 @@ class MyWalletPanel extends HTMLElement {
       if (previousSelected !== this._selected) { this._clearImport(); this._loadRealPreference(); }
       if (!this._wallet()?.inflation?.available) this._real = false;
       if (this._section === "history" && this._isRecordedPeriod()) await this._loadRecorded(true);
-      else this._history = this._selected ? await this._call("history", { entry_id: this._selected, ...forecast }) : null;
+      else if (this._section !== "assistant") this._history = this._selected ? await this._call("history", { entry_id: this._selected, ...forecast }) : null;
     } catch (err) { this._error = this._errorText(err); }
     finally {
       this._busy = false; this._render();
@@ -461,7 +464,7 @@ class MyWalletPanel extends HTMLElement {
     const tabs = node("nav", null, "tabs");
     tabs.setAttribute("role", "tablist");
     tabs.setAttribute("aria-label", "My Wallet");
-    for (const [section, label] of [["overview", "navOverview"], ["planning", "navPlanning"], ["positions", "navPositions"], ["history", "navHistory"], ["data", "navData"]]) {
+    for (const [section, label] of [["overview", "navOverview"], ["planning", "navPlanning"], ["positions", "navPositions"], ["history", "navHistory"], ["data", "navData"], ["assistant", "navAssistant"]]) {
       const tab = button(this.t(label), () => this._setSection(section));
       tab.setAttribute("role", "tab");
       tab.setAttribute("aria-selected", String(this._section === section));
@@ -547,10 +550,14 @@ class MyWalletPanel extends HTMLElement {
       main.append(warning);
     }
     this._renderNavigation(main);
-    if (this._section !== "planning") this._renderPositionSelection(main, wallet);
+    if (!["planning", "assistant"].includes(this._section)) this._renderPositionSelection(main, wallet);
     const position = wallet.positions.find(item => item.symbol === this._position);
     if (wallet.pending?.length) this._notice(main, this.t("pending"), "warning");
-    if (this._section === "overview") {
+    if (this._section === "assistant") {
+      this._assistantView ||= new WalletAssistant();
+      this._assistantView.configure({ hass: this._hass, wallet, lang: this._lang, onChange: () => this._refresh(true) });
+      main.append(this._assistantView);
+    } else if (this._section === "overview") {
       this._renderStats(main, wallet, position);
       if (!position) this._renderTargetSummary(main, wallet);
       const planning = node("div", null, "controls");

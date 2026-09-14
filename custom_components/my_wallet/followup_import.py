@@ -171,6 +171,149 @@ def _lot_matches(existing, incoming, linked_id, batches, raw_id):
     ]
 
 
+def _reserved_sources(links, raw_rows, batches):
+    """Protect known identities even when their source row arrives later."""
+    return {
+        target for source, target in links.items() if not source.startswith("document:")
+    } | {_uid(batch, raw["id"]) for raw in raw_rows for batch in batches}
+
+
+def _available_matches(matches, *, used, reserved, direct):
+    """A source may consume one original record, never another incoming row."""
+    if any(row["id"] in direct and row["id"] in used for row in matches):
+        raise ValueError("invalid_import_duplicate_match")
+    return [
+        row
+        for row in matches
+        if row["id"] not in used and (row["id"] not in reserved or row["id"] in direct)
+    ]
+
+
+def _dividend_content(row):
+    return (
+        row[c.DIVIDEND_BOOKING_DATE],
+        row.get(c.DIVIDEND_VALUE_DATE),
+        round(row[c.DIVIDEND_AMOUNT], 8),
+        row.get(c.DIVIDEND_SYMBOL, ""),
+    )
+
+
+def _reconcile_document_lots(
+    candidate, raw_rows, incoming_rows, *, batch, links, decisions, summary
+):
+    """Review purchases already stored independently by a document adapter.
+
+    Their funding group stays in place. A JSON statement can reference an
+    existing trade without moving it or adding the same units a second time.
+    """
+    document_ids = {
+        target
+        for source, target in links["lots"].items()
+        if source.startswith("document:")
+    }
+    document_lots = [
+        lot
+        for row in contributions_from_data(candidate)
+        if row[c.CONTRIBUTION_SOURCE] == c.CONTRIBUTION_SOURCE_PURCHASE
+        for lot in row[c.CONTRIBUTION_LOTS]
+        if lot[c.LOT_ID] in document_ids
+    ]
+    used, unresolved = set(), False
+    for raw, incoming in _source_pairs(raw_rows, incoming_rows, batch):
+        retained_raw, retained_lots = [], []
+        for source, lot in _source_pairs(
+            raw["purchases"], incoming[c.CONTRIBUTION_LOTS], batch
+        ):
+            linked = links["lots"].get(source["id"])
+            stable = [
+                existing for existing in document_lots if existing[c.LOT_ID] == linked
+            ]
+            matches = stable or [
+                existing
+                for existing in document_lots
+                if _lot_content(existing) == _lot_content(lot)
+            ]
+            choice = decisions.get(source["id"])
+            if not matches or (not stable and choice == "add"):
+                retained_raw.append(source)
+                retained_lots.append(lot)
+                continue
+            if not stable:
+                selected = [
+                    existing for existing in matches if existing[c.LOT_ID] == choice
+                ]
+                if len(selected) != 1:
+                    summary["choices"].append(
+                        {
+                            "id": source["id"],
+                            "kind": "ambiguous",
+                            "options": [
+                                {
+                                    "id": existing[c.LOT_ID],
+                                    "date": existing[c.LOT_DATE],
+                                    "amount": existing[c.LOT_AMOUNT],
+                                }
+                                for existing in matches
+                            ],
+                        }
+                    )
+                    unresolved = True
+                    retained_raw.append(source)
+                    retained_lots.append(lot)
+                    continue
+                matches = selected
+            current = matches[0]
+            if current[c.LOT_ID] in used:
+                raise ValueError("invalid_import_duplicate_match")
+            used.add(current[c.LOT_ID])
+            if _lot_content(current) != _lot_content(lot):
+                if choice not in {"keep", "merge"}:
+                    summary["choices"].append(
+                        {
+                            "id": source["id"],
+                            "kind": "protected",
+                            "options": ["keep", "merge"],
+                            "existing": _lot_content(current),
+                            "incoming": _lot_content(lot),
+                        }
+                    )
+                    unresolved = True
+                    retained_raw.append(source)
+                    retained_lots.append(lot)
+                    continue
+                if choice == "merge":
+                    replacement = {
+                        **lot,
+                        c.LOT_ID: current[c.LOT_ID],
+                        c.LOT_INCLUDED_IN_OPENING: current[c.LOT_INCLUDED_IN_OPENING],
+                    }
+                    for row in candidate[c.CONF_CONTRIBUTIONS]:
+                        if any(
+                            item[c.LOT_ID] == current[c.LOT_ID]
+                            for item in row[c.CONTRIBUTION_LOTS]
+                        ):
+                            row[c.CONTRIBUTION_LOTS] = [
+                                replacement
+                                if item[c.LOT_ID] == current[c.LOT_ID]
+                                else item
+                                for item in row[c.CONTRIBUTION_LOTS]
+                            ]
+                            row[c.CONTRIBUTION_MANUALLY_EDITED] = True
+                            if (
+                                row[c.CONTRIBUTION_SOURCE]
+                                == c.CONTRIBUTION_SOURCE_PURCHASE
+                            ):
+                                row[c.CONTRIBUTION_DATE] = min(
+                                    item[c.LOT_DATE]
+                                    for item in row[c.CONTRIBUTION_LOTS]
+                                )
+                    summary["updated"] += 1
+            links["lots"][source["id"]] = current[c.LOT_ID]
+        raw["purchases"] = retained_raw
+        incoming[c.CONTRIBUTION_LOTS] = retained_lots
+    return unresolved
+
+
 def _merge_contribution(
     existing,
     incoming,
@@ -349,6 +492,15 @@ async def async_prepare_followup(
         "protected": [],
         "choices": [],
     }
+    unresolved_document_lots = _reconcile_document_lots(
+        candidate,
+        validated["deposits"],
+        incoming[c.CONF_CONTRIBUTIONS],
+        batch=incoming_batch,
+        links=links,
+        decisions=decisions,
+        summary=summary,
+    )
 
     valors = list(candidate[c.CONF_VALORS])
     symbols = {row[c.VALOR_SYMBOL] for row in valors}
@@ -398,8 +550,16 @@ async def async_prepare_followup(
 
     incoming_rows = incoming[c.CONF_CONTRIBUTIONS]
     current_rows = contributions_from_data(candidate)
+    original_rows = list(current_rows)
     raw_rows = validated["deposits"]
-    unresolved = False
+    reserved_rows = _reserved_sources(links["contributions"], raw_rows, batches)
+    used_rows = set()
+    document_contributions = {
+        target
+        for source, target in links["contributions"].items()
+        if source.startswith("document:")
+    }
+    unresolved = unresolved_document_lots
     for raw, row in _source_pairs(raw_rows, incoming_rows, incoming_batch):
         raw_id = raw["id"]
         if row.get(c.CONTRIBUTION_PLAN_ID) in plan_map:
@@ -419,7 +579,7 @@ async def async_prepare_followup(
             *(_uid(batch, raw_id) for batch in batches),
         } - {None}
         matches = [
-            item for item in current_rows if item[c.CONTRIBUTION_ID] in direct_ids
+            item for item in original_rows if item[c.CONTRIBUTION_ID] in direct_ids
         ]
         if (
             not matches
@@ -428,19 +588,29 @@ async def async_prepare_followup(
         ):
             matches = [
                 item
-                for item in current_rows
+                for item in original_rows
                 if item.get(c.CONTRIBUTION_PLAN_ID) == row[c.CONTRIBUTION_PLAN_ID]
                 and item.get(c.CONTRIBUTION_SCHEDULED_DATE, "")[:7]
                 == row[c.CONTRIBUTION_SCHEDULED_DATE][:7]
             ]
         authoritative = bool(matches)
+        if authoritative:
+            direct_ids.update(item[c.CONTRIBUTION_ID] for item in matches)
         if not matches:
             matches = [
                 item
-                for item in current_rows
+                for item in original_rows
                 if _contribution_signature(item) == _contribution_signature(row)
             ]
-        if len(matches) > 1:
+        matches = _available_matches(
+            matches, used=used_rows, reserved=reserved_rows, direct=direct_ids
+        )
+        if len(matches) > 1 or (
+            not authoritative
+            and any(
+                item[c.CONTRIBUTION_ID] in document_contributions for item in matches
+            )
+        ):
             choice = decisions.get(raw_id)
             options = [
                 {
@@ -468,6 +638,7 @@ async def async_prepare_followup(
             summary["added"]["purchases"] += len(row[c.CONTRIBUTION_LOTS])
             continue
         current = matches[0]
+        used_rows.add(current[c.CONTRIBUTION_ID])
         links["contributions"][raw_id] = current[c.CONTRIBUTION_ID]
         same = _contribution_content(current) == _contribution_content(row)
         if _protected(current) and not same:
@@ -513,6 +684,16 @@ async def async_prepare_followup(
     candidate[c.CONF_CONTRIBUTIONS] = normalize_contributions(current_rows)
 
     dividends = dividends_from_data(candidate)
+    original_dividends = list(dividends)
+    reserved_dividends = _reserved_sources(
+        links["dividends"], document.get("dividends", []), batches
+    )
+    used_dividends = set()
+    document_dividends = {
+        target
+        for source, target in links["dividends"].items()
+        if source.startswith("document:")
+    }
     for raw, row in _source_pairs(
         document.get("dividends", []), incoming[c.CONF_DIVIDENDS], incoming_batch
     ):
@@ -521,7 +702,7 @@ async def async_prepare_followup(
             links["dividends"].get(raw_id),
             *(_uid(batch, raw_id) for batch in batches),
         } - {None}
-        matches = [item for item in dividends if item[c.DIVIDEND_ID] in ids]
+        matches = [item for item in original_dividends if item[c.DIVIDEND_ID] in ids]
 
         def signature(item):
             return (
@@ -531,9 +712,65 @@ async def async_prepare_followup(
             )
 
         if not matches:
-            matches = [item for item in dividends if signature(item) == signature(row)]
+            matches = [
+                item for item in original_dividends if signature(item) == signature(row)
+            ]
+        matches = _available_matches(
+            matches, used=used_dividends, reserved=reserved_dividends, direct=ids
+        )
+        if len(matches) > 1 or (
+            not any(item[c.DIVIDEND_ID] in ids for item in matches)
+            and any(item[c.DIVIDEND_ID] in document_dividends for item in matches)
+        ):
+            selected = [
+                item for item in matches if item[c.DIVIDEND_ID] == decisions.get(raw_id)
+            ]
+            if len(selected) != 1 and decisions.get(raw_id) != "add":
+                unresolved = True
+                summary["choices"].append(
+                    {
+                        "id": raw_id,
+                        "kind": "ambiguous",
+                        "options": [
+                            {
+                                "id": item[c.DIVIDEND_ID],
+                                "date": item[c.DIVIDEND_BOOKING_DATE],
+                                "amount": item[c.DIVIDEND_AMOUNT],
+                            }
+                            for item in matches
+                        ],
+                    }
+                )
+                continue
+            matches = selected
         if matches:
-            links["dividends"][raw_id] = matches[0][c.DIVIDEND_ID]
+            current = matches[0]
+            used_dividends.add(current[c.DIVIDEND_ID])
+            links["dividends"][raw_id] = current[c.DIVIDEND_ID]
+            if _dividend_content(current) != _dividend_content(row):
+                if decisions.get(raw_id) not in {"keep", "merge"}:
+                    unresolved = True
+                    summary["choices"].append(
+                        {
+                            "id": raw_id,
+                            "kind": "protected",
+                            "options": ["keep", "merge"],
+                            "existing": _dividend_content(current),
+                            "incoming": _dividend_content(row),
+                        }
+                    )
+                    continue
+                if decisions[raw_id] == "merge":
+                    replacement = {**row, c.DIVIDEND_ID: current[c.DIVIDEND_ID]}
+                    dividends = [
+                        replacement
+                        if item[c.DIVIDEND_ID] == current[c.DIVIDEND_ID]
+                        else item
+                        for item in dividends
+                    ]
+                    summary["updated"] += 1
+                    continue
+                summary["protected"].append(raw_id)
             summary["unchanged"] += 1
         else:
             dividends.append(row)

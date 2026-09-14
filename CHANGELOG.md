@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.13.0
+
+- Add an integrated Assistant tab with current portfolio facts, monthly position
+  attribution, evidence-based data-quality findings, future savings scenarios
+  and cent-exact deposit allocation.
+- Reuse a shared valuation snapshot for the panel and assistant. Scenarios start
+  at today's actual wallet value and respect dated funding, plan changes and
+  pauses without editing stored plans.
+- Add an explicitly selected, administrator-only Home Assistant LLM API per
+  wallet. Existing conversation providers can explain results and call the same
+  three read-only functions. Provider selection, active configuration, user,
+  wallet and sessions are checked on every request.
+- Add reviewed CSV and text-PDF statement adapters. Deposits, purchases and
+  dividends remain separate events with source references. PDF extraction uses
+  a selected Home Assistant AI Task entity with explicit data-transfer consent.
+  Scans and unsupported event types are rejected for review.
+- Scope document references to the user's source label. Preserve skipped events
+  for later import, protect cross-format overlap and require choices for
+  ambiguous matches. Retain source evidence through backups.
+- Fix reconciliation of equal-date/equal-amount deposits and dividends so
+  distinct records are not collapsed or silently overwritten.
+- Add separate frontend request ownership and input invalidation. Render model
+  output as text, lock document controls during review and reject expired or
+  changed-wallet previews.
+- Preserve config-entry schema 7, backup format 1 and existing entity IDs.
+  PDF parsing adds the pinned `pypdf` dependency.
+
 ## 1.12.0
 
 - Add **Total / By position** to the history view. Show an individual chart for

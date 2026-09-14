@@ -1,0 +1,4 @@
+type,id,date,amount,currency,symbol,units,value_date,note
+deposit,example-deposit-1,2026-01-02,100,EUR,,,,Synthetic external deposit
+purchase,example-purchase-1,2026-01-03,50,EUR,AAA,5,,Synthetic actual purchase
+dividend,example-dividend-1,2026-02-02,3,EUR,AAA,,2026-02-03,Synthetic net dividend
