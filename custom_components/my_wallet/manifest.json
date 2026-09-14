@@ -1,7 +1,7 @@
 {
   "domain": "my_wallet",
   "name": "My Wallet",
-  "after_dependencies": ["recorder"],
+  "after_dependencies": ["ai_task", "conversation", "recorder"],
   "codeowners": ["@PenDrag92"],
   "config_flow": true,
   "dependencies": ["frontend", "http", "panel_custom"],
@@ -9,5 +9,6 @@
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/PenDrag92/ha-my-wallet-custom/issues",
-  "version": "1.12.0"
+  "requirements": ["pypdf==6.18.1"],
+  "version": "1.13.0"
 }

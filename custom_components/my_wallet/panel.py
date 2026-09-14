@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import replace
 from pathlib import Path
 from time import monotonic
 from uuid import uuid4
@@ -41,7 +40,6 @@ from .inflation import (
     expected_annual_inflation,
     future_inflation_factor,
 )
-from .models import ValorData
 from .planning import change_planned_deposit, planned_deposit_summaries
 from .recorded_history import (
     PERIOD_DAYS,
@@ -60,6 +58,7 @@ from .target import (
     target_projection,
 )
 from .valuation import position_valuation, wallet_valuation
+from .wallet_snapshot import wallet_with_saved_units as _wallet_with_saved_units
 
 _LOGGER = logging.getLogger(__name__)
 _STATE = "my_wallet_panel"
@@ -127,6 +126,9 @@ def consume_import(hass, token: str, user_id: str):
 
 
 async def async_setup_panel(hass):
+    from .assistant_api import register_assistant_commands
+    from .document_api import async_register_commands
+
     state = _state(hass)
     if state.get("registered"):
         return
@@ -150,36 +152,19 @@ async def async_setup_panel(hass):
         ws_correction_commit,
     ):
         websocket_api.async_register_command(hass, command)
+    register_assistant_commands(hass)
+    async_register_commands(hass)
     await panel_custom.async_register_panel(
         hass,
         frontend_url_path="my-wallet",
         webcomponent_name="my-wallet-panel",
         sidebar_title="My Wallet",
         sidebar_icon="mdi:chart-timeline-variant",
-        module_url="/my_wallet_static/my-wallet-panel.js?v=1.12.0",
+        module_url="/my_wallet_static/my-wallet-panel.js?v=1.13.0",
         embed_iframe=False,
         require_admin=True,
     )
     state["registered"] = True
-
-
-def _wallet_with_saved_units(data, current, *, today):
-    """Value saved holdings using cached quotes while a reload is still pending."""
-    if current is None:
-        return None
-    valors = {}
-    for valor in data[c.CONF_VALORS]:
-        symbol = valor[c.VALOR_SYMBOL]
-        previous = current.valors.get(symbol) or ValorData(symbol, 0, 0)
-        valors[symbol] = replace(
-            previous,
-            amount=position_units(data, symbol, today),
-            opening_amount=float(valor[c.VALOR_AMOUNT]),
-            target_share=valor.get(c.VALOR_TARGET_SHARE),
-        )
-    return replace(
-        current, valors=valors, cash_balance=cash_balance(data, through=today)
-    )
 
 
 def _position_payload(data, configured, current, *, today, total):

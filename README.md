@@ -5,10 +5,38 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.12.0 requires **Home Assistant 2026.8 or newer**.
+Version 1.13.0 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.13.0: an integrated wallet assistant
+
+Open **My Wallet → Assistant** (German: **Assistent**) for:
+
+- current portfolio facts, monthly position attribution and evidence-backed
+  findings about missing data, unusual values and records worth reviewing;
+- scenarios starting with today's actual wallet value, with dated additional
+  funding, savings-plan rate changes and pauses;
+- cent-exact allocation of a new deposit against your saved target shares,
+  optionally including existing settlement cash;
+- reviewed CSV or text-PDF statements, keeping deposits, purchases and dividends
+  separate and linking extracted values to their source.
+
+Reports, calculations and the documented event CSV format work without an AI
+provider. Free-form questions use an existing Home Assistant conversation agent
+explicitly assigned to this wallet's read-only API. PDF extraction uses an
+explicitly selected AI Task entity. Both require visible permission before
+sending data to that provider. Provider credentials remain in Home Assistant.
+
+Model prose cannot write financial records. Document imports require a checked
+preview tied to the user, wallet and exact saved state. Supported documents contain
+deposits, purchases and dividends in the wallet currency; scanned PDFs, arbitrary
+broker CSV dialects, sales and corporate actions need separate adapters.
+
+The existing ledger, configuration version, backup format and entity IDs are
+preserved. See [Assistant setup and behavior](docs/ASSISTANT.md) and
+[Document import format](docs/DOCUMENT_IMPORT.md).
 
 ## 1.12.0: history by position
 
@@ -462,7 +490,7 @@ prepared import files are never part of the public source package.
   wallets without waiting for the schedule.
 - **Translations** — English, German, Polish, and Czech.
 
-No external Python dependencies — prices are fetched directly from Yahoo
+The PDF adapter uses `pypdf`; prices are fetched directly from Yahoo
 Finance's chart API and official German all-items HICP data from Eurostat's
 public dissemination API using Home Assistant's bundled `aiohttp` client.
 

@@ -31,6 +31,7 @@ jobs:
           psutil-home-assistant==0.0.1
           PyYAML==6.0.3
           ruff==0.16.5
+          pypdf==6.18.1
       - name: Ruff lint
         run: ruff check .
       - name: Ruff format
@@ -41,6 +42,10 @@ jobs:
         run: python -m tests.schema_defaults
       - name: Real Home Assistant sensor and dashboard parity
         run: python -m tests.valuation_smoke
+      - name: Real Home Assistant wallet assistant API
+        run: python -m tests.assistant_smoke
+      - name: Real Home Assistant document extraction contract
+        run: python -m tests.document_smoke
       - name: Real Home Assistant Recorder
         timeout-minutes: 3
         run: python -m tests.recorder_smoke
