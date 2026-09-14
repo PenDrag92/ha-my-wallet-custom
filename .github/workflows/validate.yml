@@ -21,11 +21,18 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
+      # Direct AI Task imports also need Conversation and Camera requirements.
+      # Keep these pins aligned with the Home Assistant version below.
       - name: Install validation dependencies
         run: >-
           python -m pip install
           bandit==1.9.4
           homeassistant==2026.8.3
+          hassil==3.11.0
+          home-assistant-intents==2026.7.30
+          PyTurboJPEG==1.8.3
+          numpy==2.3.2
+          unicode-rbnf==2.4.0
           SQLAlchemy==2.0.51
           fnv-hash-fast==2.0.3
           psutil-home-assistant==0.0.1
