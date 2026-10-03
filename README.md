@@ -5,10 +5,39 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.12.0 requires **Home Assistant 2026.8 or newer**.
+Version 1.12.1 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
+
+## 1.12.1: useful metrics despite quote gaps
+
+History metrics now use the first and last valid valuations **inside** the
+selected range. Missing boundaries are labelled **Shortened period** / **Zeitraum
+verkürzt**, with the actual evaluation dates, including in individual-position
+cards. Cash balance changes use the same rule. No missing chart values are filled
+in and no recorded data or bookings are rewritten.
+
+Missing intermediate quotes alone no longer hide gain and return. Monetary gain
+uses the change in value less recorded contributions/purchases, plus dividends
+for individual positions (portfolio cash already includes them). Only flows
+between the evaluated boundaries count. Returns still link the available
+valuations using the existing end-of-interval flow convention. If flows occur
+across a valuation gap, the card explicitly labels the return **approximate** and
+explains this timing assumption; it is not an exact time-weighted return.
+
+Unknown correction effects, incomplete boundary flows and fewer than two usable
+observations remain excluded. Financial revisions, reduced cumulative flows and
+unit corrections are checked even across gaps. Legacy date-only correction
+warnings use Home Assistant's time zone and remain conservative for any
+intersecting day. Purchasing-power calculations also require reliable inflation
+conversion of flows; missing factors are not guessed.
+
+Pending savings-plan notices now show the plan, scheduled date, reason and
+instrument aliases directly. Missing confirmed closes or historical FX rates
+are distinguished from configuration problems requiring review. The normal
+integration update retries pending calculations; this does not place trades
+with a broker or change the existing execution logic.
 
 ## 1.12.0: history by position
 

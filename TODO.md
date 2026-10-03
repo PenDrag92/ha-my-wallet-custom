@@ -1,5 +1,14 @@
 # To do
 
+- [x] Keep useful period metrics despite missing intermediate quotes in 1.12.1.
+  Trim to valid in-range endpoints and show actual evaluation dates. Preserve
+  reliable monetary gain, label returns with flows across gaps as approximations,
+  and keep unknown correction effects or incomplete flows unavailable. Preserve
+  chart gaps and Recorder data; cover nominal/real metrics, corrections inside
+  gaps, missing boundaries and individual-position cards in regression tests.
+- [x] Explain pending savings-plan bookings directly in the dashboard in 1.12.1:
+  show plan/date/reason and instrument aliases, distinguish missing market data
+  from repair-required cases, and use the correct next-execution sensor name.
 - [x] Make the allocation-difference column less crowded in 1.10.0:
   keep the signed percentage on the first line and move "too much", "too little"
   or "on target" to a smaller, muted second line, without the inline separator.
@@ -21,6 +30,7 @@
   [PR #937](https://github.com/hacs/frontend/pull/937)). My Wallet already ships
   the current Home Assistant `brand/icon.png` and `brand/logo.png`; no further
   repository-side change can replace the placeholder in HACS update cards yet.
+  Rechecked on 2026-10-03: the linked frontend PR remains open.
 - [x] Use position aliases consistently in every user-facing integration view,
   followed by the stable technical symbol, for example
   `World ETF (ABC.DE)`. Cover savings-plan selection, allocation,

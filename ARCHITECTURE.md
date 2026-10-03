@@ -113,3 +113,22 @@ historical recovery and deletion/re-execution of savings plans.
 `valuation_smoke.py` imports real Home Assistant sensor classes and compares their
 values and identifiers with the dashboard, using known balances, FX conversion,
 incomplete opening costs, missing quotes and missing inflation coverage.
+
+## Period metrics with incomplete observations
+
+The frontend evaluates first/last valid valuations within the selected window,
+without filling chart gaps or modifying Recorder data. Cumulative capital and
+income differences determine monetary gain over those boundaries. All observed
+accounting samples inside that interval, including samples without a quote, are
+checked for changed financial/legacy revisions, reduced flows and unit changes
+without a purchase. Unknown correction effects invalidate accounting metrics.
+Legacy date-only events use Home Assistant's time zone and block any intersecting
+evaluation day; an unscoped accounting-change flag remains conservative.
+
+Available valuation intervals are linked using the established end-flow return
+convention. A nonzero external flow spanning missing valuations marks the return
+as approximate. An impossible return factor may suppress return without hiding
+an otherwise reliable monetary loss. Cumulative real flows use independently
+tracked conversion segments: unknown inflation conversion invalidates comparisons
+across segments, but does not poison a later evaluable interval. Nominal bases
+remain available for correction detection. Chart source points stay unchanged.
