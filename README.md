@@ -38,6 +38,41 @@ The existing ledger, configuration version, backup format and entity IDs are
 preserved. See [Assistant setup and behavior](docs/ASSISTANT.md) and
 [Document import format](docs/DOCUMENT_IMPORT.md).
 
+Day/week history charts also mark calendar-day boundaries with dotted lines,
+using Home Assistant's time zone and actual 23/25-hour days at DST changes.
+Dates are shown where space permits, including on individual-position and cash
+charts. The 1.12.1 gap-tolerant metrics and pending-plan diagnostics are retained.
+Financial data and calculations are unchanged by the calendar grid.
+
+## 1.12.1: useful metrics despite quote gaps
+
+History metrics now use the first and last valid valuations **inside** the
+selected range. Missing boundaries are labelled **Shortened period** / **Zeitraum
+verkürzt**, with the actual evaluation dates, including in individual-position
+cards. Cash balance changes use the same rule. No missing chart values are filled
+in and no recorded data or bookings are rewritten.
+
+Missing intermediate quotes alone no longer hide gain and return. Monetary gain
+uses the change in value less recorded contributions/purchases, plus dividends
+for individual positions (portfolio cash already includes them). Only flows
+between the evaluated boundaries count. Returns still link the available
+valuations using the existing end-of-interval flow convention. If flows occur
+across a valuation gap, the card explicitly labels the return **approximate** and
+explains this timing assumption; it is not an exact time-weighted return.
+
+Unknown correction effects, incomplete boundary flows and fewer than two usable
+observations remain excluded. Financial revisions, reduced cumulative flows and
+unit corrections are checked even across gaps. Legacy date-only correction
+warnings use Home Assistant's time zone and remain conservative for any
+intersecting day. Purchasing-power calculations also require reliable inflation
+conversion of flows; missing factors are not guessed.
+
+Pending savings-plan notices now show the plan, scheduled date, reason and
+instrument aliases directly. Missing confirmed closes or historical FX rates
+are distinguished from configuration problems requiring review. The normal
+integration update retries pending calculations; this does not place trades
+with a broker or change the existing execution logic.
+
 ## 1.12.0: history by position
 
 In **History**, leave the selection on **Entire portfolio** and switch **View →

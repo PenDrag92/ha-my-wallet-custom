@@ -1,10 +1,12 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.12.0";
-import { parseUnits } from "./unit-input.mjs?v=1.12.0";
-import { dailyPeriod, dailyPositionPoints, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.12.0";
+import { dayBoundaries } from "./chart-time.mjs?v=1.13.0";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.13.0";
+import { parseUnits } from "./unit-input.mjs?v=1.13.0";
+import { dailyPeriod, dailyPositionPoints, evaluationWindow, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.13.0";
 import { WalletAssistant } from "./wallet-assistant.mjs?v=1.13.0";
 const WORDS = {
   de: {
+    dayBoundaries: "Gepunktete Linien: Tagesbeginn", dayBoundary: "Tagesbeginn",
     navAssistant: "Assistent",
     historyView: "Darstellung", historyTotal: "Gesamt", historyComponents: "Nach Positionen",
     componentsHint: "Alle Positionen zeigen denselben Zeitraum mit eigener Skala. Die Höhe der Kurven ist deshalb nicht direkt vergleichbar. Gewinn und Rendite berücksichtigen Zukäufe und Dividenden.",
@@ -17,7 +19,10 @@ const WORDS = {
     all: "Gesamt", year: "1 Jahr", six: "6 Monate", three: "3 Monate", month: "1 Monat", week: "1 Woche", day: "1 Tag", date: "Datum",
     periodStats: "Im ausgewählten Zeitraum", periodStartValue: "Wert zu Beginn", periodEndValue: "Wert am Ende", periodPurchases: "Zukäufe", periodReturn: "Rendite im Zeitraum",
     periodHint: "Einzahlungen bzw. Zukäufe werden vom Gewinn abgezogen. Die Rendite verkettet die Veränderungen zwischen den verfügbaren Bewertungen; Zuflüsse werden am Ende des jeweiligen Intervalls berücksichtigt.",
-    period_insufficient: "Für die Auswertung werden mindestens zwei Bewertungen benötigt.", period_gaps: "Im Zeitraum fehlen Bewertungen. Gewinn und Rendite bleiben deshalb leer.", period_capital: "Die aufgezeichnete Zahlungsbasis ist unvollständig. Gewinn und Rendite bleiben deshalb leer.", period_accounting: "Die Buchungsgrundlage ist in diesem Zeitraum nicht durchgängig vergleichbar. Einzahlungen, Dividenden, Gewinn und Rendite können deshalb nicht zuverlässig ausgewiesen werden.",
+    periodShortened: "Zeitraum verkürzt – ausgewertet", periodApproximate: "Rendite im Zeitraum (Näherung)",
+    periodApproximationHint: "Bei Buchungen in Kurslücken wird für die Rendite angenommen, dass die Zahlung am Ende des unbeobachteten Intervalls erfolgt ist. Die tatsächliche Rendite kann abweichen; der Gewinn in Euro berücksichtigt die erfassten Zahlungsbeträge.",
+    period_return_unavailable: "Der Gewinn lässt sich berechnen, die Rendite mit den verfügbaren Bewertungen und Zahlungszeitpunkten jedoch nicht zuverlässig bestimmen.",
+    period_insufficient: "Für die Auswertung werden mindestens zwei Bewertungen benötigt.", period_capital: "Die aufgezeichnete Zahlungsbasis ist unvollständig. Gewinn und Rendite bleiben deshalb leer.", period_accounting: "Die Buchungsgrundlage ist in diesem Zeitraum nicht durchgängig vergleichbar. Einzahlungen, Dividenden, Gewinn und Rendite können deshalb nicht zuverlässig ausgewiesen werden.",
     accounting_financial_revision: "Bestand oder bestehende Buchung geändert", accounting_legacy_revision: "Ältere Aufzeichnung: Vergleich der Buchungsgrundlage verändert; genaue Ursache unbekannt (auch Textänderungen möglich)",
     accounting_capital_reduced: "Aufgezeichnete Zahlungsbasis verringert", accounting_dividends_reduced: "Aufgezeichnete Dividendensumme verringert", accounting_units_changed: "Stückzahl ohne erfassten Zukauf geändert", accounting_legacy_correction: "Anteilskorrektur vermerkt; für diese älteren Daten ist keine Uhrzeit bekannt",
     accountingObserved: "Erstmals im Verlauf sichtbar", accountingRecordedDate: "Korrektur vermerkt am", accountingTimeHint: "Die Uhrzeit bezeichnet die erste betroffene Aufzeichnung, nicht den genauen Bearbeitungszeitpunkt.", accountingMore: "Weitere Auffälligkeiten", accountingRemaining: "Weitere nicht angezeigte Einträge",
@@ -98,7 +103,18 @@ const WORDS = {
     mergeIncoming: "Neue Angaben ausdrücklich übernehmen", addSeparate: "Als eigene Buchung hinzufügen",
     chooseMatch: "Passende vorhandene Buchung", import_currency_mismatch: "Die Währung der Datei passt nicht zu diesem Depot.",
     ambiguous_import_plan: "Ein Sparplan der Datei lässt sich nicht eindeutig zuordnen.",
-    pending: "Ausführungen warten auf Klärung. Details findest du beim Sensor „Nächste Ausführung“ und in den Sparplan-Optionen.",
+    pending: "Ausstehende Sparplanbuchungen", pendingWaiting: "Wartet auf Daten", pendingRepair: "Prüfung erforderlich", pendingAffected: "Betroffene Wertpapiere",
+    pendingRetry: "Wird beim nächsten Integrations-Update erneut geprüft. Aktuell ist keine manuelle Korrektur erforderlich.",
+    pendingCheck: "Bitte unter „Verwalten“ die Sparplan-Einstellungen prüfen. Weitere Details stehen am Sensor „Nächste Sparplanausführung“.",
+    pending_historical_price_unavailable: "Bestätigte Yahoo-Schlusskurse fehlen noch. Am Ausführungstag können sie erst nach Handelsschluss vorliegen.",
+    pending_historical_fx_unavailable: "Historische Wechselkurse für die Buchung fehlen noch.",
+    pending_entry_changed: "Das Depot wurde während der Berechnung geändert. Die Berechnung wird erneut geprüft.",
+    pending_unconfigured_symbol: "Ein verwendetes Wertpapier wurde entfernt. Bitte vor dem Nachholen der Buchung wieder hinzufügen.",
+    pending_opening_balance_conflict: "Anfangsbestand und enthaltene Kauftranchen widersprechen sich. Stückzahlen und enthaltene Käufe anhand der Abrechnungen prüfen.",
+    pending_included_units_exceeded: "Historische Käufe übersteigen den Anfangsbestand. Stichtag und Stückzahlen prüfen.",
+    pending_allocation_too_small: "Mindestens ein zugeteilter Kaufbetrag liegt unter einem Cent. Die Sparplan-Aufteilung prüfen.",
+    pending_cash_conflict: "Die Neuberechnung würde einen späteren Kauf ungedeckt lassen. Einzahlungen und Kaufbeträge prüfen.",
+    pending_unknown: "Die automatische Buchung konnte noch nicht abgeschlossen werden.",
     error: "Die Aktion konnte nicht abgeschlossen werden. Bitte erneut versuchen.",
     already_imported: "Diese Datei wurde bereits importiert. Es wurden keine weiteren Buchungen angelegt.",
     import_expired: "Die Vorschau ist abgelaufen. Bitte den Import erneut prüfen.",
@@ -117,6 +133,7 @@ const WORDS = {
     invalid_planned_deposit: "Bitte Datum, Betrag und Notiz prüfen. Der Betrag muss mindestens 0,01 betragen.", planned_date_required: "Wähle für die Planung einen Tag nach heute.", planned_deposit_locked: "Diese Einzahlung ist bereits fällig oder gebucht. Bitte die Seite aktualisieren und bei Bedarf unter „Verwalten“ korrigieren.",
   },
   en: {
+    dayBoundaries: "Dotted lines: start of day", dayBoundary: "Start of day",
     navAssistant: "Assistant",
     historyView: "View", historyTotal: "Total", historyComponents: "By position",
     componentsHint: "All positions use the same period with individual scales. Curve heights cannot be compared directly. Gains and returns account for purchases and dividends.",
@@ -129,7 +146,10 @@ const WORDS = {
     all: "All", year: "1 year", six: "6 months", three: "3 months", month: "1 month", week: "1 week", day: "1 day", date: "Date",
     periodStats: "Selected period", periodStartValue: "Opening value", periodEndValue: "Closing value", periodPurchases: "Purchases", periodReturn: "Period return",
     periodHint: "Deposits or purchases are deducted from gains. Returns link changes between available valuations, treating contributions as occurring at the end of each interval.",
-    period_insufficient: "At least two valuations are needed for period metrics.", period_gaps: "Valuations are missing within this period. Gain and return are unavailable.", period_capital: "The recorded capital basis is incomplete. Gain and return are unavailable.", period_accounting: "The accounting basis is not comparable throughout this period. Deposits, dividends, gain and return cannot be reported reliably.",
+    periodShortened: "Shortened period – evaluated", periodApproximate: "Period return (approximate)",
+    periodApproximationHint: "For flows within valuation gaps, return assumes payment at the end of the unobserved interval. Actual return may differ; monetary gain uses the recorded flow amounts.",
+    period_return_unavailable: "Monetary gain can be calculated, but the available valuations and flow timing do not support a reliable return.",
+    period_insufficient: "At least two valuations are needed for period metrics.", period_capital: "The recorded capital basis is incomplete. Gain and return are unavailable.", period_accounting: "The accounting basis is not comparable throughout this period. Deposits, dividends, gain and return cannot be reported reliably.",
     accounting_financial_revision: "Holdings or an existing transaction changed", accounting_legacy_revision: "Older recording: the accounting comparison changed; the exact cause is unknown (text edits are also possible)",
     accounting_capital_reduced: "Recorded capital basis decreased", accounting_dividends_reduced: "Recorded dividend total decreased", accounting_units_changed: "Units changed without a recorded purchase", accounting_legacy_correction: "Unit correction recorded; no time is available for these older records",
     accountingObserved: "First visible in history", accountingRecordedDate: "Correction recorded on", accountingTimeHint: "The time identifies the first affected recording, not the exact time of the edit.", accountingMore: "Further discrepancies", accountingRemaining: "Additional entries not shown",
@@ -210,7 +230,18 @@ const WORDS = {
     mergeIncoming: "Explicitly apply incoming details", addSeparate: "Add as a separate transaction",
     chooseMatch: "Matching existing transaction", import_currency_mismatch: "The file currency does not match this wallet.",
     ambiguous_import_plan: "A savings plan in the file cannot be matched unambiguously.",
-    pending: "Executions need attention. See the Next Execution sensor and savings-plan options for details.",
+    pending: "Pending savings-plan bookings", pendingWaiting: "Waiting for data", pendingRepair: "Review required", pendingAffected: "Affected instruments",
+    pendingRetry: "Will be checked again on the next integration update. No manual correction is currently needed.",
+    pendingCheck: "Check the savings-plan settings under Manage. Further details are available on the Next Savings Plan Execution sensor.",
+    pending_historical_price_unavailable: "Confirmed Yahoo closes are still missing. On the execution date they may only become available after the market closes.",
+    pending_historical_fx_unavailable: "Historical exchange rates for this booking are still missing.",
+    pending_entry_changed: "The wallet changed during calculation. The calculation will be checked again.",
+    pending_unconfigured_symbol: "An instrument used by this plan was removed. Restore it before recording the execution.",
+    pending_opening_balance_conflict: "Opening holdings and included purchase lots disagree. Check units and included purchases against your statements.",
+    pending_included_units_exceeded: "Historical purchases exceed the opening holdings. Check the cutoff date and units.",
+    pending_allocation_too_small: "At least one allocated purchase amount is below one cent. Check the plan allocation.",
+    pending_cash_conflict: "Recalculation would leave a later purchase unfunded. Check deposits and purchase amounts.",
+    pending_unknown: "The automatic booking has not yet been completed.",
     error: "The action could not be completed. Please try again.",
     already_imported: "This file was already imported. No additional transactions were created.",
     import_expired: "The preview expired. Please prepare a new preview.",
@@ -246,6 +277,7 @@ const CSS = `
   .correction-dialog{width:min(620px,calc(100vw - 28px));max-height:calc(100dvh - 28px);overflow:auto;margin:auto;padding:24px;border:1px solid var(--divider-color,#dce3eb);border-radius:12px;color:var(--primary-text-color,#182b42);background:var(--card-background-color,#fff);box-shadow:0 12px 48px #0004}.correction-dialog::backdrop{background:#0006}.correction-dialog .field>span{font-size:13px;color:var(--secondary-text-color,#57667a)}.correction-dialog input[type=text]{padding:10px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}.correction-dialog .controls{margin:18px 0 0}.correction-dialog h2{margin-bottom:6px}
   .alias-editor{margin:0 0 18px;padding:14px;border:1px solid var(--divider-color,#dce3eb);border-radius:9px;background:color-mix(in srgb,var(--primary-color,#1878b5) 4%,var(--card-background-color,#fff))}.alias-editor h3{margin:0}.alias-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px 18px;margin:12px 0}.alias-row{display:grid;grid-template-columns:minmax(90px,auto) minmax(120px,1fr);align-items:center;gap:10px}.alias-row input{width:100%;padding:9px;border:1px solid var(--divider-color,#cad3dd);border-radius:7px;background:var(--card-background-color,#fff)}tr.selected td{background:color-mix(in srgb,var(--primary-color,#1878b5) 8%,transparent)}
   .allocation-layout{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);align-items:center;gap:24px}.donut{width:min(100%,280px);margin:auto}.allocation-name{display:inline-flex;align-items:center;gap:8px}.swatch{display:inline-block;width:11px;height:11px;border-radius:3px;flex:0 0 auto}.details-title{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}.details-title .hint{font-weight:400}
+  .pending-bookings{overflow-wrap:anywhere}
   .notice{padding:12px 16px;background:color-mix(in srgb,var(--primary-color,#1878b5) 9%,var(--card-background-color,#fff));border-left:3px solid var(--primary-color,#1878b5);border-radius:5px;margin:12px 0}.warning{border-color:#c4851b;background:color-mix(in srgb,#e6ac37 12%,var(--card-background-color,#fff))}.error{border-color:#c63c45;background:color-mix(in srgb,#c63c45 9%,var(--card-background-color,#fff))}
   svg{display:block;width:100%;height:auto;touch-action:pan-y;overflow:visible}.chart{min-width:260px}.legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px}.legend span:before{content:'';display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:6px;background:var(--line)}.legend span.target:before{background:repeating-linear-gradient(90deg,var(--line) 0 7px,transparent 7px 11px)}.tip{font-variant-numeric:tabular-nums;min-height:30px;margin:10px 0}.scrub{width:100%;accent-color:#157bc0}
   .tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--divider-color,#e4e9ef);white-space:nowrap}th{font-size:12px;color:var(--secondary-text-color,#57667a)}th.num,td.num{text-align:right}td .hint{display:block;font-size:12px;max-width:500px;overflow:hidden;text-overflow:ellipsis}.badge{font-size:11px;border-radius:4px;padding:2px 5px;background:color-mix(in srgb,#dfaa34 17%,transparent);margin-left:6px}.positive{color:var(--success-color,#208461)}.planlist{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.plan{padding:12px;border:1px solid var(--divider-color,#dce3eb);border-radius:8px}.plan h3{margin-top:0}
@@ -552,7 +584,7 @@ class MyWalletPanel extends HTMLElement {
     this._renderNavigation(main);
     if (!["planning", "assistant"].includes(this._section)) this._renderPositionSelection(main, wallet);
     const position = wallet.positions.find(item => item.symbol === this._position);
-    if (wallet.pending?.length) this._notice(main, this.t("pending"), "warning");
+    if (wallet.pending?.length) this._renderPending(main, wallet);
     if (this._section === "assistant") {
       this._assistantView ||= new WalletAssistant();
       this._assistantView.configure({ hass: this._hass, wallet, lang: this._lang, onChange: () => this._refresh(true) });
@@ -1086,19 +1118,37 @@ class MyWalletPanel extends HTMLElement {
     card.append(list);
     parent.append(card);
   }
+  _renderPending(parent, wallet) {
+    const section = node("section", null, "pending-bookings");
+    section.setAttribute("aria-label", this.t("pending"));
+    section.append(node("h3", this.t("pending")));
+    for (const item of wallet.pending) {
+      const waiting = !item.repair_required && ["historical_price_unavailable", "historical_fx_unavailable", "entry_changed"].includes(item.reason);
+      const notice = node("div", null, `notice${waiting ? "" : " warning"}`);
+      const name = item.plan_name || wallet.plans?.find(plan => plan.id === item.plan_id)?.name || this.t("plans");
+      notice.append(node("strong", `${name} · ${this.day(item.scheduled_date)} · ${this.t(waiting ? "pendingWaiting" : "pendingRepair")}`));
+      const key = Object.hasOwn(WORDS.en, `pending_${item.reason}`) ? `pending_${item.reason}` : "pending_unknown";
+      notice.append(node("p", this.t(key)));
+      const symbols = [...new Set([...(item.missing_symbols || []), ...(item.affected_symbols || [])])];
+      if (symbols.length) notice.append(node("p", `${this.t("pendingAffected")}: ${symbols.map(symbol => this._positionLabel(symbol)).join(", ")}`));
+      notice.append(node("p", this.t(waiting ? "pendingRetry" : "pendingCheck"), "hint"));
+      section.append(notice);
+    }
+    parent.append(section);
+  }
   _renderPeriodStats(parent, points, recorded = null, { position = this._position !== "all", compact = false } = {}) {
-    const metrics = periodMetrics(points, { position, accountingChanged: recorded?.accounting_changed, accountingEvents: recorded?.accounting_events || [] });
+    const metrics = periodMetrics(points, { position, accountingChanged: recorded?.accounting_changed, accountingEvents: recorded?.accounting_events || [], timeZone: this._hass.config?.time_zone || "UTC" });
     const title = node("h3", this.t("periodStats"));
     if (!compact) parent.append(title);
     const format = value => recorded ? this._moment(value) : this.day(value);
-    if (!compact && metrics.start && metrics.end) parent.append(node("p", `${format(metrics.start)} – ${format(metrics.end)}`, "hint"));
+    if ((!compact || metrics.shortened) && metrics.start && metrics.end) parent.append(node("p", `${metrics.shortened ? `${this.t("periodShortened")}: ` : ""}${format(metrics.start)} – ${format(metrics.end)}`, "hint"));
     const stats = node("div", null, "stats period-stats");
     this._stat(stats, this.t("periodStartValue"), this.money(metrics.start_value));
     this._stat(stats, this.t("periodEndValue"), this.money(metrics.end_value));
     this._stat(stats, this.t(position ? "periodPurchases" : "depositsLabel"), this.money(metrics.capital));
     this._stat(stats, this.t("dividends"), this.money(metrics.dividends));
     this._stat(stats, this.t("profit"), this.money(metrics.gain));
-    this._stat(stats, this.t("periodReturn"), this.percent(metrics.return));
+    this._stat(stats, this.t(metrics.return_approximate ? "periodApproximate" : "periodReturn"), this.percent(metrics.return));
     parent.append(stats);
     if (metrics.reason === "accounting") {
       const warning = node("div", null, "notice warning");
@@ -1122,6 +1172,8 @@ class MyWalletPanel extends HTMLElement {
       if (issues.some(issue => issue.timestamp)) warning.append(node("p", this.t("accountingTimeHint"), "hint"));
       parent.append(warning);
     } else if (metrics.reason) this._notice(parent, this.t(`period_${metrics.reason}`), "warning");
+    if (metrics.return_approximate) this._notice(parent, this.t("periodApproximationHint"));
+    if (!metrics.reason && metrics.return_reason) this._notice(parent, this.t(`period_return_${metrics.return_reason}`), "warning");
     if (!compact) parent.append(node("p", this.t("periodHint"), "hint"));
   }
   _renderChart(parent) {
@@ -1249,11 +1301,13 @@ class MyWalletPanel extends HTMLElement {
       if (cash && !points.some(point => Number.isFinite(point.cash))) { this._notice(card, this.t("cashHistoryMissing"), "warning"); continue; }
       if (cash && points.some(point => !Number.isFinite(point.cash))) this._notice(card, this.t("recorded_gaps"), "warning");
       if (cash) {
-        const first = points[0]?.cash, last = points.at(-1)?.cash;
+        const window = evaluationWindow(points, "cash");
+        const first = window.points[0]?.cash, last = window.points.at(-1)?.cash;
+        if (window.shortened) card.append(node("p", `${this.t("periodShortened")}: ${format(window.points[0].timestamp || window.points[0].date)} – ${format(window.points.at(-1).timestamp || window.points.at(-1).date)}`, "hint"));
         const stats = node("div", null, "stats period-stats");
         this._stat(stats, this.t("periodStartValue"), this.money(first));
         this._stat(stats, this.t("periodEndValue"), this.money(last));
-        this._stat(stats, this.t("cashMovement"), this.money(Number.isFinite(first) && Number.isFinite(last) ? last - first : null));
+        this._stat(stats, this.t("cashMovement"), this.money(window.points.length > 1 && Number.isFinite(first) && Number.isFinite(last) ? last - first : null));
         card.append(stats, node("p", this.t("cashMovementHint"), "hint"));
       } else this._renderPeriodStats(card, points, recording, { position: true, compact: true });
       this._renderSeries(card, { points, intraday, mainKeys: cash ? ["cash"] : intraday ? ["value"] : ["value", "invested"],
@@ -1285,7 +1339,12 @@ class MyWalletPanel extends HTMLElement {
     const left = Math.min(width * .43, Math.max(60, labelWidth + 14)), right = width - 12;
     const times = points.map(point => Date.parse(point.timestamp || `${point.date}T00:00:00Z`));
     const firstTime = times[0], lastTime = times[times.length - 1];
-    const x = index => left + (times[index] - firstTime) / Math.max(1, lastTime - firstTime) * (right - left);
+    const timeX = time => left + (time - firstTime) / Math.max(1, lastTime - firstTime) * (right - left);
+    const x = index => timeX(times[index]);
+    const timeZone = this._hass.config?.time_zone || new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const boundaries = intraday ? dayBoundaries(firstTime, lastTime, timeZone) : [];
+    const dayLabel = new Intl.DateTimeFormat(this._lang, { timeZone, day: "2-digit", month: "2-digit" });
+    if (boundaries.length) legend.append(node("small", `${this.t("dayBoundaries")} (${timeZone})`, "hint"));
     const cursors = [], svgs = [];
     groups.forEach((group, groupIndex) => {
       const { scale, height } = group, top = 14, bottom = height - 36;
@@ -1301,10 +1360,30 @@ class MyWalletPanel extends HTMLElement {
         const label = svgNode("text", { x: left - 10, y: y(value) + 4, fill: "var(--secondary-text-color,#57667a)", "font-size": 12, "text-anchor": "end" });
         label.textContent = group.labels[index]; svg.append(label);
       });
-      const indices = width < 500 ? [0, points.length - 1] : [0, Math.floor((points.length - 1) / 2), points.length - 1];
+      for (const time of boundaries) {
+        const line = svgNode("line", { class: "day-boundary", x1: timeX(time), x2: timeX(time), y1: top, y2: bottom,
+          stroke: "var(--secondary-text-color,#57667a)", "stroke-opacity": .35, "stroke-width": 1,
+          "stroke-dasharray": "2 4", "vector-effect": "non-scaling-stroke" });
+        const description = svgNode("title", {});
+        description.textContent = `${this.t("dayBoundary")}: ${this._moment(new Date(time).toISOString())} (${timeZone})`;
+        line.append(description); svg.append(line);
+      }
+      const indices = intraday || width < 500 ? [0, points.length - 1] : [0, Math.floor((points.length - 1) / 2), points.length - 1];
+      const edgeLabel = index => intraday ? width < 500 && this._period !== "day" ? dayLabel.format(times[index]) : this._moment(points[index].timestamp, true) : this.day(points[index].date);
       for (const index of [...new Set(indices)]) {
         const label = svgNode("text", { x: x(index), y: bottom + 26, fill: "var(--secondary-text-color,#57667a)", "font-size": 12, "text-anchor": index === 0 ? "start" : index === points.length - 1 ? "end" : "middle" });
-        label.textContent = intraday ? this._moment(points[index].timestamp, true) : this.day(points[index].date); svg.append(label);
+        label.textContent = edgeLabel(index); svg.append(label);
+      }
+      // Keep every boundary line, but only print dates that fit between the
+      // endpoint labels. Compact position cards must not overlap their dates.
+      let labelEnd = left + canvas.measureText(edgeLabel(0)).width;
+      const labelLimit = right - canvas.measureText(edgeLabel(points.length - 1)).width - 12;
+      for (const time of boundaries) {
+        const text = dayLabel.format(time), halfWidth = canvas.measureText(text).width / 2;
+        const center = timeX(time);
+        if (center - halfWidth < labelEnd + 12 || center + halfWidth > labelLimit) continue;
+        const label = svgNode("text", { x: center, y: bottom + 26, fill: "var(--secondary-text-color,#57667a)", "font-size": 12, "text-anchor": "middle" });
+        label.textContent = text; svg.append(label); labelEnd = center + halfWidth;
       }
       for (const key of group.keys) {
         let path = "", active = false;

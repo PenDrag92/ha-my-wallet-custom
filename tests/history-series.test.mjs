@@ -1,9 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dailyPeriod, dailyPositionPoints, periodMetrics, recordedPoints } from "../custom_components/my_wallet/frontend/history-series.mjs";
+import { dailyPeriod, dailyPositionPoints, evaluationWindow, periodMetrics, recordedPoints } from "../custom_components/my_wallet/frontend/history-series.mjs";
 
 const sample = (value, invested, dividends = 0, extra = {}) => ({ value, invested, dividends, ...extra });
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
+
+test("cash boundary selection retains finite negative balances instead of hiding them", () => {
+  const result = evaluationWindow([{ cash: null }, { cash: -0.001 }, { cash: 1 }, { cash: null }], "cash");
+  assert.equal(result.shortened, true); assert.deepEqual(result.points.map(point => point.cash), [-0.001, 1]);
+});
 
 test("component metrics isolate purchases and dividends while keeping the same daily window", () => {
   const rows = [
@@ -108,7 +113,6 @@ test("position dividends count as income but portfolio cash is not counted twice
 test("missing samples and missing capital never become zero-valued investments", () => {
   for (const points of [
     [sample(null, 100), sample(110, 100)],
-    [sample(100, 100), sample(null, 100), sample(110, 100)],
     [sample(100, null), sample(110, 100)],
     [sample(100, 100), sample(Infinity, 100)],
     [sample(100, 100), sample(NaN, 100)],
@@ -116,6 +120,130 @@ test("missing samples and missing capital never become zero-valued investments",
     const result = periodMetrics(points);
     assert.equal(result.gain, null); assert.equal(result.return, null); assert.ok(result.reason);
   }
+});
+
+test("quote-only gaps retain wallet and position gain and return without filling the line", () => {
+  for (const position of [false, true]) {
+    const points = [sample(200, 175), sample(null, null, null), sample(201.4, 175)];
+    const original = structuredClone(points), result = periodMetrics(points, { position });
+    near(result.gain, 1.4); near(result.return, .7);
+    assert.equal(result.reason, null); assert.equal(result.return_approximate, false);
+    assert.equal(result.capital, 0); assert.equal(result.dividends, 0);
+    assert.deepEqual(points, original);
+  }
+});
+
+test("payments during quote gaps preserve monetary gain and label the end-flow return approximation", () => {
+  const points = [sample(100, 100), sample(null, 150, 2), sample(165, 150, 2), sample(181.5, 150, 2)];
+  const result = periodMetrics(points, { position: true });
+  near(result.capital, 50); near(result.dividends, 2); near(result.gain, 33.5);
+  near(result.return, (1.17 * 1.1 - 1) * 100);
+  assert.equal(result.return_approximate, true); assert.equal(result.reason, null);
+  const wallet = periodMetrics(points);
+  near(wallet.gain, 31.5); near(wallet.return, (1.15 * 1.1 - 1) * 100);
+});
+
+test("dividends alone in a gap approximate position return but do not add to wallet value twice", () => {
+  const points = [sample(100, 100), sample(null, null, null), sample(98, 100, 5)];
+  const position = periodMetrics(points, { position: true }), wallet = periodMetrics(points);
+  near(position.gain, 3); near(position.return, 3); assert.equal(position.return_approximate, true);
+  near(wallet.gain, -2); assert.equal(wallet.return_approximate, false);
+});
+
+test("missing endpoints select only in-range valuations and exclude earlier and later flows", () => {
+  const points = [sample(null, 0), sample(100, 100, 2), sample(160, 150, 3), sample(null, 200, 4)]
+    .map((point, i) => ({ ...point, date: `2026-09-0${i + 1}` }));
+  const result = periodMetrics(points, { position: true });
+  assert.equal(result.start, "2026-09-02"); assert.equal(result.end, "2026-09-03");
+  assert.equal(result.requested_start, "2026-09-01"); assert.equal(result.requested_end, "2026-09-04");
+  assert.equal(result.shortened, true); near(result.capital, 50); near(result.dividends, 1); near(result.gain, 11);
+  assert.equal(periodMetrics(points.slice(1, 3)).shortened, false);
+});
+
+test("no or single valid sample, invalid prices and duplicate instants never produce returns", () => {
+  for (const points of [[], [sample(null, 1)], [sample(null, 1), sample(2, 1), sample(null, 1)],
+    [sample(-1, 1), sample(2, 1)], [sample(Infinity, 1), sample(NaN, 1)],
+    [sample(100, 100, 0, { date: "2026-09-01" }), sample(110, 100, 0, { date: "2026-09-01" })]]) {
+    const result = periodMetrics(points);
+    assert.equal(result.reason, "insufficient"); assert.equal(result.gain, null); assert.equal(result.return, null);
+  }
+});
+
+test("a missing intermediate accounting sample may be bridged but missing boundary flows may not", () => {
+  const result = periodMetrics([sample(100, 100), sample(151, null), sample(160, 150)]);
+  near(result.gain, 10); near(result.return, 10); assert.equal(result.return_approximate, true);
+  for (const points of [[sample(100, null), sample(160, 150)], [sample(100, 100), sample(160, null)]]) {
+    const missing = periodMetrics(points);
+    assert.equal(missing.reason, "capital"); assert.equal(missing.gain, null); assert.equal(missing.return, null);
+  }
+});
+
+test("unit corrections and reduced cumulative flows across empty gaps never count as profit", () => {
+  for (const [code, end] of [
+    ["capital_reduced", sample(120, 80, 10, { units: 10 })],
+    ["dividends_reduced", sample(120, 100, 5, { units: 10 })],
+    ["units_changed", sample(120, 100, 10, { units: 12 })],
+  ]) {
+    const result = periodMetrics([sample(100, 100, 10, { units: 10 }), sample(null, null, null), end], { position: true });
+    assert.equal(result.reason, "accounting"); assert.equal(result.gain, null);
+    assert.equal(result.accounting_issues[0].code, code);
+  }
+});
+
+test("corrections observed inside gaps are detected even if the final basis was restored", () => {
+  const points = [sample(100, 100, 0, { financial_revision: "a" }), sample(null, 110, 0, { financial_revision: "b" }), sample(120, 100, 0, { financial_revision: "a" })];
+  const result = periodMetrics(points);
+  assert.equal(result.reason, "accounting"); assert.equal(result.accounting_issues.length, 2); assert.equal(result.return, null);
+});
+
+test("partial accounting samples do not erase earlier reliable revision or unit evidence", () => {
+  const units = periodMetrics([sample(100, 100, 0, { units: 10 }), sample(null, null, 0, { units: 12 }), sample(120, 100, 0, { units: 12 })], { position: true });
+  assert.equal(units.reason, "accounting"); assert.equal(units.accounting_issues[0].code, "units_changed");
+  const revisions = periodMetrics([sample(100, 100, 0, { revision: "legacy", financial_revision: "a" }),
+    sample(null, null, 0, { revision: "legacy" }), sample(120, 100, 0, { revision: "legacy", financial_revision: "b" })]);
+  assert.equal(revisions.reason, "accounting"); assert.equal(revisions.accounting_issues[0].code, "financial_revision");
+});
+
+test("legacy events outside trimmed dates do not block metrics; overlapping local dates still do", () => {
+  const points = [sample(null, null), sample(100, 100), sample(110, 100), sample(null, null)]
+    .map((point, i) => ({ ...point, timestamp: `2026-09-0${i + 1}T23:30:00Z` }));
+  const options = { accountingChanged: true, timeZone: "Europe/Berlin", accountingEvents: [{ code: "legacy_correction", date: "2026-09-02" }] };
+  const outside = periodMetrics(points, options);
+  assert.equal(outside.reason, null); near(outside.gain, 10);
+  const inside = periodMetrics(points, { ...options, accountingEvents: [{ code: "legacy_correction", date: "2026-09-04" }] });
+  assert.equal(inside.reason, "accounting"); assert.equal(inside.gain, null);
+});
+
+test("impossible end-flow return is withheld while reliable monetary loss stays available", () => {
+  const result = periodMetrics([sample(100, 100), sample(null, null), sample(10, 300)]);
+  near(result.gain, -290); assert.equal(result.return, null);
+  assert.equal(result.reason, null); assert.equal(result.return_reason, "unavailable");
+  assert.equal(result.return_approximate, false);
+});
+
+test("inflation-adjusted accounting survives empty gaps and missing starting samples", () => {
+  const points = [sample(null, null, null), sample(100, 100, 0, { real_value: 101, factor: 1.01 }),
+    sample(null, null, null), sample(110, 100, 0, { real_value: 110, factor: 1 })];
+  const original = structuredClone(points), result = periodMetrics(recordedPoints(points, true), { position: true });
+  near(result.gain, 9); near(result.return, 9 / 101 * 100); near(result.capital, 0);
+  assert.equal(result.shortened, true); assert.equal(result.reason, null); assert.deepEqual(points, original);
+});
+
+test("real flows in an accounting gap require an unambiguous inflation factor", () => {
+  const start = sample(100, 100, 0, { real_value: 101, factor: 1.01 });
+  const end = sample(160, 150, 0, { real_value: 161.6, factor: 1.01 });
+  const points = [start, sample(null, null, null), end];
+  const valid = periodMetrics(recordedPoints(points, true));
+  near(valid.capital, 50.5); near(valid.gain, 10.1); assert.equal(valid.return_approximate, true);
+  const uncertain = periodMetrics(recordedPoints([start, points[1], { ...end, factor: 1, real_value: 160 }], true));
+  assert.equal(uncertain.reason, "capital"); assert.equal(uncertain.gain, null); assert.equal(uncertain.return, null);
+});
+
+test("an earlier unconvertible real flow does not poison a later shortened interval", () => {
+  const points = [sample(null, 0, 0), sample(null, 100, 0),
+    sample(100, 100, 0, { factor: 1, real_value: 100 }), sample(110, 100, 0, { factor: 1, real_value: 110 })];
+  const result = periodMetrics(recordedPoints(points, true));
+  near(result.gain, 10); near(result.return, 10); assert.equal(result.shortened, true);
 });
 
 test("corrections and rewritten cash bases are not classified as performance", () => {

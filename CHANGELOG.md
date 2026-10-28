@@ -2,6 +2,12 @@
 
 ## 1.13.0
 
+- Mark calendar-day boundaries with subtle dotted lines in day/week history,
+  including individual positions and settlement cash. Use Home Assistant's time
+  zone, handle DST correctly and thin date labels on narrow charts.
+- Include the released 1.12.1 fixes for period metrics across quote gaps and
+  informative pending savings-plan notices.
+
 - Add an integrated Assistant tab with current portfolio facts, monthly position
   attribution, evidence-based data-quality findings, future savings scenarios
   and cent-exact deposit allocation.
@@ -26,6 +32,27 @@
   changed-wallet previews.
 - Preserve config-entry schema 7, backup format 1 and existing entity IDs.
   PDF parsing adds the pinned `pypdf` dependency.
+
+## 1.12.1
+
+- Keep period gain and return available across missing intermediate quotes when
+  the recorded accounting basis remains comparable. Use the first and last
+  valid valuations inside the selected range and include only their interval's
+  flows. Label shortened intervals with the actual evaluation dates in both the
+  total view and individual cards; apply the same boundaries to cash balances.
+- Keep monetary gains with known contributions and dividends, and explicitly
+  mark returns with flows inside valuation gaps as approximations that assume
+  end-of-interval payments. Withhold unsupported returns rather than turning
+  unknown corrections, incomplete flows or a single observation into performance.
+- Preserve financial-revision, unit-correction and reversal diagnostics across
+  gaps. Scope legacy correction dates to the evaluated interval in the Home
+  Assistant time zone. Keep chart gaps and all stored Recorder data unchanged.
+- Recover purchasing-power metrics after missing initial samples and across
+  quote-only gaps. Keep real flows unavailable when their inflation conversion
+  cannot be determined reliably.
+- Replace the generic pending-execution warning with the plan, scheduled date,
+  reason and affected instrument aliases. Distinguish automatic retries for
+  missing closes/exchange rates from issues requiring a configuration review.
 
 ## 1.12.0
 
