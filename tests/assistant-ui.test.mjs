@@ -38,6 +38,30 @@ test("report distinguishes monthly gain from lifetime position profit", () => {
   for (const amount of ["99,00", "88,00", "700,00", "800,00", "3.000,00"]) assert.ok(rendered.includes(amount), amount);
 });
 
+test("assistant views use current wallet aliases without changing document symbols", () => {
+  const view = fixture();
+  view.wallet.positions = [{ symbol: "AAA", alias: "World ETF" }];
+  view.state.results.report = { positions: [{ symbol: "AAA" }], findings: [{ code: "allocation_deviation", evidence: { symbol: "AAA" } }], period: { status: "ok", positions: [{ symbol: "AAA", gain: 1 }] } };
+  view.renderReport();
+  assert.equal(text(view.shadowRoot).match(/World ETF \(AAA\)/g).length, 4);
+  view.shadowRoot.replaceChildren();
+  view.state.results.allocation = { status: "ok", allocations: [{ symbol: "AAA", amount: 50 }, { symbol: "BBB", amount: 0 }] };
+  view.renderAllocation();
+  assert.ok(text(view.shadowRoot).includes("World ETF (AAA)"));
+  assert.ok(text(view.shadowRoot).includes("BBB"));
+  view.shadowRoot.replaceChildren();
+  view.state.results.document = { rows: [{ id: "row-2", type: "purchase", symbol: "AAA", amount: "50", units: "5", status: "add", source: {} }] };
+  view.renderDocuments();
+  assert.ok(text(view.shadowRoot).includes("World ETF (AAA)"));
+  const descendants = node => [node, ...node.childNodes.filter(item => item instanceof Element).flatMap(descendants)];
+  assert.ok(descendants(view.shadowRoot).some(node => node.tag === "input" && node.value === "AAA"));
+  assert.equal(view.state.results.document.rows[0].symbol, "AAA");
+  view.state.key = ":a";
+  view.configure({ hass: view.hass, wallet: { ...view.wallet, positions: [{ symbol: "AAA", alias: "Renamed fund" }] }, lang: "en" });
+  assert.ok(text(view.shadowRoot).includes("Renamed fund (AAA)"));
+  assert.ok(!text(view.shadowRoot).includes("World ETF (AAA)"));
+});
+
 test("AI output and document quotes are rendered as text with no executable HTML", () => {
   const view = fixture(), malicious = '<img src=x onerror="steal()"> <script>steal()</script>';
   view.state.results.agents = { agents: [{ agent_id: "conversation.test", name: "Test", external: true }] };

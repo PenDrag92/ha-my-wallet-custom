@@ -79,9 +79,14 @@ export class WalletAssistant extends HTMLElement {
       this.state.reset(key); this.form = { years: "10", monthly_extra: "0", one_off: "0", amount: "500" };
       this.decisions = {}; this.corrections = {}; this.file = null; this.confirmed = false;
       this.load();
-    } else if (!this.shadowRoot.childNodes.length) this.render();
+    } else this.render();
   }
   t(key) { return words[this.lang]?.[key] || words.en[key] || key; }
+  positionLabel(symbol) {
+    if (!symbol) return "—";
+    const alias = this.wallet.positions?.find(item => item.symbol === symbol)?.alias;
+    return alias && alias !== symbol ? `${alias} (${symbol})` : symbol;
+  }
   money(value) { return typeof value === "number" && Number.isFinite(value) ? new Intl.NumberFormat(this.lang, { style: "currency", currency: this.wallet.currency }).format(value) : "—"; }
   pct(value) { return typeof value === "number" && Number.isFinite(value) ? new Intl.NumberFormat(this.lang, { maximumFractionDigits: 2 }).format(value) + " %" : "—"; }
   call(type, args = {}) { return this.hass.callWS({ type: "my_wallet/" + type, entry_id: this.wallet.entry_id, ...args }); }
@@ -187,10 +192,10 @@ export class WalletAssistant extends HTMLElement {
     box.append(el("h3", this.t("findings")));
     if (!(report.findings || []).length) box.append(el("p", this.t("noFindings"), "muted"));
     for (const item of report.findings || []) {
-      this.notice(box, (item.evidence?.symbol ? item.evidence.symbol + ": " : "") + explain(item.code, this.lang, item.message?.[this.lang] || item.message || item.description || item.code));
+      this.notice(box, (item.evidence?.symbol ? this.positionLabel(item.evidence.symbol) + ": " : "") + explain(item.code, this.lang, item.message?.[this.lang] || item.message || item.description || item.code));
       if (Object.keys(item.evidence || {}).length) {
         const details = el("details"); details.append(el("summary", this.t("details")));
-        this.table(details, ["field", "setting"], Object.entries(item.evidence).map(([key, value]) => [this.t(key), Array.isArray(value) ? value.join(", ") : typeof value === "number" ? new Intl.NumberFormat(this.lang, { maximumFractionDigits: 4 }).format(value) : value]));
+        this.table(details, ["field", "setting"], Object.entries(item.evidence).map(([key, value]) => [this.t(key), key === "symbol" ? this.positionLabel(value) : Array.isArray(value) ? value.join(", ") : typeof value === "number" ? new Intl.NumberFormat(this.lang, { maximumFractionDigits: 4 }).format(value) : value]));
         box.append(details);
       }
     }
@@ -201,9 +206,9 @@ export class WalletAssistant extends HTMLElement {
     if (period?.status === "ok") {
       box.append(el("p", period.month || period.period || ""));
       this.metrics(box, [["gain", period.wallet?.gain]]);
-      this.table(box, ["symbol", "gain"], (period.positions || period.contributions || []).map(item => [item.symbol, this.money(item.gain)]));
+      this.table(box, ["symbol", "gain"], (period.positions || period.contributions || []).map(item => [this.positionLabel(item.symbol), this.money(item.gain)]));
     } else this.notice(box, this.t("noPeriod"));
-    this.table(box, ["symbol", "value", "profit", "target"], (report.positions || []).map(item => [item.alias || item.symbol, this.money(item.nominal?.value), this.money(item.nominal?.profit), this.pct(item.target_share ?? item.target)]));
+    this.table(box, ["symbol", "value", "profit", "target"], (report.positions || []).map(item => [this.positionLabel(item.symbol), this.money(item.nominal?.value), this.money(item.nominal?.profit), this.pct(item.target_share ?? item.target)]));
   }
   renderScenario() {
     let box = this.section("scenario"); const form = el("div", null, "grid");
@@ -247,7 +252,7 @@ export class WalletAssistant extends HTMLElement {
     box = this.resultArea(box, "allocation"); this.status(box, "allocation");
     const result = this.state.results.allocation;
     if (result?.status === "ok") {
-      this.table(box, ["symbol", "buy", "target", "before", "after"], result.allocations.map(row => [row.symbol, this.money(row.amount), this.pct(row.target_share), this.pct(row.before_share), this.pct(row.after_share)]));
+      this.table(box, ["symbol", "buy", "target", "before", "after"], result.allocations.map(row => [this.positionLabel(row.symbol), this.money(row.amount), this.pct(row.target_share), this.pct(row.before_share), this.pct(row.after_share)]));
       box.append(el("p", this.t("remaining") + ": " + this.money(result.remaining_cash))); this.assumptions(box, result);
     } else if (result) this.notice(box, explain(result.reason, this.lang, this.t("unavailable")));
   }
@@ -285,7 +290,7 @@ export class WalletAssistant extends HTMLElement {
         field.addEventListener("change", () => this.render()); label.append(field); edit.append(label);
       }
       const decision = el("div"); decision.append(select, edit);
-      return [this.t(row.type), row.date, row.symbol || "—", String(row.amount ?? "—") + " " + (row.currency || ""), row.units || "—", proof, status, decision];
+      return [this.t(row.type), row.date, this.positionLabel(row.symbol), String(row.amount ?? "—") + " " + (row.currency || ""), row.units || "—", proof, status, decision];
     });
     this.table(box, ["type", "date", "symbol", "amount", "units", "source", "status", "decision"], rows);
     const review = btn(this.t("review"), () => this.run("document", () => this.call("document_review", { draft_id: preview.draft_id, decisions: this.decisions, corrections: this.corrections })));

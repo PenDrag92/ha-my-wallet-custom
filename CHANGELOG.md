@@ -11,6 +11,8 @@
 - Add an integrated Assistant tab with current portfolio facts, monthly position
   attribution, evidence-based data-quality findings, future savings scenarios
   and cent-exact deposit allocation.
+- Show configured position aliases alongside symbols throughout assistant reports,
+  allocation and document previews; refresh labels after wallet or language updates.
 - Reuse a shared valuation snapshot for the panel and assistant. Scenarios start
   at today's actual wallet value and respect dated funding, plan changes and
   pauses without editing stored plans.
