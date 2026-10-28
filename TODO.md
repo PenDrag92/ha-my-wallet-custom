@@ -1,5 +1,9 @@
 # To do
 
+- [x] Prepare local day boundaries for 1.13 day/week charts, including individual
+  positions and settlement cash. Use HA's time zone, handle DST and retain all
+  grid lines when date labels are thinned on narrow screens. Included in 1.13.
+
 - [x] Keep useful period metrics despite missing intermediate quotes in 1.12.1.
   Trim to valid in-range endpoints and show actual evaluation dates. Preserve
   reliable monetary gain, label returns with flows across gaps as approximations,

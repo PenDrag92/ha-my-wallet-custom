@@ -234,10 +234,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -
 
 async def async_setup_entry(hass: HomeAssistant, entry: MyWalletConfigEntry) -> bool:
     """Set up a wallet from a config entry."""
+    from .llm import async_setup_wallet_api
+
     coordinator = WalletCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    async_setup_wallet_api(hass, entry)
     return True
 
 

@@ -1,5 +1,52 @@
 # My Wallet architecture
 
+## Assistant application boundary (1.13)
+
+`wallet_snapshot.wallet_with_saved_units` is shared by the dashboard and assistant.
+It combines the saved ledger quantities with a supplied quote snapshot, including
+the interval before a coordinator reload completes. No adapter calculates from
+rounded display rows.
+
+| Module | Contract |
+| --- | --- |
+| `wallet_insights.py` | Current valuation facts, findings with evidence, monthly attribution via existing `analytics.period_summaries` |
+| `wallet_scenarios.py` | Actual current value plus dated future cash flows; hypothetical inputs never become ledger writes |
+| `wallet_allocation.py` | Nonnegative deposit budget, exact-cent distribution, explicit partial targets and cash |
+| `statement_documents.py` | CSV/PDF evidence to reviewed events, source-scoped identity, one candidate validated by the shared ledger |
+| `assistant_service.py` | Snapshot ownership, history cache, provider selection and bounded user/wallet/agent sessions |
+| `assistant_api.py`, `llm.py` | Authenticated WebSocket and explicit Home Assistant LLM transports calling the same use cases |
+| `document_api.py` | User/wallet/snapshot-bound expiring draft, review and commit; structured HA AI Task extraction |
+
+The transaction boundary remains authoritative for every write. The LLM API
+has only report, scenario and allocation tools and is registered separately per
+wallet. Every invocation requires an active administrator context. Provider
+credentials are never copied into wallet records. The conversation adapter checks
+the saved and running configuration. General Assist tools are not combined with
+the wallet API.
+
+`frontend/wallet-assistant.mjs` owns the assistant view. Its request state module
+invalidates responses after wallet/user/agent changes and discards stale document
+previews. Source text and model output use text nodes. Numeric results come from
+backend responses independently of generated prose. Editing inputs removes their
+old result; in-flight document review locks its editable controls.
+
+Monthly report data is reconstructed daily history, not live Recorder snapshots.
+The backend rejects incomplete attribution and exposes the source, estimation
+status and reconciliation. Scenarios start at the actual current value, whereas
+the existing target curve describes the configured historical target.
+
+CSV and PDF import share reviewed event construction. Source labels scope printed
+transaction references. Explicitly skipped rows remain importable later; accepted
+rows are reconciled individually. Raw PDFs are not persisted. Source quotes and
+explicit corrections remain in backup-compatible import metadata.
+
+Assistant validation adds pure financial, API, document/reconciliation and
+frontend state tests. `python -m tests.assistant_smoke` and
+`python -m tests.document_smoke` run separately against actual Home Assistant
+classes so dependency stubs cannot hide a runtime API mismatch.
+
+## Existing financial core
+
 The 1.11 refactor keeps the existing integration and persisted data. It establishes
 shared transaction and valuation boundaries so new features can reuse the same
 financial rules.

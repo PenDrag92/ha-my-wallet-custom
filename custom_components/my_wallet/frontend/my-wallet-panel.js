@@ -1,9 +1,13 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.12.1";
-import { parseUnits } from "./unit-input.mjs?v=1.12.1";
-import { dailyPeriod, dailyPositionPoints, evaluationWindow, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.12.1";
+import { dayBoundaries } from "./chart-time.mjs?v=1.13.0";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.13.0";
+import { parseUnits } from "./unit-input.mjs?v=1.13.0";
+import { dailyPeriod, dailyPositionPoints, evaluationWindow, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.13.0";
+import { WalletAssistant } from "./wallet-assistant.mjs?v=1.13.0";
 const WORDS = {
   de: {
+    dayBoundaries: "Gepunktete Linien: Tagesbeginn", dayBoundary: "Tagesbeginn",
+    navAssistant: "Assistent",
     historyView: "Darstellung", historyTotal: "Gesamt", historyComponents: "Nach Positionen",
     componentsHint: "Alle Positionen zeigen denselben Zeitraum mit eigener Skala. Die Höhe der Kurven ist deshalb nicht direkt vergleichbar. Gewinn und Rendite berücksichtigen Zukäufe und Dividenden.",
     cashHistoryMissing: "Für diesen Zeitraum fehlen aufgezeichnete Kontostände.",
@@ -129,6 +133,8 @@ const WORDS = {
     invalid_planned_deposit: "Bitte Datum, Betrag und Notiz prüfen. Der Betrag muss mindestens 0,01 betragen.", planned_date_required: "Wähle für die Planung einen Tag nach heute.", planned_deposit_locked: "Diese Einzahlung ist bereits fällig oder gebucht. Bitte die Seite aktualisieren und bei Bedarf unter „Verwalten“ korrigieren.",
   },
   en: {
+    dayBoundaries: "Dotted lines: start of day", dayBoundary: "Start of day",
+    navAssistant: "Assistant",
     historyView: "View", historyTotal: "Total", historyComponents: "By position",
     componentsHint: "All positions use the same period with individual scales. Curve heights cannot be compared directly. Gains and returns account for purchases and dividends.",
     cashHistoryMissing: "No recorded cash balances are available for this period.",
@@ -344,7 +350,7 @@ class MyWalletPanel extends HTMLElement {
     this._started = true;
     try {
       const saved = localStorage.getItem(`my-wallet:section:${this._hass.user?.id || "admin"}`);
-      if (["overview", "planning", "positions", "history", "data"].includes(saved)) this._section = saved;
+      if (["overview", "planning", "positions", "history", "data", "assistant"].includes(saved)) this._section = saved;
     } catch { /* Browser storage may be disabled. */ }
     this._resize = () => { if ((this._history || this._recordedHistory) && !this._busy && !this._importOpen && !this._correctionOpen) this._render(); };
     window.addEventListener("resize", this._resize);
@@ -444,7 +450,7 @@ class MyWalletPanel extends HTMLElement {
       if (previousSelected !== this._selected) { this._clearImport(); this._loadRealPreference(); }
       if (!this._wallet()?.inflation?.available) this._real = false;
       if (this._section === "history" && this._isRecordedPeriod()) await this._loadRecorded(true);
-      else this._history = this._selected ? await this._call("history", { entry_id: this._selected, ...forecast }) : null;
+      else if (this._section !== "assistant") this._history = this._selected ? await this._call("history", { entry_id: this._selected, ...forecast }) : null;
     } catch (err) { this._error = this._errorText(err); }
     finally {
       this._busy = false; this._render();
@@ -490,7 +496,7 @@ class MyWalletPanel extends HTMLElement {
     const tabs = node("nav", null, "tabs");
     tabs.setAttribute("role", "tablist");
     tabs.setAttribute("aria-label", "My Wallet");
-    for (const [section, label] of [["overview", "navOverview"], ["planning", "navPlanning"], ["positions", "navPositions"], ["history", "navHistory"], ["data", "navData"]]) {
+    for (const [section, label] of [["overview", "navOverview"], ["planning", "navPlanning"], ["positions", "navPositions"], ["history", "navHistory"], ["data", "navData"], ["assistant", "navAssistant"]]) {
       const tab = button(this.t(label), () => this._setSection(section));
       tab.setAttribute("role", "tab");
       tab.setAttribute("aria-selected", String(this._section === section));
@@ -576,10 +582,14 @@ class MyWalletPanel extends HTMLElement {
       main.append(warning);
     }
     this._renderNavigation(main);
-    if (this._section !== "planning") this._renderPositionSelection(main, wallet);
+    if (!["planning", "assistant"].includes(this._section)) this._renderPositionSelection(main, wallet);
     const position = wallet.positions.find(item => item.symbol === this._position);
     if (wallet.pending?.length) this._renderPending(main, wallet);
-    if (this._section === "overview") {
+    if (this._section === "assistant") {
+      this._assistantView ||= new WalletAssistant();
+      this._assistantView.configure({ hass: this._hass, wallet, lang: this._lang, onChange: () => this._refresh(true) });
+      main.append(this._assistantView);
+    } else if (this._section === "overview") {
       this._renderStats(main, wallet, position);
       if (!position) this._renderTargetSummary(main, wallet);
       const planning = node("div", null, "controls");
@@ -1329,7 +1339,12 @@ class MyWalletPanel extends HTMLElement {
     const left = Math.min(width * .43, Math.max(60, labelWidth + 14)), right = width - 12;
     const times = points.map(point => Date.parse(point.timestamp || `${point.date}T00:00:00Z`));
     const firstTime = times[0], lastTime = times[times.length - 1];
-    const x = index => left + (times[index] - firstTime) / Math.max(1, lastTime - firstTime) * (right - left);
+    const timeX = time => left + (time - firstTime) / Math.max(1, lastTime - firstTime) * (right - left);
+    const x = index => timeX(times[index]);
+    const timeZone = this._hass.config?.time_zone || new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const boundaries = intraday ? dayBoundaries(firstTime, lastTime, timeZone) : [];
+    const dayLabel = new Intl.DateTimeFormat(this._lang, { timeZone, day: "2-digit", month: "2-digit" });
+    if (boundaries.length) legend.append(node("small", `${this.t("dayBoundaries")} (${timeZone})`, "hint"));
     const cursors = [], svgs = [];
     groups.forEach((group, groupIndex) => {
       const { scale, height } = group, top = 14, bottom = height - 36;
@@ -1345,10 +1360,30 @@ class MyWalletPanel extends HTMLElement {
         const label = svgNode("text", { x: left - 10, y: y(value) + 4, fill: "var(--secondary-text-color,#57667a)", "font-size": 12, "text-anchor": "end" });
         label.textContent = group.labels[index]; svg.append(label);
       });
-      const indices = width < 500 ? [0, points.length - 1] : [0, Math.floor((points.length - 1) / 2), points.length - 1];
+      for (const time of boundaries) {
+        const line = svgNode("line", { class: "day-boundary", x1: timeX(time), x2: timeX(time), y1: top, y2: bottom,
+          stroke: "var(--secondary-text-color,#57667a)", "stroke-opacity": .35, "stroke-width": 1,
+          "stroke-dasharray": "2 4", "vector-effect": "non-scaling-stroke" });
+        const description = svgNode("title", {});
+        description.textContent = `${this.t("dayBoundary")}: ${this._moment(new Date(time).toISOString())} (${timeZone})`;
+        line.append(description); svg.append(line);
+      }
+      const indices = intraday || width < 500 ? [0, points.length - 1] : [0, Math.floor((points.length - 1) / 2), points.length - 1];
+      const edgeLabel = index => intraday ? width < 500 && this._period !== "day" ? dayLabel.format(times[index]) : this._moment(points[index].timestamp, true) : this.day(points[index].date);
       for (const index of [...new Set(indices)]) {
         const label = svgNode("text", { x: x(index), y: bottom + 26, fill: "var(--secondary-text-color,#57667a)", "font-size": 12, "text-anchor": index === 0 ? "start" : index === points.length - 1 ? "end" : "middle" });
-        label.textContent = intraday ? this._moment(points[index].timestamp, true) : this.day(points[index].date); svg.append(label);
+        label.textContent = edgeLabel(index); svg.append(label);
+      }
+      // Keep every boundary line, but only print dates that fit between the
+      // endpoint labels. Compact position cards must not overlap their dates.
+      let labelEnd = left + canvas.measureText(edgeLabel(0)).width;
+      const labelLimit = right - canvas.measureText(edgeLabel(points.length - 1)).width - 12;
+      for (const time of boundaries) {
+        const text = dayLabel.format(time), halfWidth = canvas.measureText(text).width / 2;
+        const center = timeX(time);
+        if (center - halfWidth < labelEnd + 12 || center + halfWidth > labelLimit) continue;
+        const label = svgNode("text", { x: center, y: bottom + 26, fill: "var(--secondary-text-color,#57667a)", "font-size": 12, "text-anchor": "middle" });
+        label.textContent = text; svg.append(label); labelEnd = center + halfWidth;
       }
       for (const key of group.keys) {
         let path = "", active = false;

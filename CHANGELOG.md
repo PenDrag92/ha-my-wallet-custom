@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.13.0
+
+- Mark calendar-day boundaries with subtle dotted lines in day/week history,
+  including individual positions and settlement cash. Use Home Assistant's time
+  zone, handle DST correctly and thin date labels on narrow charts.
+- Include the released 1.12.1 fixes for period metrics across quote gaps and
+  informative pending savings-plan notices.
+
+- Add an integrated Assistant tab with current portfolio facts, monthly position
+  attribution, evidence-based data-quality findings, future savings scenarios
+  and cent-exact deposit allocation.
+- Show configured position aliases alongside symbols throughout assistant reports,
+  allocation and document previews; refresh labels after wallet or language updates.
+- Reuse a shared valuation snapshot for the panel and assistant. Scenarios start
+  at today's actual wallet value and respect dated funding, plan changes and
+  pauses without editing stored plans.
+- Add an explicitly selected, administrator-only Home Assistant LLM API per
+  wallet. Existing conversation providers can explain results and call the same
+  three read-only functions. Provider selection, active configuration, user,
+  wallet and sessions are checked on every request.
+- Add reviewed CSV and text-PDF statement adapters. Deposits, purchases and
+  dividends remain separate events with source references. PDF extraction uses
+  a selected Home Assistant AI Task entity with explicit data-transfer consent.
+  Scans and unsupported event types are rejected for review.
+- Scope document references to the user's source label. Preserve skipped events
+  for later import, protect cross-format overlap and require choices for
+  ambiguous matches. Retain source evidence through backups.
+- Fix reconciliation of equal-date/equal-amount deposits and dividends so
+  distinct records are not collapsed or silently overwritten.
+- Add separate frontend request ownership and input invalidation. Render model
+  output as text, lock document controls during review and reject expired or
+  changed-wallet previews.
+- Preserve config-entry schema 7, backup format 1 and existing entity IDs.
+  PDF parsing adds the pinned `pypdf` dependency.
+
 ## 1.12.1
 
 - Keep period gain and return available across missing intermediate quotes when
