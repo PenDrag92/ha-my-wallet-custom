@@ -163,12 +163,16 @@ class SnapshotAndInsightTests(unittest.TestCase):
 
     def test_current_facts_use_shared_valuation_and_internal_dividends(self):
         data, current = wallet()
+        data[c.CONF_VALORS][0][c.VALOR_ALIAS] = "World ETF"
         data[c.CONF_DIVIDENDS] = [
             make_dividend(
                 booking_date="2026-09-01", amount=20, symbol="AAA", dividend_id="div"
             )
         ]
         report = build_wallet_insights(data, current, today=TODAY)
+        self.assertEqual(report["positions"][0]["alias"], "World ETF")
+        self.assertEqual(report["positions"][0]["symbol"], "AAA")
+        self.assertIsNone(report["positions"][1]["alias"])
         self.assertEqual(report["facts"]["total"], 1140)
         self.assertEqual(report["facts"]["profit"], 140)
         self.assertEqual(report["facts"]["invested"], 1000)

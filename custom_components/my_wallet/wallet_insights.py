@@ -199,6 +199,7 @@ def build_wallet_insights(
         positions.append(
             {
                 "symbol": symbol,
+                "alias": configured.get(c.VALOR_ALIAS),
                 "nominal": _performance(evaluated.nominal),
                 "real": _performance(evaluated.real),
                 "tracked": _performance(evaluated.tracked),
