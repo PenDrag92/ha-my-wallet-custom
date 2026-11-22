@@ -6,7 +6,9 @@ CI pins Home Assistant 2026.8.3, including Conversation subentry configuration.
 
 from __future__ import annotations
 
+import asyncio
 import unittest
+from contextlib import suppress
 from copy import deepcopy
 from datetime import timedelta
 from types import SimpleNamespace
@@ -15,7 +17,8 @@ from unittest.mock import AsyncMock, Mock, patch
 from homeassistant.core import Context
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import llm
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp import ClientSession
+from mcp.shared.memory import create_client_server_memory_streams
 
 from custom_components.my_wallet import assistant_service as service
 from custom_components.my_wallet import const as c
@@ -135,27 +138,37 @@ class RealHomeAssistantLLMTests(unittest.IsolatedAsyncioTestCase):
             else {}
         )
         server = await create_server(self.hass, self.api.id, self.context, **options)
-        async with create_connected_server_and_client_session(
-            server, read_timeout_seconds=timedelta(seconds=10)
-        ) as client:
-            tools = (await client.list_tools()).tools
-            self.assertEqual(
-                {tool.name for tool in tools},
-                {"WalletReport", "WalletScenario", "WalletAllocation"},
+        async with create_client_server_memory_streams() as (client_io, server_io):
+            task = asyncio.create_task(
+                server.run(*server_io, server.create_initialization_options())
             )
-            with patch.object(
-                service, "allocation_result", return_value={"remaining_cash": 50}
-            ) as allocate:
-                result = await client.call_tool("WalletAllocation", {"amount": 50})
-            self.assertFalse(result.isError, result)
-            self.assertEqual(
-                allocate.call_args.kwargs, {"amount": 50, "use_cash": False}
-            )
-            self.assertIs(allocate.call_args.args[0].data, self.entry.data)
-            self.user.is_admin = False
-            denied = await client.call_tool("WalletAllocation", {"amount": 50})
-            self.assertTrue(denied.isError)
+            try:
+                async with ClientSession(
+                    *client_io, read_timeout_seconds=timedelta(seconds=10)
+                ) as client:
+                    await client.initialize()
+                    await self.check_mcp_tools(client)
+            finally:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
         self.hass.config_entries.async_update_entry.assert_not_called()
+
+    async def check_mcp_tools(self, client):
+        self.assertEqual(
+            {tool.name for tool in (await client.list_tools()).tools},
+            {"WalletReport", "WalletScenario", "WalletAllocation"},
+        )
+        with patch.object(
+            service, "allocation_result", return_value={"remaining_cash": 50}
+        ) as allocate:
+            result = await client.call_tool("WalletAllocation", {"amount": 50})
+        self.assertFalse(result.model_dump(by_alias=True)["isError"], result)
+        self.assertEqual(allocate.call_args.kwargs, {"amount": 50, "use_cash": False})
+        self.assertIs(allocate.call_args.args[0].data, self.entry.data)
+        self.user.is_admin = False
+        denied = await client.call_tool("WalletAllocation", {"amount": 50})
+        self.assertTrue(denied.model_dump(by_alias=True)["isError"])
 
     async def test_tool_error_does_not_echo_unexpected_internal_details(self):
         with (

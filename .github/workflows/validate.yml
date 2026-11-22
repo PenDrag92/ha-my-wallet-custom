@@ -94,6 +94,31 @@ jobs:
           import custom_components.my_wallet.history_import
           PY
 
+  mcp-current:
+    name: MCP on Home Assistant 2026.11
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Install Home Assistant and its MCP dependencies
+        run: >-
+          python -m pip install
+          homeassistant==2026.11.2
+          mcp==2.3.0
+          aiohttp_sse==2.2.0
+          anyio==4.15.1
+          gazetteer-matcher==1.1.0
+          hassil==3.12.1
+          home-assistant-intents==2026.10.27
+          PyTurboJPEG==1.8.3
+          numpy==2.3.2
+          unicode-rbnf==2.4.0
+          pypdf==6.18.1
+      - name: Exercise native MCP discovery and calls
+        run: python -m tests.assistant_smoke
+
   hacs:
     name: HACS validation
     runs-on: ubuntu-latest
