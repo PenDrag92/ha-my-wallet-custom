@@ -10,7 +10,6 @@ import asyncio
 import unittest
 from contextlib import suppress
 from copy import deepcopy
-from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -18,6 +17,7 @@ from homeassistant.core import Context
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import llm
 from mcp import ClientSession
+from mcp.shared.exceptions import MCPError
 from mcp.shared.memory import create_client_server_memory_streams
 
 from custom_components.my_wallet import assistant_service as service
@@ -143,9 +143,7 @@ class RealHomeAssistantLLMTests(unittest.IsolatedAsyncioTestCase):
                 server.run(*server_io, server.create_initialization_options())
             )
             try:
-                async with ClientSession(
-                    *client_io, read_timeout_seconds=timedelta(seconds=10)
-                ) as client:
+                async with asyncio.timeout(15), ClientSession(*client_io) as client:
                     await client.initialize()
                     await self.check_mcp_tools(client)
             finally:
@@ -167,8 +165,14 @@ class RealHomeAssistantLLMTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(allocate.call_args.kwargs, {"amount": 50, "use_cash": False})
         self.assertIs(allocate.call_args.args[0].data, self.entry.data)
         self.user.is_admin = False
-        denied = await client.call_tool("WalletAllocation", {"amount": 50})
-        self.assertTrue(denied.model_dump(by_alias=True)["isError"])
+        with patch.object(service, "allocation_result") as denied_allocation:
+            try:
+                denied = await client.call_tool("WalletAllocation", {"amount": 50})
+            except MCPError:
+                pass  # Protocol-level rejection also blocks the tool.
+            else:
+                self.assertTrue(denied.model_dump(by_alias=True)["isError"])
+        denied_allocation.assert_not_called()
 
     async def test_tool_error_does_not_echo_unexpected_internal_details(self):
         with (
