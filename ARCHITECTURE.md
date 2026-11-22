@@ -168,9 +168,11 @@ without filling chart gaps or modifying Recorder data. Cumulative capital and
 income differences determine monetary gain over those boundaries. All observed
 accounting samples inside that interval, including samples without a quote, are
 checked for changed financial/legacy revisions, reduced flows and unit changes
-without a purchase. Unknown correction effects invalidate accounting metrics.
-Legacy date-only events use Home Assistant's time zone and block any intersecting
-evaluation day; an unscoped accounting-change flag remains conservative.
+without a purchase. When a correction is located, the frontend splits the
+metrics at affected intervals and aggregates only comparable sections. The full
+change in value is shown separately. Legacy date-only events use Home Assistant's
+time zone and exclude touching intervals. An unscoped correction flag withholds
+accounting totals because its affected interval cannot be identified.
 
 Available valuation intervals are linked using the established end-flow return
 convention. A nonzero external flow spanning missing valuations marks the return

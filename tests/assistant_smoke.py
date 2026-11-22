@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import unittest
 from copy import deepcopy
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from homeassistant.core import Context
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import llm
+from mcp.shared.memory import create_connected_server_and_client_session
 
 from custom_components.my_wallet import assistant_service as service
 from custom_components.my_wallet import const as c
@@ -116,10 +118,43 @@ class RealHomeAssistantLLMTests(unittest.IsolatedAsyncioTestCase):
                 llm.ToolInput(tool_name="WalletReport", tool_args={"month": "2026-08"}),
                 self.context,
             )
-        self.assertEqual(value, expected)
+        self.assertEqual(getattr(value, "data", value), expected)
         self.assertEqual(report.call_args.kwargs["month"], "2026-08")
         self.assertIs(report.call_args.args[1].data, self.entry.data)
         self.assertEqual(self.entry.data, before)
+        self.hass.config_entries.async_update_entry.assert_not_called()
+
+    async def test_native_mcp_lists_wallet_tools_and_runs_a_read_only_calculation(self):
+        from homeassistant.components.mcp_server.server import create_server
+
+        wallet_llm.async_setup_wallet_api(self.hass, self.entry)
+        self.context.platform = "mcp_server"
+        options = (
+            {"read_only": True, "base_url": "http://example.invalid"}
+            if hasattr(llm, "ToolAnnotations")
+            else {}
+        )
+        server = await create_server(self.hass, self.api.id, self.context, **options)
+        async with create_connected_server_and_client_session(
+            server, read_timeout_seconds=timedelta(seconds=10)
+        ) as client:
+            tools = (await client.list_tools()).tools
+            self.assertEqual(
+                {tool.name for tool in tools},
+                {"WalletReport", "WalletScenario", "WalletAllocation"},
+            )
+            with patch.object(
+                service, "allocation_result", return_value={"remaining_cash": 50}
+            ) as allocate:
+                result = await client.call_tool("WalletAllocation", {"amount": 50})
+            self.assertFalse(result.isError, result)
+            self.assertEqual(
+                allocate.call_args.kwargs, {"amount": 50, "use_cash": False}
+            )
+            self.assertIs(allocate.call_args.args[0].data, self.entry.data)
+            self.user.is_admin = False
+            denied = await client.call_tool("WalletAllocation", {"amount": 50})
+            self.assertTrue(denied.isError)
         self.hass.config_entries.async_update_entry.assert_not_called()
 
     async def test_tool_error_does_not_echo_unexpected_internal_details(self):

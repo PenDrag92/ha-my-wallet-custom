@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.13.1
+
+- Refresh history when switching between day/week and longer ranges. Explain
+  which values use recorded sensor states and which use daily closes.
+- Preserve gain, return and known flows for comparable intervals around a
+  booking or holding correction. Show the full change in value separately.
+- Acknowledge history warnings to collapse them per Home Assistant user,
+  wallet, period and position. New gaps and changes appear as notices again.
+- Connect the existing wallet reports, savings scenarios and deposit allocation
+  to the native Home Assistant MCP server with read-only tool metadata and an
+  administrator-only wallet URL. The dashboard conversation panel is collapsible.
+
 ## 1.13.0
 
 - Mark calendar-day boundaries with subtle dotted lines in day/week history,

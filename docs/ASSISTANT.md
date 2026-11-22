@@ -59,6 +59,22 @@ The implementation is tested against Home Assistant **2026.8.3** and uses that v
 explicit API registration contract. The automatic tool-discovery hook in newer Home
 Assistant versions deliberately contributes no tools to any API.
 
+## Use the same tools from Home Assistant MCP
+
+With the native [Home Assistant MCP Server](https://www.home-assistant.io/integrations/mcp_server/)
+enabled, open **My Wallet → Assistant → Access via Home Assistant MCP** and
+copy the address. The wallet-specific endpoint is `/api/mcp/my_wallet_<entry_id>`.
+Use the same origin that your MCP client uses to reach Home Assistant and
+authenticate with an active administrator account.
+
+For an existing connection to the main `/api/mcp` endpoint, add the named
+**My Wallet: <wallet name>** set to the allowed AI tools in Home Assistant, then
+refresh the client's tool list. The wallet-specific address can also be used as a
+separate connection containing only the three wallet tools. The tools return the
+same reports, scenarios and allocation previews as the dashboard and need no
+conversation provider setup in Home Assistant. A client's access to the API
+lets it read the selected wallet's data.
+
 ## Understand the calculation boundaries
 
 **Scenarios** start with today's actual securities value and settlement cash. Existing

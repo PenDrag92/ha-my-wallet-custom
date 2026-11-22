@@ -1,9 +1,9 @@
 /* My Wallet: local-only UI. Financial data comes from authenticated HA WebSocket calls. */
-import { dayBoundaries } from "./chart-time.mjs?v=1.13.0";
-import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.13.0";
-import { parseUnits } from "./unit-input.mjs?v=1.13.0";
-import { dailyPeriod, dailyPositionPoints, evaluationWindow, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.13.0";
-import { WalletAssistant } from "./wallet-assistant.mjs?v=1.13.0";
+import { dayBoundaries } from "./chart-time.mjs?v=1.13.1";
+import { axisLabels, currencyScale } from "./chart-scales.mjs?v=1.13.1";
+import { parseUnits } from "./unit-input.mjs?v=1.13.1";
+import { dailyPeriod, dailyPositionPoints, evaluationWindow, historyGapIds, periodMetrics, recordedPoints } from "./history-series.mjs?v=1.13.1";
+import { WalletAssistant } from "./wallet-assistant.mjs?v=1.13.1";
 const WORDS = {
   de: {
     dayBoundaries: "Gepunktete Linien: Tagesbeginn", dayBoundary: "Tagesbeginn",
@@ -12,7 +12,6 @@ const WORDS = {
     componentsHint: "Alle Positionen zeigen denselben Zeitraum mit eigener Skala. Die Höhe der Kurven ist deshalb nicht direkt vergleichbar. Gewinn und Rendite berücksichtigen Zukäufe und Dividenden.",
     cashHistoryMissing: "Für diesen Zeitraum fehlen aufgezeichnete Kontostände.",
     cashMovement: "Saldoänderung", cashMovementHint: "Die Saldoänderung enthält Einzahlungen, Käufe, Dividenden und mögliche Korrekturen. Sie ist kein Gewinn und keine Rendite.",
-    componentCloses: "Quelle: bestätigte Tages-Schlusskurse; fehlende Bewertungen bleiben als Lücken sichtbar.",
     subtitle: "Depotverlauf", wallet: "Depot", refresh: "Aktualisieren", settings: "Verwalten",
     value: "Depotwert inkl. Cash", invested: "Eingezahltes Kapital", cash: "Verrechnungskonto",
     dividends: "Dividenden", history: "Wertentwicklung", ledger: "Buchungsverlauf", plans: "Sparpläne",
@@ -23,11 +22,15 @@ const WORDS = {
     periodApproximationHint: "Bei Buchungen in Kurslücken wird für die Rendite angenommen, dass die Zahlung am Ende des unbeobachteten Intervalls erfolgt ist. Die tatsächliche Rendite kann abweichen; der Gewinn in Euro berücksichtigt die erfassten Zahlungsbeträge.",
     period_return_unavailable: "Der Gewinn lässt sich berechnen, die Rendite mit den verfügbaren Bewertungen und Zahlungszeitpunkten jedoch nicht zuverlässig bestimmen.",
     period_insufficient: "Für die Auswertung werden mindestens zwei Bewertungen benötigt.", period_capital: "Die aufgezeichnete Zahlungsbasis ist unvollständig. Gewinn und Rendite bleiben deshalb leer.", period_accounting: "Die Buchungsgrundlage ist in diesem Zeitraum nicht durchgängig vergleichbar. Einzahlungen, Dividenden, Gewinn und Rendite können deshalb nicht zuverlässig ausgewiesen werden.",
+    acknowledgeHistory: "Zur Kenntnis genommen", acknowledgedHistory: "Ausgeblendeten Hinweis anzeigen",
+    recordedGapTitle: "Lücken im Verlauf", recordedCoverageTitle: "Unvollständiger Verlauf", accountingTitle: "Änderung der Buchungsgrundlage",
+    periodValueChange: "Wertänderung inkl. Korrekturen", periodComparable: "Einzahlungen, Dividenden, Gewinn und Rendite beziehen sich auf die vergleichbaren Abschnitte.",
+    period_accounting_partial: "Die Intervalle rund um die Korrekturen wurden bei der Berechnung ausgelassen.",
     accounting_financial_revision: "Bestand oder bestehende Buchung geändert", accounting_legacy_revision: "Ältere Aufzeichnung: Vergleich der Buchungsgrundlage verändert; genaue Ursache unbekannt (auch Textänderungen möglich)",
     accounting_capital_reduced: "Aufgezeichnete Zahlungsbasis verringert", accounting_dividends_reduced: "Aufgezeichnete Dividendensumme verringert", accounting_units_changed: "Stückzahl ohne erfassten Zukauf geändert", accounting_legacy_correction: "Anteilskorrektur vermerkt; für diese älteren Daten ist keine Uhrzeit bekannt",
     accountingObserved: "Erstmals im Verlauf sichtbar", accountingRecordedDate: "Korrektur vermerkt am", accountingTimeHint: "Die Uhrzeit bezeichnet die erste betroffene Aufzeichnung, nicht den genauen Bearbeitungszeitpunkt.", accountingMore: "Weitere Auffälligkeiten", accountingRemaining: "Weitere nicht angezeigte Einträge",
     recordedSource: "Quelle: gespeicherte HA-Sensorstände der damaligen Bestände. Die Linie hält den zuletzt bekannten Wert bis zur nächsten Aufzeichnung; sie ist kein Echtzeit-Kursfeed. 1 Tag zeigt die letzten 24 Stunden, 1 Woche die letzten 7 Tage.",
-    recordedLoading: "Gespeicherte Sensorstände werden geladen …", lastRecorded: "Letzte Zustandsänderung", lastPolled: "Letzter gespeicherter Abruf", dailySource: "Quelle: bestätigte Tages-Schlusskurse", selectMoment: "Zeitpunkt im Verlauf auswählen",
+    recordedLoading: "Gespeicherte Sensorstände werden geladen …", lastRecorded: "Letzte Zustandsänderung", lastPolled: "Letzter gespeicherter Abruf", dailySource: "Die längeren Zeiträume verwenden die heute gespeicherten Buchungen und für jedes Datum den letzten bestätigten Schlusskurs. Tages- und Wochenansicht zeigen die Sensorstände zum damaligen Bestand.", selectMoment: "Zeitpunkt im Verlauf auswählen",
     recorded_no_history: "Für diese Auswahl liegen noch keine HA-Aufzeichnungen vor. Prüfe, ob der Wert-Sensor aktiviert ist und vom Recorder erfasst wird. Die Monatsansicht verwendet weiterhin historische Tageskurse.",
     recorded_recorder_missing: "Der HA-Recorder ist nicht verfügbar. Tages- und Wochenansicht benötigen aufgezeichnete Sensorstände.", recorded_recorder_unavailable: "Der HA-Recorder ist noch nicht bereit. Bitte später erneut aktualisieren.", recorded_recorder_disabled: "Die Aufzeichnung im HA-Recorder ist derzeit angehalten. Vorhandene Daten werden angezeigt.",
     recorded_entity_missing: "Der zugehörige Wert-Sensor wurde nicht gefunden. Bitte prüfen, ob die Integration vollständig geladen ist.", recorded_entity_disabled: "Der zugehörige Wert-Sensor ist deaktiviert. Aktiviere ihn, um seinen Verlauf aufzuzeichnen.", recorded_entity_excluded: "Der Wert-Sensor ist von der Recorder-Aufzeichnung ausgeschlossen. Die vorhandene Recorder-Konfiguration wird nicht automatisch verändert.",
@@ -42,7 +45,7 @@ const WORDS = {
     configuredUnits: "Anfangsbestand", includedUnits: "als enthalten markierte Anteile",
     quotesWarning: "Bei fehlenden historischen Kursen oder Wechselkursen bleibt die Wertkurve an den betroffenen Tagen unterbrochen.",
     limited: "Die Kurve zeigt höchstens die letzten zehn Jahre. Der Buchungsverlauf enthält weiterhin alle Einträge.",
-    closeHint: "Reale Tageswerte beruhen auf bestätigten Schlusskursen; der heutige Depotwert oben stammt vom letzten Sensor-Update. Die gestrichelte Sollkurve verwendet die eingestellte Rendite und geplanten Sparraten.",
+    closeHint: "Die gestrichelte Sollkurve verwendet die eingestellte Rendite und geplante Sparraten.",
     import: "Verlauf importieren", importHint: "Wähle eine My-Wallet-JSON-Datei. Der Import erstellt nach deiner Bestätigung ein eigenes Depot. Bestehende Depots bleiben unverändert. Die Datei bleibt in deiner Home-Assistant-Installation; an Yahoo gehen nur Symbol- und Kursanfragen.",
     preview: "Import prüfen", preparing: "Buchungen werden geprüft und fehlende Stückzahlen aus historischen Kursen geschätzt …",
     confirm: "Als neues Depot importieren", cancel: "Abbrechen", confirmCheck: "Ich habe die Vorschau geprüft und möchte dieses neue Depot anlegen.",
@@ -139,7 +142,6 @@ const WORDS = {
     componentsHint: "All positions use the same period with individual scales. Curve heights cannot be compared directly. Gains and returns account for purchases and dividends.",
     cashHistoryMissing: "No recorded cash balances are available for this period.",
     cashMovement: "Balance change", cashMovementHint: "The balance change includes deposits, purchases, dividends and possible corrections. It is neither a gain nor a return.",
-    componentCloses: "Source: confirmed daily closing prices; missing valuations remain gaps.",
     subtitle: "Portfolio history", wallet: "Wallet", refresh: "Refresh", settings: "Manage",
     value: "Portfolio including cash", invested: "Deposited capital", cash: "Settlement cash",
     dividends: "Dividends", history: "Value history", ledger: "Transaction history", plans: "Savings plans",
@@ -150,11 +152,15 @@ const WORDS = {
     periodApproximationHint: "For flows within valuation gaps, return assumes payment at the end of the unobserved interval. Actual return may differ; monetary gain uses the recorded flow amounts.",
     period_return_unavailable: "Monetary gain can be calculated, but the available valuations and flow timing do not support a reliable return.",
     period_insufficient: "At least two valuations are needed for period metrics.", period_capital: "The recorded capital basis is incomplete. Gain and return are unavailable.", period_accounting: "The accounting basis is not comparable throughout this period. Deposits, dividends, gain and return cannot be reported reliably.",
+    acknowledgeHistory: "Acknowledge", acknowledgedHistory: "Show dismissed notice",
+    recordedGapTitle: "Gaps in history", recordedCoverageTitle: "Incomplete history", accountingTitle: "Change in accounting basis",
+    periodValueChange: "Value change incl. corrections", periodComparable: "Deposits, dividends, gain and return cover the comparable sections.",
+    period_accounting_partial: "Intervals around corrections were excluded from the calculations.",
     accounting_financial_revision: "Holdings or an existing transaction changed", accounting_legacy_revision: "Older recording: the accounting comparison changed; the exact cause is unknown (text edits are also possible)",
     accounting_capital_reduced: "Recorded capital basis decreased", accounting_dividends_reduced: "Recorded dividend total decreased", accounting_units_changed: "Units changed without a recorded purchase", accounting_legacy_correction: "Unit correction recorded; no time is available for these older records",
     accountingObserved: "First visible in history", accountingRecordedDate: "Correction recorded on", accountingTimeHint: "The time identifies the first affected recording, not the exact time of the edit.", accountingMore: "Further discrepancies", accountingRemaining: "Additional entries not shown",
     recordedSource: "Source: recorded HA snapshots of the holdings at that time. The line holds the last known value until the next recording; it is not a real-time price feed. 1 day covers the last 24 hours; 1 week covers the last 7 days.",
-    recordedLoading: "Loading recorded sensor states …", lastRecorded: "Last state change", lastPolled: "Last recorded refresh", dailySource: "Source: confirmed daily closes", selectMoment: "Select a time in the history",
+    recordedLoading: "Loading recorded sensor states …", lastRecorded: "Last state change", lastPolled: "Last recorded refresh", dailySource: "Daily values use the current transaction records and the latest confirmed close for each date. The 1-day and 1-week views show recorded sensor values for the holdings at the time.", selectMoment: "Select a time in the history",
     recorded_no_history: "No HA recordings are available for this selection yet. Check that the value sensor is enabled and included in Recorder. The monthly view still uses historical daily closes.",
     recorded_recorder_missing: "HA Recorder is unavailable. Daily and weekly views require recorded sensor states.", recorded_recorder_unavailable: "HA Recorder is not ready yet. Please refresh again later.", recorded_recorder_disabled: "HA Recorder is currently paused. Existing data is shown.",
     recorded_entity_missing: "The value sensor was not found. Check that the integration has loaded completely.", recorded_entity_disabled: "The value sensor is disabled. Enable it to start recording its history.", recorded_entity_excluded: "The value sensor is excluded from Recorder. Existing Recorder settings are never changed automatically.",
@@ -169,7 +175,7 @@ const WORDS = {
     configuredUnits: "opening units", includedUnits: "units marked included",
     quotesWarning: "Missing historical prices or exchange rates leave gaps in the value curve.",
     limited: "The chart shows up to ten years. The ledger still includes every transaction.",
-    closeHint: "Actual daily values use confirmed closes; the current value above comes from the latest sensor update. The dashed target uses the configured return and planned savings rates.",
+    closeHint: "The dashed target uses the configured return and planned savings rates.",
     import: "Import history", importHint: "Choose a My Wallet JSON file. After confirmation, the import creates a separate wallet and leaves existing wallets untouched. The file stays in your Home Assistant installation; only symbol and price requests go to Yahoo.",
     preview: "Preview import", preparing: "Checking transactions and estimating missing units from historical prices …",
     confirm: "Import as a new wallet", cancel: "Cancel", confirmCheck: "I have reviewed the preview and want to create this new wallet.",
@@ -337,6 +343,7 @@ class MyWalletPanel extends HTMLElement {
     this._correctionOpen = false;
     this._recordedHistory = null;
     this._recordedRequest = 0;
+    this._historyAcknowledgements = new Map();
   }
   set hass(value) {
     this._hass = value;
@@ -424,11 +431,13 @@ class MyWalletPanel extends HTMLElement {
     }
   }
   _setPeriod(period) {
+    const wasRecorded = this._isRecordedPeriod(), changed = period !== this._period;
     this._period = period; this._chartDate = null; this._componentDates = {};
     if (period !== "all") { this._forecastYears = 0; this._customForecastOpen = false; }
-    if (this._isRecordedPeriod()) this._loadRecorded();
-    else if (!this._history) this._refresh();
-    else this._render();
+    if (this._isRecordedPeriod()) return this._loadRecorded(changed);
+    if (wasRecorded) this._history = null;
+    if (!this._history) return this._refresh();
+    this._render();
   }
   _errorText(err) {
     const code = err?.code || "error";
@@ -458,6 +467,49 @@ class MyWalletPanel extends HTMLElement {
     }
   }
   _notice(parent, text, kind = "") { parent.append(node("p", text, `notice ${kind}`)); }
+  _historyNotice(parent, notice, code, title, ids, scope) {
+    const key = "my-wallet:history-notice:" + JSON.stringify([this._hass.user?.id, this._selected, this._period, scope, code]);
+    const evidence = ids.length ? ids : [code];
+    const acknowledged = new Set(this._historyAcknowledgements.get(key));
+    try {
+      const saved = JSON.parse(localStorage.getItem(key));
+      if (Array.isArray(saved)) for (const id of saved) acknowledged.add(id);
+    } catch { /* The acknowledgement still works in memory. */ }
+    const showCollapsed = () => {
+      const details = node("details", null, "hint");
+      const summary = node("summary", `${this.t("acknowledgedHistory")} · ${this.t(title)}`);
+      details.append(summary);
+      notice.replaceWith(details);
+      details.append(notice);
+      return summary;
+    };
+    parent.append(notice);
+    if (evidence.every(id => acknowledged.has(id))) {
+      showCollapsed();
+      return;
+    }
+    const acknowledge = button(this.t("acknowledgeHistory"), () => {
+      this._historyAcknowledgements.set(key, evidence);
+      try { localStorage.setItem(key, JSON.stringify(evidence)); } catch { /* Browser storage may be disabled. */ }
+      acknowledge.remove();
+      showCollapsed().focus();
+    }, "inline-action");
+    notice.append(acknowledge);
+  }
+  _recordedWarnings(parent, recording, scope, { cashKey } = {}) {
+    const status = recording?.status || "no_history";
+    const gaps = historyGapIds(recording?.points || [], cashKey || "value");
+    if (status !== "ok") {
+      const code = `recorded_${status}`;
+      if (status === "partial" || status === "stale") {
+        this._historyNotice(parent, node("div", this.t(code), "notice warning"), code, "recordedCoverageTitle", gaps, scope);
+      } else this._notice(parent, this.t(code), "warning");
+    }
+    if (gaps.length && (cashKey || (recording.has_gaps && !recording.partial))) {
+      const code = "recorded_gaps";
+      this._historyNotice(parent, node("div", this.t(code), "notice warning"), code, "recordedGapTitle", gaps, scope);
+    }
+  }
   _clearImport() {
     this._preview = null;
     this._document = null;
@@ -1136,12 +1188,13 @@ class MyWalletPanel extends HTMLElement {
     }
     parent.append(section);
   }
-  _renderPeriodStats(parent, points, recorded = null, { position = this._position !== "all", compact = false } = {}) {
+  _renderPeriodStats(parent, points, recorded = null, { position = this._position !== "all", compact = false, scope = this._position } = {}) {
     const metrics = periodMetrics(points, { position, accountingChanged: recorded?.accounting_changed, accountingEvents: recorded?.accounting_events || [], timeZone: this._hass.config?.time_zone || "UTC" });
     const title = node("h3", this.t("periodStats"));
     if (!compact) parent.append(title);
     const format = value => recorded ? this._moment(value) : this.day(value);
     if ((!compact || metrics.shortened) && metrics.start && metrics.end) parent.append(node("p", `${metrics.shortened ? `${this.t("periodShortened")}: ` : ""}${format(metrics.start)} – ${format(metrics.end)}`, "hint"));
+    if (metrics.comparable_sections) parent.append(node("p", this.t("periodComparable"), "hint"));
     const stats = node("div", null, "stats period-stats");
     this._stat(stats, this.t("periodStartValue"), this.money(metrics.start_value));
     this._stat(stats, this.t("periodEndValue"), this.money(metrics.end_value));
@@ -1149,10 +1202,11 @@ class MyWalletPanel extends HTMLElement {
     this._stat(stats, this.t("dividends"), this.money(metrics.dividends));
     this._stat(stats, this.t("profit"), this.money(metrics.gain));
     this._stat(stats, this.t(metrics.return_approximate ? "periodApproximate" : "periodReturn"), this.percent(metrics.return));
+    if (metrics.reason === "accounting") this._stat(stats, this.t("periodValueChange"), this.money(metrics.value_change));
     parent.append(stats);
     if (metrics.reason === "accounting") {
       const warning = node("div", null, "notice warning");
-      warning.append(node("p", this.t("period_accounting")));
+      warning.append(node("p", this.t(metrics.comparable_sections ? "period_accounting_partial" : "period_accounting")));
       const issues = metrics.accounting_issues;
       const detail = issue => {
         const text = node("p", this.t(`accounting_${issue.code}`));
@@ -1170,7 +1224,8 @@ class MyWalletPanel extends HTMLElement {
         warning.append(more);
       }
       if (issues.some(issue => issue.timestamp)) warning.append(node("p", this.t("accountingTimeHint"), "hint"));
-      parent.append(warning);
+      this._historyNotice(parent, warning, "period_accounting", "accountingTitle",
+        issues.map(issue => JSON.stringify([issue.code, issue.timestamp || issue.date])), scope);
     } else if (metrics.reason) this._notice(parent, this.t(`period_${metrics.reason}`), "warning");
     if (metrics.return_approximate) this._notice(parent, this.t("periodApproximationHint"));
     if (!metrics.reason && metrics.return_reason) this._notice(parent, this.t(`period_return_${metrics.return_reason}`), "warning");
@@ -1210,8 +1265,7 @@ class MyWalletPanel extends HTMLElement {
     if (intraday) {
       if (this._recordedLoadingKey === this._recordedKey()) this._notice(section, this.t("recordedLoading"));
       if (this._recordedError) this._notice(section, this._recordedError, "error");
-      if (recorded && recorded.status !== "ok") this._notice(section, this.t(`recorded_${recorded.status}`), "warning");
-      if (recorded?.has_gaps && !recorded.partial) this._notice(section, this.t("recorded_gaps"), "warning");
+      if (recorded) this._recordedWarnings(section, recorded, this._position);
       if (!recorded?.points?.length) { section.append(node("p", this.t("recordedSource"), "hint")); parent.append(section); return; }
       const stamp = recorded.last_polled_at || recorded.last_recorded_at;
       if (stamp) section.append(node("p", `${this.t(recorded.last_polled_at ? "lastPolled" : "lastRecorded")}: ${this._moment(stamp)}`, "hint"));
@@ -1236,8 +1290,8 @@ class MyWalletPanel extends HTMLElement {
       dividends: Object.hasOwn(point.position_dividends || {}, this._position) ? point.position_dividends[this._position] : 0,
       cash: null,
     }));
-    this._renderPeriodStats(section, positionPoints(source), recorded);
     if (!intraday) section.append(node("p", this.t("dailySource"), "hint"));
+    this._renderPeriodStats(section, positionPoints(source), recorded);
     let showProjection = false;
     if (!intraday && this._position === "all" && this._forecastYears && this._period === "all" && this._targetLine) {
       const cutoff = this._history.target?.forecasts?.[String(this._forecastYears)]?.date;
@@ -1282,6 +1336,7 @@ class MyWalletPanel extends HTMLElement {
     const start = intraday ? recorded.start : daily[0]?.date, end = intraday ? recorded.end : daily.at(-1)?.date;
     const format = value => intraday ? this._moment(value) : this.day(value);
     if (start && end) section.append(node("p", `${format(start)} – ${format(end)}`, "hint"));
+    if (!intraday) section.append(node("p", this.t("dailySource"), "hint"));
     const grid = node("div", null, "component-grid"); section.append(grid);
     for (const symbol of [...wallet.positions.map(item => item.symbol), null]) {
       const cash = symbol === null, title = cash ? this.t("cash") : this._positionLabel(symbol);
@@ -1289,8 +1344,7 @@ class MyWalletPanel extends HTMLElement {
       card.append(node("h3", title)); grid.append(card);
       const recording = intraday ? cash ? recorded.cash : recorded.positions?.[symbol] : null;
       if (intraday) {
-        if (recording?.status !== "ok") this._notice(card, this.t(`recorded_${recording?.status || "no_history"}`), "warning");
-        if (!cash && recording?.has_gaps && !recording.partial) this._notice(card, this.t("recorded_gaps"), "warning");
+        this._recordedWarnings(card, recording, cash ? "cash:" : symbol, { cashKey: cash ? real ? "real_cash" : "cash" : undefined });
         const stamp = recording?.last_polled_at || recording?.last_recorded_at;
         if (stamp) card.append(node("p", `${this.t(recording.last_polled_at ? "lastPolled" : "lastRecorded")}: ${this._moment(stamp)}`, "hint"));
         if (!recording?.points?.length) continue;
@@ -1299,7 +1353,7 @@ class MyWalletPanel extends HTMLElement {
       const points = cash ? source.map(point => ({ ...point, cash: intraday ? point.cash : real ? point.real_cash : point.cash }))
         : intraday ? source : dailyPositionPoints(source, symbol, { real, unknownOpening: this._history.unknown_opening });
       if (cash && !points.some(point => Number.isFinite(point.cash))) { this._notice(card, this.t("cashHistoryMissing"), "warning"); continue; }
-      if (cash && points.some(point => !Number.isFinite(point.cash))) this._notice(card, this.t("recorded_gaps"), "warning");
+      if (cash && real && !intraday && points.some(point => !Number.isFinite(point.cash))) this._notice(card, this.t("recorded_gaps"), "warning");
       if (cash) {
         const window = evaluationWindow(points, "cash");
         const first = window.points[0]?.cash, last = window.points.at(-1)?.cash;
@@ -1309,12 +1363,13 @@ class MyWalletPanel extends HTMLElement {
         this._stat(stats, this.t("periodEndValue"), this.money(last));
         this._stat(stats, this.t("cashMovement"), this.money(window.points.length > 1 && Number.isFinite(first) && Number.isFinite(last) ? last - first : null));
         card.append(stats, node("p", this.t("cashMovementHint"), "hint"));
-      } else this._renderPeriodStats(card, points, recording, { position: true, compact: true });
+      } else this._renderPeriodStats(card, points, recording, { position: true, compact: true, scope: symbol });
       this._renderSeries(card, { points, intraday, mainKeys: cash ? ["cash"] : intraday ? ["value"] : ["value", "invested"],
         keyLabel: key => this.t(cash ? "cash" : key === "value" ? "positionValue" : "purchaseCost"),
         compact: true, title, chartId: symbol === null ? "cash:" : `position:${symbol}` });
     }
-    section.append(node("p", this.t("periodHint"), "hint"), node("p", this.t(intraday ? "recordedSource" : "componentCloses"), "hint"));
+    section.append(node("p", this.t("periodHint"), "hint"));
+    if (intraday) section.append(node("p", this.t("recordedSource"), "hint"));
   }
   _renderSeries(section, { points, intraday, mainKeys, keyLabel, showCash = false, compact = false, chartId = null, title = this.t("history") }) {
     const keys = [...mainKeys, ...(showCash ? ["cash"] : [])];
@@ -1426,7 +1481,8 @@ class MyWalletPanel extends HTMLElement {
     const selected = points.findIndex(point => (point.timestamp || point.date) === (chartId ? this._componentDates[chartId] : this._chartDate));
     show(selected < 0 ? points.length - 1 : selected);
     section.append(output, scrub);
-    if (!compact) section.append(node("p", this.t(intraday ? "recordedSource" : "closeHint"), "hint"));
+    if (!compact && intraday) section.append(node("p", this.t("recordedSource"), "hint"));
+    if (!compact && mainKeys.includes("target")) section.append(node("p", this.t("closeHint"), "hint"));
   }
   _renderSummary(parent) {
     const section = node("section", null, "card"), controls = node("div", null, "controls");

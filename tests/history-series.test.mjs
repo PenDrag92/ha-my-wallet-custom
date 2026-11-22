@@ -74,6 +74,39 @@ test("financial revisions and reversals report the first affected sample, even a
   assert.deepEqual(result.accounting_issues, points.slice(2).map(p => ({ code: "financial_revision", timestamp: p.timestamp })));
 });
 
+test("correction jumps are distinct from flows and gains in comparable sections", () => {
+  const points = [
+    sample(750.66, 750, 0, { financial_revision: "before" }),
+    sample(751.66, 750, 0, { financial_revision: "before" }),
+    sample(null, null, null),
+    sample(753.13, 748, 0, { financial_revision: "after" }),
+    sample(764.13, 758, 0.5, { financial_revision: "after" }),
+  ];
+  for (const position of [false, true]) {
+    const result = periodMetrics(points, { position });
+    assert.equal(result.comparable_sections, 2);
+    assert.equal(result.reason, "accounting");
+    near(result.value_change, 13.47);
+    near(result.capital, 10);
+    near(result.dividends, 0.5);
+    near(result.gain, position ? 2.5 : 2);
+    const income = position ? 0.5 : 0;
+    near(result.return, ((751.66 / 750.66) * ((754.13 + income) / 753.13) - 1) * 100);
+  }
+});
+
+test("valuations between two known different revisions cannot absorb the correction", () => {
+  const result = periodMetrics([
+    sample(100, 100, 0, { financial_revision: "a" }),
+    sample(150, 100),
+    sample(151, 100, 0, { financial_revision: "b" }),
+    sample(152, 100, 0, { financial_revision: "b" }),
+  ]);
+  near(result.value_change, 52);
+  near(result.gain, 1);
+  assert.equal(result.comparable_sections, 1);
+});
+
 test("observable changes give specific reasons instead of an opaque revision message", () => {
   for (const [code, changes] of [
     ["capital_reduced", { invested: 80 }],

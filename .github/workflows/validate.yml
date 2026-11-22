@@ -39,6 +39,9 @@ jobs:
           PyYAML==6.0.3
           ruff==0.16.5
           pypdf==6.18.1
+          mcp==1.26.0
+          aiohttp_sse==2.2.0
+          anyio==4.13.0
       - name: Ruff lint
         run: ruff check .
       - name: Ruff format

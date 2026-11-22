@@ -1,5 +1,21 @@
 # To do
 
+## Done
+
+- [x] Make history warnings dismissible with an acknowledgement control. Keep
+  acknowledgements per user and wallet across refreshes. Bring back a notice
+  when a new gap or accounting change is detected, and keep the reason available
+  on demand when a metric cannot be calculated.
+
+- [x] Expose My Wallet's existing read-only reports, scenarios and deposit
+  allocation through the Home Assistant MCP connection. Keep the dashboard
+  conversation agent optional.
+
+- [x] Refresh the appropriate history when switching between Recorder and
+  longer daily ranges. Explain the difference in valuation bases.
+- [x] Preserve period metrics before and after an accounting correction.
+  Show the overall value change separately from comparable investment results.
+
 - [x] Prepare local day boundaries for 1.13 day/week charts, including individual
   positions and settlement cash. Use HA's time zone, handle DST and retain all
   grid lines when date labels are thinned on narrow screens. Included in 1.13.
@@ -29,12 +45,11 @@
   positions with a 0% target; keep the calculation unchanged. Included in
   1.9.1 with direct unit editing. Refined in 1.9.2 with a percentage of the
   whole portfolio and plain "too much" / "too little" wording in one line.
-- [ ] Monitor the HACS frontend fix for local custom-integration brand assets
-  ([issue #5223](https://github.com/hacs/integration/issues/5223),
-  [PR #937](https://github.com/hacs/frontend/pull/937)). My Wallet already ships
-  the current Home Assistant `brand/icon.png` and `brand/logo.png`; no further
-  repository-side change can replace the placeholder in HACS update cards yet.
-  Rechecked on 2026-10-03: the linked frontend PR remains open.
+- [x] Track support for local brand assets in HACS. My Wallet ships
+  `brand/icon.png` and `brand/logo.png`. HACS closed
+  [issue #5223](https://github.com/hacs/integration/issues/5223) after confirming
+  support in Marketplace, shipped with Home Assistant 2026.11. The old HACS UI
+  may still show a placeholder.
 - [x] Use position aliases consistently in every user-facing integration view,
   followed by the stable technical symbol, for example
   `World ETF (ABC.DE)`. Cover savings-plan selection, allocation,

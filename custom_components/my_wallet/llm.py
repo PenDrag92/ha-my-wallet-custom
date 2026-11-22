@@ -14,6 +14,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import llm
 
 from . import assistant_service as service
+from .const import DOMAIN
 
 API_PROMPT = (
     "These My Wallet tools expose one wallet and are read-only. Fetch financial "
@@ -38,6 +39,12 @@ def async_get_tools(hass, llm_context, api_id):
 class WalletTool(llm.Tool):
     """An immutable wallet scope; the model cannot choose another entry ID."""
 
+    integration = DOMAIN
+    if hasattr(llm, "ToolAnnotations"):
+        annotations = llm.ToolAnnotations(
+            read_only=True, destructive=False, idempotent=True
+        )
+
     def __init__(self, entry_id: str):
         self.entry_id = entry_id
 
@@ -58,6 +65,8 @@ class WalletTool(llm.Tool):
                 code = "invalid_wallet_tool_request"
             raise HomeAssistantError("Wallet tool could not complete: " + code) from err
         service.remember_tool_result(hass, llm_context.context, self.kind, result)
+        if hasattr(llm, "ToolResult"):
+            return llm.ToolResult(data=result)
         return result
 
     async def async_result(self, hass, request, arguments):
@@ -138,6 +147,8 @@ class WalletAPI(llm.API):
             id=service.wallet_api_id(entry_id),
             name=f"My Wallet: {title}",
         )
+        if hasattr(self, "requires_admin"):
+            self.requires_admin = True
         self.entry_id = entry_id
 
     async def async_get_api_instance(self, llm_context):

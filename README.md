@@ -5,7 +5,7 @@ Home Assistant. Each wallet is a config entry that holds a list of **valors**
 (market instruments) with configurable amounts, valued live via
 **Yahoo Finance**.
 
-Version 1.13.0 requires **Home Assistant 2026.8 or newer**.
+Version 1.13.1 requires **Home Assistant 2026.8 or newer**.
 
 Project home: <https://github.com/PenDrag92/ha-my-wallet-custom>. Report bugs
 or feature requests through the [issue tracker](https://github.com/PenDrag92/ha-my-wallet-custom/issues).
@@ -28,6 +28,9 @@ provider. Free-form questions use an existing Home Assistant conversation agent
 explicitly assigned to this wallet's read-only API. PDF extraction uses an
 explicitly selected AI Task entity. Both require visible permission before
 sending data to that provider. Provider credentials remain in Home Assistant.
+The native Home Assistant MCP server can also expose this wallet's reports,
+scenarios and allocation to an administrator's MCP client. Find the wallet URL
+and setup details under [Access via Home Assistant MCP](docs/ASSISTANT.md#use-the-same-tools-from-home-assistant-mcp).
 
 Model prose cannot write financial records. Document imports require a checked
 preview tied to the user, wallet and exact saved state. Supported documents contain
@@ -219,8 +222,10 @@ on the existing value sensors, including updates with unchanged prices. This
 adds a small amount of Recorder data. Older records need a matching recorded
 profit sensor for their cost basis; value history can still be displayed when
 that basis is unavailable. Missing prices, missed new refreshes and stale ends
-remain gaps. Gain and return stay blank for incomplete periods or detected
-corrections rather than classifying edited holdings as investment performance.
+remain gaps. The dashboard reports gain and return across comparable sections
+when a correction can be located. It shows the full value change separately,
+including any adjustment. Warnings about gaps and corrections can be
+acknowledged in the browser and reopened for details.
 The view explains missing or excluded sensors and paused/unavailable Recorder.
 Stored history remains untouched; use the daily history for reconstruction
 from the currently corrected ledger.

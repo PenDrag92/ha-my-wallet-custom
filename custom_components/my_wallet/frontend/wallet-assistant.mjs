@@ -1,5 +1,5 @@
-import { AssistantState, inputNumber } from "./assistant-state.mjs?v=1.13.0";
-import { explain, assumptionNotes } from "./assistant-messages.mjs?v=1.13.0";
+import { AssistantState, inputNumber } from "./assistant-state.mjs?v=1.13.1";
+import { explain, assumptionNotes } from "./assistant-messages.mjs?v=1.13.1";
 
 const words = {
   de: {
@@ -11,6 +11,7 @@ const words = {
     month: "Auswertungsmonat", skipped: "Übersprungen", value_date: "Valutadatum", future_contributions: "Künftige Einzahlungen", growth: "Wertzuwachs",
     title: "Dein Depot verstehen und planen", intro: "Auswertungen und Szenarien verwenden die gespeicherten Depotdaten. Wähle für freie Fragen einen eingerichteten KI-Assistenten.",
     report: "Depotanalyse", refresh: "Analyse aktualisieren", chat: "Frage zu deinem Depot", ask: "Frage stellen", question: "Zum Beispiel: Welche Positionen haben im letzten Monat zum Gewinn beigetragen?",
+    mcp: "Zugriff über Home Assistant MCP", mcpHint: "Verbinde diese Adresse mit deinem MCP-Client oder wähle die Wallet-API im vorhandenen Home-Assistant-MCP-Server aus. Die drei Werkzeuge brauchen ein HA-Administratorkonto.",
     agent: "KI-Assistent", noAgent: "Noch kein passender KI-Assistent eingerichtet. Ordne einem Gesprächsassistenten in Home Assistant ausschließlich die unten genannte Wallet-API zu.",
     consent: "Ich möchte Frage und benötigte Depotdaten an den ausgewählten Anbieter senden.", local: "Lokal", cloud: "Externer Anbieter",
     scenario: "Szenario vergleichen", years: "Jahre", annual_return: "Renditeannahme pro Jahr (%)", monthly_extra: "Zusätzlich pro Monat", one_off: "Einmalige Einzahlung", start_date: "Änderung ab",
@@ -36,6 +37,7 @@ const words = {
     month: "Report month", skipped: "Skipped", value_date: "Value date", future_contributions: "Future contributions", growth: "Growth",
     title: "Understand and plan your portfolio", intro: "Reports and scenarios use saved portfolio data. Select a configured AI assistant for free-form questions.",
     report: "Portfolio report", refresh: "Refresh report", chat: "Ask about your portfolio", ask: "Ask", question: "For example: Which positions contributed to last month's gain?",
+    mcp: "Access via Home Assistant MCP", mcpHint: "Connect this address to your MCP client or select the Wallet API in your existing Home Assistant MCP server. The three tools require a Home Assistant administrator account.",
     agent: "AI assistant", noAgent: "No suitable assistant configured. In Home Assistant, assign only the Wallet API shown below to a conversation assistant.",
     consent: "Send my question and the required portfolio data to the selected provider.", local: "Local", cloud: "External provider",
     scenario: "Compare a scenario", years: "Years", annual_return: "Expected annual return (%)", monthly_extra: "Extra monthly contribution", one_off: "One-off deposit", start_date: "Changes start",
@@ -145,10 +147,20 @@ export class WalletAssistant extends HTMLElement {
     this.shadowRoot.replaceChildren(el("style", css));
     if (!this.wallet) return;
     this.shadowRoot.append(el("h2", this.t("title")), el("p", this.t("intro"), "muted"));
-    this.renderChat(); this.renderReport(); this.renderScenario(); this.renderAllocation(); this.renderDocuments();
+    this.renderReport(); this.renderScenario(); this.renderAllocation(); this.renderDocuments();
+    this.renderChat();
   }
   renderChat() {
-    const box = this.section("chat"), agents = this.state.results.agents?.agents || [];
+    const apiId = this.state.results.agents?.api_id;
+    if (apiId) {
+      const mcp = this.section("mcp");
+      mcp.append(el("p", this.t("mcpHint"), "muted"), el("code", new URL("/api/mcp/" + encodeURIComponent(apiId), window.location.origin).href));
+    }
+    const section = el("section"), box = el("details"), agents = this.state.results.agents?.agents || [];
+    box.open = Boolean(this.form.chatOpen);
+    box.addEventListener("toggle", () => { this.form.chatOpen = box.open; });
+    box.append(el("summary", this.t("chat")));
+    section.append(box); this.shadowRoot.append(section);
     this.status(box, "agents");
     if (!agents.length) {
       this.notice(box, this.t("noAgent")); box.append(el("code", this.state.results.agents?.api_id || ""));
