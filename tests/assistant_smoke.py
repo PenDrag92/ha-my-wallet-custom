@@ -17,12 +17,14 @@ from homeassistant.core import Context
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import llm
 from mcp import ClientSession
-from mcp.shared.exceptions import MCPError
+from mcp.shared import exceptions as mcp_exceptions
 from mcp.shared.memory import create_client_server_memory_streams
 
 from custom_components.my_wallet import assistant_service as service
 from custom_components.my_wallet import const as c
 from custom_components.my_wallet import llm as wallet_llm
+
+MCP_ERROR = getattr(mcp_exceptions, "MCPError", None) or mcp_exceptions.McpError
 
 
 class HassFixture:
@@ -168,7 +170,7 @@ class RealHomeAssistantLLMTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(service, "allocation_result") as denied_allocation:
             try:
                 denied = await client.call_tool("WalletAllocation", {"amount": 50})
-            except MCPError:
+            except MCP_ERROR:
                 pass  # Protocol-level rejection also blocks the tool.
             else:
                 self.assertTrue(denied.model_dump(by_alias=True)["isError"])

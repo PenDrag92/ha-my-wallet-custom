@@ -1,9 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dailyPeriod, dailyPositionPoints, evaluationWindow, periodMetrics, recordedPoints } from "../custom_components/my_wallet/frontend/history-series.mjs";
+import { dailyPeriod, dailyPositionPoints, evaluationWindow, historyGapIds, periodMetrics, recordedPoints } from "../custom_components/my_wallet/frontend/history-series.mjs";
 
 const sample = (value, invested, dividends = 0, extra = {}) => ({ value, invested, dividends, ...extra });
 const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
+
+test("a scrolling or closed gap retains its identity and a later gap gets a new one", () => {
+  const before = { timestamp: "2026-11-22T10:00:00Z", value: 2 };
+  const gap = { timestamp: "2026-11-22T10:30:00Z", value: null };
+  const after = { timestamp: "2026-11-22T11:00:00Z", value: 2 };
+  const laterGap = { timestamp: "2026-11-22T11:30:00Z", value: null };
+  assert.deepEqual(historyGapIds([before, gap]), [before.timestamp]);
+  assert.deepEqual(historyGapIds([before, gap, after]), [before.timestamp]);
+  assert.deepEqual(historyGapIds([before, gap, after, laterGap]), [before.timestamp, after.timestamp]);
+});
 
 test("cash boundary selection retains finite negative balances instead of hiding them", () => {
   const result = evaluationWindow([{ cash: null }, { cash: -0.001 }, { cash: 1 }, { cash: null }], "cash");

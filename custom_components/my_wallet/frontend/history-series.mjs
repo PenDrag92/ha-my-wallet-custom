@@ -66,9 +66,9 @@ export function historyGapIds(points, key = "value") {
   for (let index = 0; index < points.length; index++) {
     const point = points[index];
     if (valid(point) || (index > 0 && !valid(points[index - 1]))) continue;
-    if (index === 0) ids.push("start");
-    else if (index === points.length - 1) ids.push(`end:${timestamp(points[index - 1])}`);
-    else ids.push(timestamp(point));
+    // The last valid sample anchors the gap even while its end moves with
+    // the clock or a later observation closes it.
+    ids.push(index === 0 ? "start" : timestamp(points[index - 1]));
   }
   return ids;
 }
